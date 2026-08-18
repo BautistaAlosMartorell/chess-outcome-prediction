@@ -15,5 +15,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Claude Code local state
-.claude/
+# Estado local de agentes de código.
+# Las skills versionadas viven en skills/ y se enlazan acá con symlinks.
+.claude/*
+!.claude/skills/
+.opencode/*
+!.opencode/skills/

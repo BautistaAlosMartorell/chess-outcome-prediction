@@ -28,9 +28,20 @@ CienciaDeDatos/
 │   └── processed/       # panel filtrado y dataset final
 ├── notebooks/
 │   └── 01_pipeline_ingesta.ipynb   # pipeline de ingeniería de datos (Entrega 1)
+├── skills/              # convenciones del repo para agentes de código
+├── AGENTS.md            # punto de entrada para Codex y OpenCode
+├── CLAUDE.md            # punto de entrada para Claude Code
 ├── requirements.txt
 └── README.md
 ```
+
+## Convenciones de trabajo
+
+Las convenciones del repo (ramas y commits, cómo se escriben los notebooks, qué pide
+cada entrega) están en [`skills/`](skills/), en formato Agent Skills, para que las lean
+tanto las personas como los agentes de código. Ver [`skills/README.md`](skills/README.md).
+
+**Regla base: no se commitea a `main` ni se suben archivos de `data/`.**
 
 ## Cómo correr el pipeline
 
