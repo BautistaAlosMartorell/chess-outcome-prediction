@@ -1,13 +1,13 @@
-"""Descarga automatizada de partidas de ajedrez desde la API de Lichess.
+"""Descarga automatizada de partidas desde la PubAPI de Chess.com.
 
-Endpoint real: ``GET /api/games/user/{username}``, documentado en
-https://github.com/lichess-org/api (``doc/specs/tags/games/api-games-user-username.yaml``).
-No requiere autenticación para uso anónimo (throttle de 20 partidas/segundo).
-Devuelve un stream de partidas en PGN de texto plano.
+La API es pública y no requiere autenticación. Para cada usuario se consulta la lista
+de archivos mensuales y se recorren desde el más reciente hacia atrás hasta reunir el
+máximo configurado de partidas rated de ajedrez estándar en bullet, blitz o rapid.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -22,77 +22,58 @@ logger = setup_logger(__name__)
 
 
 class DataDownloader:
-    """Descarga partidas de ajedrez de una lista de usuarios de Lichess.
-
-    Parameters
-    ----------
-    config : dict[str, Any]
-        Configuración cargada desde ``config/config.yaml``. Se usan las
-        claves ``lichess`` (usuarios, filtros) y ``download`` (timeout,
-        reintentos).
-    """
+    """Descarga y consolida archivos mensuales públicos de Chess.com."""
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
-        lichess_cfg = config["lichess"]
-        self.base_url: str = lichess_cfg["base_url"]
-        self.usernames: list[str] = lichess_cfg["usernames"]
-        self.max_games_per_user: int = lichess_cfg["max_games_per_user"]
-        self.perf_types: str = lichess_cfg["perf_types"]
-        self.rated_only: bool = lichess_cfg["rated_only"]
-        self.raw_filename_template: str = lichess_cfg["raw_filename_template"]
+        chess_cfg = config["chess_com"]
+        self.base_url: str = chess_cfg["base_url"].rstrip("/")
+        self.usernames: list[str] = chess_cfg["usernames"]
+        self.max_games_per_user: int = chess_cfg["max_games_per_user"]
+        self.time_classes: set[str] = set(chess_cfg["time_classes"])
+        self.rules: str = chess_cfg["rules"]
+        self.rated_only: bool = chess_cfg["rated_only"]
+        self.raw_filename_template: str = chess_cfg["raw_filename_template"]
+        self.user_agent: str = chess_cfg["user_agent"]
         self.raw_dir = Path(config["paths"]["raw_dir"])
         self.timeout: int = config["download"]["timeout_seconds"]
         self.max_retries: int = config["download"]["max_retries"]
+        self.request_delay: float = config["download"]["request_delay_seconds"]
         self._session = self._build_session()
 
     def _build_session(self) -> requests.Session:
-        """Construye una sesión de requests con reintentos y backoff exponencial."""
+        """Construye una sesión identificada con reintentos para errores transitorios."""
         session = requests.Session()
-        # Lichess rejects the generic ``python-requests`` user agent in some
-        # environments. Identify this client explicitly, as expected for API
-        # consumers, so valid anonymous exports are not mistaken for bot traffic.
-        session.headers.update(
-            {
-                "User-Agent": (
-                    "epl-injury-type-prediction/1.0 "
-                    "(+https://github.com/BautistaAlosMartorell/"
-                    "epl-injury-type-prediction)"
-                )
-            }
-        )
+        session.headers.update({"User-Agent": self.user_agent, "Accept": "application/json"})
         retry_strategy = Retry(
             total=self.max_retries,
             backoff_factor=self.config["download"]["backoff_factor"],
-            status_forcelist=[500, 502, 503, 504],
+            status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET"],
+            respect_retry_after_header=True,
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("https://", adapter)
+        session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
         return session
 
+    def _get_json(self, url: str) -> dict[str, Any]:
+        """Obtiene una respuesta JSON y valida el estado HTTP y el formato."""
+        response = self._session.get(url, timeout=self.timeout)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"Respuesta inesperada de Chess.com en {url}")
+        return payload
+
+    def _is_eligible(self, game: dict[str, Any]) -> bool:
+        """Indica si una partida pertenece al universo definido por el proyecto."""
+        return (
+            game.get("rules") == self.rules
+            and game.get("time_class") in self.time_classes
+            and (not self.rated_only or game.get("rated") is True)
+        )
+
     def download_user_games(self, username: str, dest_path: str | Path) -> Path:
-        """Descarga las partidas de un usuario y las guarda como PGN (idempotente).
-
-        Si el archivo de destino ya existe, se saltea la descarga.
-
-        Parameters
-        ----------
-        username : str
-            Nombre de usuario de Lichess.
-        dest_path : str or Path
-            Ruta local de destino del archivo PGN.
-
-        Returns
-        -------
-        Path
-            Ruta al archivo guardado (o ya existente).
-
-        Raises
-        ------
-        requests.exceptions.RequestException
-            Si la descarga falla tras agotar los reintentos configurados.
-        """
+        """Descarga hasta ``max_games_per_user`` partidas de un usuario (idempotente)."""
         dest = Path(dest_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -100,63 +81,52 @@ class DataDownloader:
             logger.info("Ya existe %s — se saltea la descarga de %s.", dest, username)
             return dest
 
-        params = {
-            "max": self.max_games_per_user,
-            "opening": "true",
-            "rated": "true" if self.rated_only else "false",
-            "perfType": self.perf_types,
-            "moves": "true",
-            "clocks": "false",
-            "evals": "false",
+        archives_url = f"{self.base_url}/{username.lower()}/games/archives"
+        logger.info("Consultando archivos mensuales de %s", username)
+        archives = self._get_json(archives_url).get("archives", [])
+        if not archives:
+            raise ValueError(f"Chess.com no devolvió archivos de partidas para {username}")
+
+        selected_games: list[dict[str, Any]] = []
+        used_archives: list[str] = []
+        for archive_url in reversed(archives):
+            monthly_games = self._get_json(archive_url).get("games", [])
+            eligible = [game for game in reversed(monthly_games) if self._is_eligible(game)]
+            remaining = self.max_games_per_user - len(selected_games)
+            selected_games.extend(eligible[:remaining])
+            used_archives.append(archive_url)
+            logger.info(
+                "%s: %d partidas elegibles acumuladas tras %s",
+                username,
+                len(selected_games),
+                "/".join(archive_url.rsplit("/", 2)[-2:]),
+            )
+            if len(selected_games) >= self.max_games_per_user:
+                break
+            time.sleep(self.request_delay)
+
+        if not selected_games:
+            raise ValueError(f"No se encontraron partidas elegibles para {username}")
+
+        payload = {
+            "source_username": username,
+            "source_archives": used_archives,
+            "games": selected_games,
         }
-        headers = {"Accept": "application/x-chess-pgn"}
-        url = f"{self.base_url}/{username}"
-
-        logger.info("Descargando partidas de %s -> %s", username, dest)
-        try:
-            for attempt in range(self.max_retries + 1):
-                response = self._session.get(
-                    url, params=params, headers=headers, timeout=self.timeout, stream=True
-                )
-                if response.status_code != 429 or attempt == self.max_retries:
-                    break
-
-                retry_after = response.headers.get("Retry-After", "60")
-                wait_seconds = max(60, int(retry_after)) if retry_after.isdigit() else 60
-                response.close()
-                logger.warning(
-                    "Lichess limitó la descarga de %s (429). Reintentando en %d segundos.",
-                    username,
-                    wait_seconds,
-                )
-                time.sleep(wait_seconds)
-
-            response.raise_for_status()
-            tmp_path = dest.with_suffix(dest.suffix + ".part")
-            with open(tmp_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            tmp_path.rename(dest)
-        except requests.exceptions.RequestException:
-            logger.error("Falló la descarga de partidas de %s.", username)
-            raise
-
-        logger.info("Descarga completa: %s", dest)
+        tmp_path = dest.with_suffix(dest.suffix + ".part")
+        with tmp_path.open("w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False)
+        tmp_path.replace(dest)
+        logger.info("Descarga completa: %s (%d partidas)", dest, len(selected_games))
         return dest
 
     def download_all(self) -> dict[str, Path]:
-        """Descarga las partidas de todos los usuarios configurados.
-
-        Returns
-        -------
-        dict[str, Path]
-            Mapeo nombre de usuario -> ruta local del PGN descargado.
-        """
+        """Descarga secuencialmente las partidas de todos los usuarios configurados."""
         results: dict[str, Path] = {}
         for username in self.usernames:
             dest = self.raw_dir / self.raw_filename_template.format(username=username)
             results[username] = self.download_user_games(username, dest)
+            time.sleep(self.request_delay)
         return results
 
 
@@ -164,5 +134,4 @@ if __name__ == "__main__":
     from src.utils import load_config
 
     cfg = load_config("config/config.yaml")
-    downloader = DataDownloader(cfg)
-    downloader.download_all()
+    DataDownloader(cfg).download_all()

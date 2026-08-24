@@ -1,24 +1,28 @@
 # Configuración central del pipeline de ingeniería de datos.
-# Entrega 1 — Ajedrez competitivo online (Lichess) (UTN FRM, Ciencia de Datos 2026).
+# Entrega 1 — Ajedrez competitivo online (Chess.com) (UTN FRM, Ciencia de Datos 2026).
 
-lichess:
-  base_url: "https://lichess.org/api/games/user"
-  # Jugadores activos y reales en distintos rangos de ELO (blitz), para que el
-  # dataset tenga diversidad genuina de nivel y no solo partidas de una persona.
-  # Verificado contra la API real: perfiles públicos existentes en Lichess.
+chess_com:
+  base_url: "https://api.chess.com/pub/player"
+  # Cuentas públicas verificadas con historial suficiente y niveles variados.
+  # La descarga recorre sus archivos mensuales desde el más reciente hacia atrás.
   usernames:
-    - thibault          # fundador de Lichess, nivel club (~1700-1800 blitz)
-    - DrNykterstein      # Magnus Carlsen, top mundial (~3200+ bullet/blitz)
-    - Zhigalko_Sergei    # GM, nivel top
-    - Konevlad           # GM, nivel top
-    - RebeccaHarris      # nivel club/intermedio
-    - penguingim1        # streamer, nivel fuerte
-    - Bombegranate       # nivel intermedio
-    - Msb2                     # nivel intermedio
+    - RebeccaHarris      # nivel club (~1400)
+    - erik               # nivel club/intermedio (~1700)
+    - AnnaCramling       # jugadora titulada/streamer (~2400)
+    - AlexandraBotez     # jugadora titulada/streamer (~2500)
+    - GothamChess        # maestro internacional/streamer (~2900)
+    - IMRosen            # maestro internacional (~2900)
+    - chessbrah          # gran maestro/streamer (~3200)
+    - hikaru             # élite mundial (~3400)
   max_games_per_user: 1000
-  perf_types: "bullet,blitz,rapid"
+  time_classes:
+    - bullet
+    - blitz
+    - rapid
+  rules: "chess"
   rated_only: true
-  raw_filename_template: "lichess_{username}_raw.pgn"
+  raw_filename_template: "chesscom_{username}_raw.json"
+  user_agent: "proyecto-integrador-ajedrez/1.0 (https://github.com/BautistaAlosMartorell/epl-injury-type-prediction)"
 
 paths:
   raw_dir: "data/raw"
@@ -32,7 +36,6 @@ processing:
   random_state: 42
 
 elo:
-  # Bandas de ELO para la feature categórica nivel_promedio.
   bandas:
     principiante: [0, 1200]
     intermedio: [1200, 1800]
@@ -44,3 +47,4 @@ download:
   timeout_seconds: 60
   max_retries: 5
   backoff_factor: 2
+  request_delay_seconds: 0.25

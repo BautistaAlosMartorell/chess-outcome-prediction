@@ -7,7 +7,7 @@ Este archivo lo leen **Codex** y **OpenCode**; Claude Code entra por `CLAUDE.md`
 
 Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): qué combinación de ELO,
 apertura, modalidad de ritmo y color de piezas predice el **resultado** y la
-**duración** de una partida de ajedrez online real (API pública de Lichess). Trabajo
+**duración** de una partida de ajedrez online real (PubAPI pública de Chess.com). Trabajo
 grupal de 5-6 personas, con cuatro entregas parciales entre septiembre y noviembre de
 2026. Leé el README — tiene contexto largo sobre por qué el tema cambió dos veces
 antes de llegar a este, y qué falta validar con datos reales de volumen.
@@ -15,7 +15,7 @@ antes de llegar a este, y qué falta validar con datos reales de volumen.
 ```
 src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook
 notebooks/   pipeline narrado y verificación, numerados por entrega
-config/      config.yaml — usuarios de Lichess, bandas de ELO, parámetros de descarga
+config/      config.yaml — usuarios de Chess.com, bandas de ELO, parámetros de descarga
 data/        vacío en git — se regenera corriendo el pipeline
 skills/      instrucciones reutilizables para agentes (leer más abajo)
 ```
@@ -38,7 +38,7 @@ trabajes de memoria ni por defecto propio cuando hay una skill que cubre el caso
 ## Reglas que aplican siempre
 
 - **Nunca commitear a `main`.** Rama `<tipo>/<slug>` para todo cambio (`git-workflow`).
-- **Nunca commitear archivos de `data/`.** Se regeneran corriendo el pipeline contra la API de Lichess.
+- **Nunca commitear archivos de `data/`.** Se regeneran corriendo el pipeline contra la PubAPI de Chess.com.
 - **Pedir confirmación antes de `git push`, de abrir un PR y de mergear.** El repo es
   compartido con el resto del grupo.
 - Narrativa de notebooks en markdown **en español**; comentarios de código **en inglés**.
@@ -55,7 +55,5 @@ jupyter lab notebooks/01_data_ingestion_verification.ipynb   # Restart & Run All
 python -m src.pipeline
 ```
 
-La primera corrida descarga partidas de 8 usuarios de Lichess (liviano). Las
-siguientes saltean los PGN ya descargados. Si la descarga falla con 404 desde tu
-entorno, ver la sección "Si te encontrás con que la descarga falla" del README antes
-de asumir que el pipeline está roto.
+La primera corrida descarga hasta 1.000 partidas rated de 8 usuarios de Chess.com,
+recorriendo archivos mensuales en serie. Las siguientes saltean los JSON ya descargados.

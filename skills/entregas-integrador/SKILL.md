@@ -15,10 +15,9 @@ y **color de piezas** predice el **resultado** (`resultado`: gana blancas/negras
 empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online real.
 Unidad de análisis: una partida individual.
 
-Fuente: API pública de Lichess (`GET /api/games/user/{username}`), sin autenticación.
-Partidas reales de 8 jugadores en distintos rangos de ELO (nivel club a campeón
-mundial). Ver el README del repo para el contexto completo de por qué el tema del
-proyecto cambió dos veces antes de llegar a este.
+Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
+autenticación. Partidas reales de 8 jugadores en distintos rangos de ELO (nivel club a
+élite mundial). La API se consulta en serie mediante sus archivos mensuales.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
 el doble que los dos parciales. Se aprueba con 60 %.
@@ -39,15 +38,11 @@ el doble que los dos parciales. Se aprueba con 60 %.
 
 <!-- Actualizar esta sección al cerrar cada entrega. -->
 
-**Al 24/08/2026:** Tercer tema del proyecto (los dos anteriores — transporte AMBA
-multimodal y demanda de subte+clima+feriados, este último completo en la rama
-`colectivos` — quedaron descartados o en otra rama por decisión del grupo, no por
-fallas). Pipeline de ajedrez online (Lichess) escrito completo en `src/` y validado
-línea por línea contra una muestra real de 3 partidas, pero **sin correr todavía con
-volumen real** por una restricción de red del entorno donde se escribió (el endpoint
-funciona bien desde un navegador normal). Pendiente antes de dar la Entrega 1 por
-cerrada: correr `python -m src.pipeline` de punta a punta desde una máquina sin ese
-bloqueo y confirmar los números reales (filas, distribución de targets, nulos).
+**Al 24/08/2026:** Pipeline de ajedrez online migrado a Chess.com y validado de punta a
+punta con datos reales: 7.215 registros descargados, 7.208 partidas procesadas, 99,9%
+de retención y cero nulos finales. Se eliminó un duplicado entre usuarios y seis
+partidas sin movimientos. La limitación documentada es que Chess.com informa el rating
+asociado al cierre de la partida, no un snapshot estrictamente prepartida.
 
 ## Qué pide cada entrega
 

@@ -45,16 +45,11 @@ class FeatureEngineer:
         return df
 
     def add_time_control_category(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Agrega ``modalidad`` (bullet/blitz/rapid) según el tiempo base + incremento.
-
-        Sigue la clasificación estándar de Lichess: tiempo estimado de
-        partida = tiempo_base + 40 * incremento.
-        """
-        tiempo_estimado = df["tiempo_base_seg"] + 40 * df["incremento_seg"]
-        df["modalidad"] = pd.cut(
-            tiempo_estimado,
-            bins=[-1, 179, 479, 1499, float("inf")],
-            labels=["Bullet", "Blitz", "Rapid", "Clásica"],
+        """Agrega ``modalidad`` usando la clasificación provista por Chess.com."""
+        mapping = {"bullet": "Bullet", "blitz": "Blitz", "rapid": "Rapid"}
+        df["modalidad"] = pd.Categorical(
+            df["TimeClass"].astype("string").map(mapping),
+            categories=["Bullet", "Blitz", "Rapid"],
         )
         return df
 

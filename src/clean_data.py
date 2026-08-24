@@ -1,23 +1,12 @@
-"""Parseo y limpieza de partidas de ajedrez en formato PGN (Lichess).
-
-Esquema real verificado contra un PGN descargado a mano de
-``/api/games/user/{username}``: cada partida es un bloque de encabezados
-``[Clave "Valor"]`` seguido de una línea en blanco y la lista de jugadas en
-notación algebraica estándar, terminada en el resultado (``1-0``, ``0-1``,
-``1/2-1/2``) y separada de la siguiente partida por una línea en blanco.
-
-No se usa ``python-chess`` (dependencia pesada para lo que hace falta acá):
-los encabezados PGN son líneas simples ``[Clave "Valor"]``, parseables con
-una regex, y no hace falta reproducir el tablero para las features de este
-proyecto (no se analiza la calidad de las jugadas, solo metadata de la
-partida).
-"""
+"""Parseo y limpieza de partidas obtenidas de la PubAPI de Chess.com."""
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import pandas as pd
 
@@ -26,179 +15,158 @@ from src.utils import setup_logger
 logger = setup_logger(__name__)
 
 _HEADER_RE = re.compile(r'^\[(\w+)\s+"(.*)"\]$', re.MULTILINE)
-
-# Encabezados PGN que interesan para este dataset; el resto (Site, GameId,
-# UTCDate/UTCTime -- redundantes con Date) se descarta.
-_RELEVANT_HEADERS = [
-    "Event",
-    "Date",
-    "White",
-    "Black",
-    "Result",
-    "WhiteElo",
-    "BlackElo",
-    "WhiteRatingDiff",
-    "BlackRatingDiff",
-    "Variant",
-    "TimeControl",
-    "ECO",
-    "Opening",
-    "Termination",
-]
+_MOVE_NUMBER_RE = re.compile(r"^\d+\.(?:\.\.)?$")
 
 
 class DataCleaner:
-    """Parsea PGNs crudos de Lichess y arma un dataset tidy, una fila por partida.
-
-    Parameters
-    ----------
-    config : dict[str, Any]
-        Configuración cargada desde ``config/config.yaml``.
-    """
+    """Convierte los JSON crudos de Chess.com en una tabla tidy de partidas."""
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
+        self.time_classes = set(config["chess_com"]["time_classes"])
 
-    def split_games(self, pgn_text: str) -> list[str]:
-        """Separa un archivo PGN con múltiples partidas en bloques individuales."""
-        blocks = re.split(r"\n\n\n+", pgn_text.strip())
-        return [b for b in blocks if b.strip()]
+    @staticmethod
+    def _opening_name(eco_url: str | None) -> str | None:
+        """Convierte una URL ECO de Chess.com en un nombre de apertura legible."""
+        if not eco_url:
+            return None
+        slug = unquote(urlparse(eco_url).path.rsplit("/", 1)[-1]).split("...", 1)[0]
+        return slug.replace("-", " ").strip() or None
 
-    def parse_game(self, game_text: str) -> dict[str, Any] | None:
-        """Parsea un bloque PGN de una partida a un diccionario de columnas.
+    def parse_game(self, game: dict[str, Any]) -> dict[str, Any] | None:
+        """Extrae metadata y jugadas de un objeto de partida de Chess.com."""
+        pgn = game.get("pgn")
+        if not isinstance(pgn, str):
+            return None
 
-        Returns
-        -------
-        dict[str, Any] or None
-            ``None`` si el bloque no tiene encabezados parseables (partida
-            corrupta o incompleta en el stream).
-        """
-        headers = dict(_HEADER_RE.findall(game_text))
+        headers = dict(_HEADER_RE.findall(pgn))
         if not headers:
             return None
 
-        moves_text = _HEADER_RE.sub("", game_text).strip()
-        moves_text = re.sub(r"\{[^}]*\}", "", moves_text)  # strip clock/eval annotations
+        moves_text = _HEADER_RE.sub("", pgn).strip()
+        moves_text = re.sub(r"\{[^}]*\}", "", moves_text)
         moves_text = re.sub(r"\s+", " ", moves_text).strip()
         moves_text = re.sub(r"\s*(1-0|0-1|1/2-1/2|\*)\s*$", "", moves_text).strip()
 
-        row = {h: headers.get(h) for h in _RELEVANT_HEADERS}
-        row["moves_text"] = moves_text
-        return row
+        eco_url = game.get("eco") or headers.get("ECOUrl")
+        return {
+            "GameUrl": game.get("url") or headers.get("Link"),
+            "Event": headers.get("Event"),
+            "Date": headers.get("Date"),
+            "White": headers.get("White") or game.get("white", {}).get("username"),
+            "Black": headers.get("Black") or game.get("black", {}).get("username"),
+            "Result": headers.get("Result"),
+            "WhiteElo": headers.get("WhiteElo") or game.get("white", {}).get("rating"),
+            "BlackElo": headers.get("BlackElo") or game.get("black", {}).get("rating"),
+            "Variant": "Standard" if game.get("rules") == "chess" else game.get("rules"),
+            "TimeControl": game.get("time_control") or headers.get("TimeControl"),
+            "TimeClass": game.get("time_class"),
+            "ECO": headers.get("ECO"),
+            "Opening": self._opening_name(eco_url),
+            "Termination": headers.get("Termination"),
+            "Rated": game.get("rated"),
+            "moves_text": moves_text,
+        }
 
-    def parse_pgn_file(self, pgn_path: str | Path) -> pd.DataFrame:
-        """Parsea un archivo PGN completo (todas las partidas de un usuario)."""
-        pgn_path = Path(pgn_path)
-        text = pgn_path.read_text(encoding="utf-8")
-        games = self.split_games(text)
+    def parse_json_file(self, json_path: str | Path) -> pd.DataFrame:
+        """Parsea un archivo crudo consolidado de un usuario."""
+        with Path(json_path).open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+        rows = [self.parse_game(game) for game in payload.get("games", [])]
+        return pd.DataFrame(row for row in rows if row is not None)
 
-        rows = []
-        for game_text in games:
-            parsed = self.parse_game(game_text)
-            if parsed is not None:
-                rows.append(parsed)
-
-        return pd.DataFrame(rows)
-
-    def parse_all(self, pgn_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
-        """Parsea los PGNs de todos los usuarios descargados y los concatena.
-
-        Parameters
-        ----------
-        pgn_paths : dict[str, Path]
-            Mapeo usuario -> ruta al PGN descargado (salida de
-            ``DataDownloader.download_all``).
-
-        Returns
-        -------
-        tuple[pd.DataFrame, int]
-            DataFrame concatenado (una fila por partida) y la cantidad total
-            de bloques de partida leídos, antes de cualquier filtro.
-        """
+    def parse_all(self, raw_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
+        """Parsea todos los archivos y elimina partidas repetidas entre usuarios."""
         dfs = []
         raw_row_count = 0
-        for username, path in pgn_paths.items():
-            df = self.parse_pgn_file(path)
+        for username, path in raw_paths.items():
+            df = self.parse_json_file(path)
             raw_row_count += len(df)
             dfs.append(df)
             logger.info("Parseadas %d partidas de %s", len(df), username)
 
+        if not dfs:
+            raise ValueError("No hay archivos crudos para procesar")
         combined = pd.concat(dfs, ignore_index=True)
+        duplicates = int(combined.duplicated(subset="GameUrl").sum())
+        if duplicates:
+            logger.info("Se eliminaron %d partidas repetidas entre usuarios.", duplicates)
+            combined = combined.drop_duplicates(subset="GameUrl", keep="first")
         return combined, raw_row_count
 
     def parse_result(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convierte ``Result`` (PGN: 1-0/0-1/1/2-1/2) a ``resultado`` categórico."""
+        """Convierte el resultado PGN al target categórico principal."""
         mapping = {"1-0": "Gana Blancas", "0-1": "Gana Negras", "1/2-1/2": "Empate"}
         df["resultado"] = df["Result"].map(mapping)
         return df
 
     def parse_numeric_fields(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convierte ELO, diferencia de rating y control de tiempo a numérico."""
-        for col in ["WhiteElo", "BlackElo", "WhiteRatingDiff", "BlackRatingDiff"]:
+        """Convierte ratings y control de tiempo a campos numéricos."""
+        for col in ["WhiteElo", "BlackElo"]:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # TimeControl viene como "300+3" (segundos base + incremento por jugada).
-        tc_split = df["TimeControl"].str.split("+", expand=True)
+        tc_split = df["TimeControl"].astype("string").str.split("+", n=1, expand=True)
         df["tiempo_base_seg"] = pd.to_numeric(tc_split[0], errors="coerce")
-        df["incremento_seg"] = pd.to_numeric(tc_split[1], errors="coerce") if tc_split.shape[1] > 1 else 0
+        df["incremento_seg"] = (
+            pd.to_numeric(tc_split[1], errors="coerce").fillna(0)
+            if tc_split.shape[1] > 1
+            else 0
+        )
         return df
 
     def count_moves(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Cuenta la cantidad de jugadas (medio-movimientos / 2) de cada partida."""
-        # moves_text tiene tokens de numeración ("1.", "2.", ...) intercalados
-        # con las jugadas; contar tokens que no son número+punto da los plies.
+        """Cuenta los medio-movimientos (plies) de cada partida."""
+
         def _count(moves_text: str) -> int:
             tokens = moves_text.split()
-            plies = [t for t in tokens if not re.match(r"^\d+\.$", t)]
-            return len(plies)
+            return sum(
+                not _MOVE_NUMBER_RE.match(token)
+                and not token.startswith("$")
+                and token not in {"1-0", "0-1", "1/2-1/2", "*"}
+                for token in tokens
+            )
 
-        df["cantidad_jugadas"] = df["moves_text"].apply(_count)
+        df["cantidad_jugadas"] = df["moves_text"].fillna("").apply(_count)
         return df
 
     def filter_invalid_rows(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Descarta partidas sin resultado válido, sin ELO, o con variante no estándar."""
+        """Conserva partidas rated, estándar, con resultado, ratings y jugadas válidas."""
         valid = (
             df["resultado"].notna()
             & df["WhiteElo"].notna()
             & df["BlackElo"].notna()
             & (df["Variant"] == "Standard")
+            & df["TimeClass"].isin(self.time_classes)
+            & (df["Rated"] == True)  # noqa: E712
             & (df["cantidad_jugadas"] > 0)
         )
         return df.loc[valid].copy()
 
     def optimize_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Aplica downcasting de tipos para reducir el uso de memoria."""
-        int_cols = ["WhiteElo", "BlackElo", "tiempo_base_seg", "incremento_seg", "cantidad_jugadas"]
+        """Aplica tipos compactos al dataset limpio."""
+        int_cols = [
+            "WhiteElo",
+            "BlackElo",
+            "tiempo_base_seg",
+            "incremento_seg",
+            "cantidad_jugadas",
+        ]
         for col in int_cols:
             df[col] = pd.to_numeric(df[col], downcast="integer")
-        for col in ["WhiteRatingDiff", "BlackRatingDiff"]:
-            df[col] = pd.to_numeric(df[col], downcast="integer")
-        for col in ["resultado", "Termination", "ECO", "Opening", "Event"]:
+        for col in ["resultado", "Termination", "ECO", "Opening", "Event", "TimeClass"]:
             df[col] = df[col].astype("category")
         df["Date"] = pd.to_datetime(df["Date"], format="%Y.%m.%d", errors="coerce")
         return df
 
-    def clean(self, pgn_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
-        """Ejecuta el pipeline completo de parseo y limpieza sobre los PGNs crudos.
-
-        Parameters
-        ----------
-        pgn_paths : dict[str, Path]
-            Mapeo usuario -> ruta al PGN descargado.
-
-        Returns
-        -------
-        tuple[pd.DataFrame, int]
-            DataFrame limpio (sin downcasting todavía) y la cantidad total de
-            partidas leídas de los PGN crudos, antes de cualquier filtro.
-        """
-        df, raw_row_count = self.parse_all(pgn_paths)
+    def clean(self, raw_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
+        """Ejecuta parseo, deduplicación, validación y limpieza."""
+        df, raw_row_count = self.parse_all(raw_paths)
         df = self.parse_result(df)
         df = self.parse_numeric_fields(df)
         df = self.count_moves(df)
         df = self.filter_invalid_rows(df)
         logger.info(
-            "Limpieza completa: %d partidas crudas -> %d partidas válidas (%.1f%% retenidas).",
+            "Limpieza completa: %d registros descargados -> %d partidas válidas (%.1f%%).",
             raw_row_count,
             len(df),
             100 * len(df) / raw_row_count if raw_row_count else 0.0,
