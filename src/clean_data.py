@@ -17,6 +17,21 @@ logger = setup_logger(__name__)
 _HEADER_RE = re.compile(r'^\[(\w+)\s+"(.*)"\]$', re.MULTILINE)
 _MOVE_NUMBER_RE = re.compile(r"^\d+\.(?:\.\.)?$")
 
+# Debajo de este umbral la partida es un abandono o resultado administrativo
+# inmediato (por ejemplo "ganó por abandono" tras la primera jugada), no una
+# partida jugada: no aporta señal real a resultado ni a cantidad_jugadas.
+MIN_PLIES = 5
+
+# Chess.com embebe el username del ganador en el texto de Termination
+# ("fulano ganó por abandono"), lo que vuelve la columna casi un identificador
+# (cardinalidad ~ cantidad de filas). Se normaliza al motivo puro para que sea
+# utilizable como categórica en EDA.
+_TERMINATION_REASON_RE = re.compile(
+    r"(checkmate|resignation|time|agreement|abandon(?:ed|ment)?|"
+    r"insufficient material|repetition|stalemate|50.move rule|timeout)",
+    re.IGNORECASE,
+)
+
 
 class DataCleaner:
     """Convierte los JSON crudos de Chess.com en una tabla tidy de partidas."""
@@ -130,7 +145,13 @@ class DataCleaner:
         return df
 
     def filter_invalid_rows(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Conserva partidas rated, estándar, con resultado, ratings y jugadas válidas."""
+        """Conserva partidas rated, estándar, con resultado, ratings y jugadas válidas.
+
+        El umbral ``MIN_PLIES`` descarta además abandonos o resultados
+        administrativos inmediatos (partidas cortadas en la primera o segunda
+        jugada), que no son partidas jugadas y distorsionan la cola inferior
+        de ``cantidad_jugadas``.
+        """
         valid = (
             df["resultado"].notna()
             & df["WhiteElo"].notna()
@@ -138,9 +159,22 @@ class DataCleaner:
             & (df["Variant"] == "Standard")
             & df["TimeClass"].isin(self.time_classes)
             & (df["Rated"] == True)  # noqa: E712
-            & (df["cantidad_jugadas"] > 0)
+            & (df["cantidad_jugadas"] >= MIN_PLIES)
         )
         return df.loc[valid].copy()
+
+    @staticmethod
+    def _termination_reason(text: str | None) -> str | None:
+        """Extrae el motivo de finalización, sin el username del ganador."""
+        if not isinstance(text, str):
+            return None
+        match = _TERMINATION_REASON_RE.search(text)
+        return match.group(1).lower().replace(" ", "_") if match else "otro"
+
+    def normalize_termination(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Reemplaza ``Termination`` por su motivo puro (sin username embebido)."""
+        df["Termination"] = df["Termination"].apply(self._termination_reason)
+        return df
 
     def optimize_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica tipos compactos al dataset limpio."""
@@ -165,6 +199,7 @@ class DataCleaner:
         df = self.parse_numeric_fields(df)
         df = self.count_moves(df)
         df = self.filter_invalid_rows(df)
+        df = self.normalize_termination(df)
         logger.info(
             "Limpieza completa: %d registros descargados -> %d partidas válidas (%.1f%%).",
             raw_row_count,

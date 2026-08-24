@@ -39,10 +39,14 @@ el doble que los dos parciales. Se aprueba con 60 %.
 <!-- Actualizar esta sección al cerrar cada entrega. -->
 
 **Al 24/08/2026:** Pipeline de ajedrez online migrado a Chess.com y validado de punta a
-punta con datos reales: 7.215 registros descargados, 7.208 partidas procesadas, 99,9%
-de retención y cero nulos finales. Se eliminó un duplicado entre usuarios y seis
-partidas sin movimientos. La limitación documentada es que Chess.com informa el rating
-asociado al cierre de la partida, no un snapshot estrictamente prepartida.
+punta con datos reales: 7.215 registros descargados, 7.203 partidas procesadas, 99,83%
+de retención y cero nulos finales. Se eliminó un duplicado entre usuarios y once
+partidas con menos de 5 medio-movimientos (abandonos o resultados administrativos
+inmediatos). Dos limitaciones quedan documentadas en el README para el modelado de
+Entrega 3: el rating que informa Chess.com es posterior al cierre de la partida (fuga
+de información hacia `resultado`, no sólo un matiz), y la muestra está concentrada en 8
+jugadores de nivel club a élite mundial, no es representativa de "ajedrez online" en
+general.
 
 ## Qué pide cada entrega
 

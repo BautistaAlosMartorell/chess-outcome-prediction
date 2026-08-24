@@ -59,6 +59,30 @@ class ChessPipelineTest(unittest.TestCase):
         transformed = FeatureEngineer(self.config).add_time_control_category(df)
         self.assertEqual(transformed["modalidad"].astype("string").tolist(), ["Bullet", "Blitz", "Rapid"])
 
+    def test_termination_reason_strips_username(self) -> None:
+        cleaner = DataCleaner(self.config)
+        self.assertEqual(cleaner._termination_reason("erik won by resignation"), "resignation")
+        self.assertEqual(cleaner._termination_reason("RebeccaHarris won - game abandoned"), "abandoned")
+        self.assertEqual(cleaner._termination_reason("Game drawn by agreement"), "agreement")
+        self.assertIsNone(cleaner._termination_reason(None))
+
+    def test_filter_invalid_rows_drops_short_abandons(self) -> None:
+        cleaner = DataCleaner(self.config)
+        df = pd.DataFrame(
+            {
+                "resultado": ["Gana Blancas", "Gana Blancas"],
+                "WhiteElo": [1500, 1500],
+                "BlackElo": [1500, 1500],
+                "Variant": ["Standard", "Standard"],
+                "TimeClass": ["blitz", "blitz"],
+                "Rated": [True, True],
+                "cantidad_jugadas": [1, 40],
+            }
+        )
+        filtered = cleaner.filter_invalid_rows(df)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered["cantidad_jugadas"].iloc[0], 40)
+
 
 if __name__ == "__main__":
     unittest.main()

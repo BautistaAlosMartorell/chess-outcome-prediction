@@ -46,13 +46,29 @@ Las ocho cuentas fueron verificadas contra la API y aportan niveles distintos:
 Los ratings son orientativos y cambian con el tiempo. La configuración viva está en
 `config/config.yaml`.
 
-### Limitación del rating
+### Limitación del rating (fuga de información hacia el resultado)
 
-Chess.com entrega en cada objeto el rating asociado al jugador al finalizar la partida.
-Se utiliza como una aproximación muy cercana a su fuerza en ese encuentro, pero no es un
-rating estrictamente congelado antes de jugar. Esta limitación debe considerarse al
-formular el modelado predictivo de la Entrega 3 para evitar interpretar como totalmente
-prospectiva una señal que incorpora el ajuste inmediato del resultado.
+Chess.com entrega en cada objeto el rating del jugador **después** de que el resultado
+ajustó su puntaje Glicko, no un snapshot previo a la partida. A diferencia de Lichess
+(que expone el rating previo y el ajuste posterior por separado), esta API no permite
+aislar el rating estrictamente anterior sin reconstruir el historial cronológico
+completo de cada jugador.
+
+En consecuencia, `WhiteElo`, `BlackElo` y todo lo derivado de ellos (`diferencia_elo`,
+`elo_promedio`, `favorito`, `nivel_promedio`, `es_sorpresa`) contienen una fuga de
+información hacia `resultado`, de magnitud pequeña pero sistemática, concentrada
+justamente en las partidas de rating parejo. Se documenta como limitación conocida de
+la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado.
+
+### Limitación de la muestra (no es una muestra aleatoria de Chess.com)
+
+Las 8 cuentas configuradas son jugadores de nivel club a élite mundial, varias de ellas
+streamers de alto seguimiento, no una muestra aleatoria de la población general de
+Chess.com. Por construcción del método de descarga, el 100 % de las filas del dataset
+contiene al menos una de estas 8 cuentas, y la mediana de `WhiteElo` es 2778 (nivel
+Gran Maestro). Las conclusiones de las próximas entregas se formulan sobre "jugadores
+de nivel intermedio a élite mundial en Chess.com", no sobre "ajedrez online" en
+general.
 
 ## Por qué la fuente cumple los siete criterios
 
@@ -62,7 +78,7 @@ prospectiva una señal que incorpora el ajuste inmediato del resultado.
 | 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
 | 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida validada produjo 7.208 partidas limpias. |
+| 5 | Volumen | La corrida validada produjo 7.203 partidas limpias. |
 | 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -96,7 +112,7 @@ src/pipeline.py                           orquestador CLI
 | `TimeClass` | category | Clase oficial: `bullet`, `blitz` o `rapid`. |
 | `ECO` | category | Código ECO de la apertura. |
 | `Opening` | category | Nombre derivado de la URL ECO oficial de la partida. |
-| `Termination` | category | Motivo textual de finalización. |
+| `Termination` | category | Motivo de finalización normalizado (resignation, time, checkmate, etc.), sin el username del ganador que trae el dato crudo de Chess.com. |
 | `Rated` | bool | Indica si la partida afectó el rating. |
 | `moves_text` | str | Jugadas en notación algebraica, sin comentarios de reloj. |
 
@@ -153,10 +169,11 @@ También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` y ejecut
 Corrida real validada el 24/08/2026:
 
 - 7.215 registros descargados.
-- 7.208 partidas finales.
-- 99,9% de retención.
+- 7.203 partidas finales.
+- 99,83% de retención.
 - 1 duplicado eliminado porque dos cuentas configuradas participaron en la misma partida.
-- 6 partidas rated sin movimientos descartadas (abortos o resultados administrativos).
+- 11 partidas descartadas por tener menos de 5 medio-movimientos (abandonos o
+  resultados administrativos inmediatos, no partidas jugadas).
 - 0 nulos en el dataset final.
 
 Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline.
