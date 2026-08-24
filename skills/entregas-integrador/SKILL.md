@@ -10,11 +10,15 @@ Documento fuente completo: `Kit_de_arranque_Proyecto_Integrador_2026.md` en la r
 
 ## El proyecto
 
-Predecir el **tipo de lesión** de jugadores de la Premier League a partir de la
-**congestión de partidos** (minutos jugados en los últimos 7 días).
+Qué combinación de **ELO**, **apertura**, **modalidad de ritmo** (bullet/blitz/rapid)
+y **color de piezas** predice el **resultado** (`resultado`: gana blancas/negras/
+empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online real.
+Unidad de análisis: una partida individual.
 
-Fuente: *English Premier League Fixture Congestion and Injury Dataset (2012-2025)*,
-Zenodo record 17835138, licencia CC-BY 4.0.
+Fuente: API pública de Lichess (`GET /api/games/user/{username}`), sin autenticación.
+Partidas reales de 8 jugadores en distintos rangos de ELO (nivel club a campeón
+mundial). Ver el README del repo para el contexto completo de por qué el tema del
+proyecto cambió dos veces antes de llegar a este.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
 el doble que los dos parciales. Se aprueba con 60 %.
@@ -35,9 +39,15 @@ el doble que los dos parciales. Se aprueba con 60 %.
 
 <!-- Actualizar esta sección al cerrar cada entrega. -->
 
-**Al 18/08/2026:** Entrega 1 construida y commiteada (`notebooks/01_pipeline_ingesta.ipynb`):
-descarga desde Zenodo, categorización de lesiones en 13 clases, filtrado en streaming del
-panel, join a nivel jugador-día y verificación de integridad. Próximo hito: Entrega 2 (EDA).
+**Al 24/08/2026:** Tercer tema del proyecto (los dos anteriores — transporte AMBA
+multimodal y demanda de subte+clima+feriados, este último completo en la rama
+`colectivos` — quedaron descartados o en otra rama por decisión del grupo, no por
+fallas). Pipeline de ajedrez online (Lichess) escrito completo en `src/` y validado
+línea por línea contra una muestra real de 3 partidas, pero **sin correr todavía con
+volumen real** por una restricción de red del entorno donde se escribió (el endpoint
+funciona bien desde un navegador normal). Pendiente antes de dar la Entrega 1 por
+cerrada: correr `python -m src.pipeline` de punta a punta desde una máquina sin ese
+bloqueo y confirmar los números reales (filas, distribución de targets, nulos).
 
 ## Qué pide cada entrega
 

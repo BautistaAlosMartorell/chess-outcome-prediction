@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): predecir el tipo de lesión de
-jugadores de la Premier League a partir de la congestión de partidos.
+Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): qué predice el resultado y la
+duración de una partida de ajedrez online real (ELO, apertura, ritmo de juego, color).
 
 **Leé [`AGENTS.md`](AGENTS.md)** — ahí está el contexto del proyecto, la estructura y las
 reglas que aplican siempre. Este archivo existe solo para apuntarte ahí y evitar que las

@@ -5,17 +5,23 @@ Este archivo lo leen **Codex** y **OpenCode**; Claude Code entra por `CLAUDE.md`
 
 ## El proyecto
 
-Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): predecir el **tipo de lesión** de
-jugadores de la Premier League a partir de la **congestión de partidos**. Trabajo grupal
-de 5-6 personas, con cuatro entregas parciales entre septiembre y noviembre de 2026.
+Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): qué combinación de ELO,
+apertura, modalidad de ritmo y color de piezas predice el **resultado** y la
+**duración** de una partida de ajedrez online real (API pública de Lichess). Trabajo
+grupal de 5-6 personas, con cuatro entregas parciales entre septiembre y noviembre de
+2026. Leé el README — tiene contexto largo sobre por qué el tema cambió dos veces
+antes de llegar a este, y qué falta validar con datos reales de volumen.
 
 ```
-notebooks/   pipelines y análisis, numerados por entrega
-data/        vacío en git — se regenera corriendo los notebooks
+src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook
+notebooks/   pipeline narrado y verificación, numerados por entrega
+config/      config.yaml — usuarios de Lichess, bandas de ELO, parámetros de descarga
+data/        vacío en git — se regenera corriendo el pipeline
 skills/      instrucciones reutilizables para agentes (leer más abajo)
 ```
 
-Stack: Python 3.11+, pandas, requests, tqdm, matplotlib, Jupyter. Ver `requirements.txt`.
+Stack: Python 3.11+, pandas, requests, pyarrow, matplotlib, rich, Jupyter. Ver
+`requirements.txt`.
 
 ## Skills
 
@@ -32,7 +38,7 @@ trabajes de memoria ni por defecto propio cuando hay una skill que cubre el caso
 ## Reglas que aplican siempre
 
 - **Nunca commitear a `main`.** Rama `<tipo>/<slug>` para todo cambio (`git-workflow`).
-- **Nunca commitear archivos de `data/`.** Se regeneran; el panel pesa ~515 MB.
+- **Nunca commitear archivos de `data/`.** Se regeneran corriendo el pipeline contra la API de Lichess.
 - **Pedir confirmación antes de `git push`, de abrir un PR y de mergear.** El repo es
   compartido con el resto del grupo.
 - Narrativa de notebooks en markdown **en español**; comentarios de código **en inglés**.
@@ -44,8 +50,12 @@ trabajes de memoria ni por defecto propio cuando hay una skill que cubre el caso
 
 ```bash
 pip install -r requirements.txt
-jupyter lab notebooks/01_pipeline_ingesta.ipynb   # Restart & Run All
+jupyter lab notebooks/01_data_ingestion_verification.ipynb   # Restart & Run All
+# o, por consola:
+python -m src.pipeline
 ```
 
-La primera corrida baja ~540 MB desde Zenodo y tarda varios minutos. Las siguientes
-saltean los archivos ya descargados.
+La primera corrida descarga partidas de 8 usuarios de Lichess (liviano). Las
+siguientes saltean los PGN ya descargados. Si la descarga falla con 404 desde tu
+entorno, ver la sección "Si te encontrás con que la descarga falla" del README antes
+de asumir que el pipeline está roto.
