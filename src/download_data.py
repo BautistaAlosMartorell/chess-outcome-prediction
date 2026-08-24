@@ -8,6 +8,7 @@ Devuelve un stream de partidas en PGN de texto plano.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,15 +43,28 @@ class DataDownloader:
         self.raw_filename_template: str = lichess_cfg["raw_filename_template"]
         self.raw_dir = Path(config["paths"]["raw_dir"])
         self.timeout: int = config["download"]["timeout_seconds"]
+        self.max_retries: int = config["download"]["max_retries"]
         self._session = self._build_session()
 
     def _build_session(self) -> requests.Session:
         """Construye una sesión de requests con reintentos y backoff exponencial."""
         session = requests.Session()
+        # Lichess rejects the generic ``python-requests`` user agent in some
+        # environments. Identify this client explicitly, as expected for API
+        # consumers, so valid anonymous exports are not mistaken for bot traffic.
+        session.headers.update(
+            {
+                "User-Agent": (
+                    "epl-injury-type-prediction/1.0 "
+                    "(+https://github.com/BautistaAlosMartorell/"
+                    "epl-injury-type-prediction)"
+                )
+            }
+        )
         retry_strategy = Retry(
-            total=self.config["download"]["max_retries"],
+            total=self.max_retries,
             backoff_factor=self.config["download"]["backoff_factor"],
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[500, 502, 503, 504],
             allowed_methods=["GET"],
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -100,9 +114,23 @@ class DataDownloader:
 
         logger.info("Descargando partidas de %s -> %s", username, dest)
         try:
-            response = self._session.get(
-                url, params=params, headers=headers, timeout=self.timeout, stream=True
-            )
+            for attempt in range(self.max_retries + 1):
+                response = self._session.get(
+                    url, params=params, headers=headers, timeout=self.timeout, stream=True
+                )
+                if response.status_code != 429 or attempt == self.max_retries:
+                    break
+
+                retry_after = response.headers.get("Retry-After", "60")
+                wait_seconds = max(60, int(retry_after)) if retry_after.isdigit() else 60
+                response.close()
+                logger.warning(
+                    "Lichess limitó la descarga de %s (429). Reintentando en %d segundos.",
+                    username,
+                    wait_seconds,
+                )
+                time.sleep(wait_seconds)
+
             response.raise_for_status()
             tmp_path = dest.with_suffix(dest.suffix + ".part")
             with open(tmp_path, "wb") as f:
