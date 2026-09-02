@@ -32,7 +32,7 @@ x-airflow-common: &airflow-common
     PYTHONPATH: "/project:/opt/airflow"
   volumes:
     - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
+    - airflow_logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     # data/ montada para que el pipeline escriba en el host
     - ./data:/project/data
@@ -142,3 +142,4 @@ services:
 
 volumes:
   postgres_data:
+  airflow_logs:
