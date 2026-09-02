@@ -22,3 +22,9 @@ Thumbs.db
 !.claude/skills/
 .opencode/*
 !.opencode/skills/
+
+# Docker / Airflow
+.env
+logs/
+plugins/
+data/processed/_interim_clean.parquet
