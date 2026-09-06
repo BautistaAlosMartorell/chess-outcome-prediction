@@ -23,9 +23,7 @@ chess_com:
   rated_only: true
   raw_filename_template: "chesscom_{username}_raw.json"
   # Chess.com pide un User-Agent que identifique al cliente y sea contactable.
-  # El repo de GitHub conserva el nombre de un proyecto anterior; la rama `ajedrez`
-  # es este proyecto.
-  user_agent: "proyecto-integrador-ajedrez-utnfrm/1.0 (+https://github.com/BautistaAlosMartorell/epl-injury-type-prediction/tree/ajedrez)"
+  user_agent: "chess-outcome-prediction-utnfrm/1.0 (+https://github.com/BautistaAlosMartorell/chess-outcome-prediction)"
 
 paths:
   raw_dir: "data/raw"
