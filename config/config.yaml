@@ -1,0 +1,59 @@
+# Configuración central del pipeline de ingeniería de datos.
+# Entrega 1 — Ajedrez competitivo online (Chess.com) (UTN FRM, Ciencia de Datos 2026).
+
+chess_com:
+  base_url: "https://api.chess.com/pub/player"
+  # Cuentas públicas verificadas con historial suficiente y niveles variados.
+  # La descarga recorre sus archivos mensuales desde el más reciente hacia atrás.
+  usernames:
+    - RebeccaHarris      # nivel club (~1400)
+    - erik               # nivel club/intermedio (~1700)
+    - AnnaCramling       # jugadora titulada/streamer (~2400)
+    - AlexandraBotez     # jugadora titulada/streamer (~2500)
+    - GothamChess        # maestro internacional/streamer (~2900)
+    - IMRosen            # maestro internacional (~2900)
+    - chessbrah          # gran maestro/streamer (~3200)
+    - hikaru             # élite mundial (~3400)
+  max_games_per_user: 1000
+  time_classes:
+    - bullet
+    - blitz
+    - rapid
+  rules: "chess"
+  rated_only: true
+  raw_filename_template: "chesscom_{username}_raw.json"
+  # Chess.com pide un User-Agent que identifique al cliente y sea contactable.
+  user_agent: "chess-outcome-prediction-utnfrm/1.0 (+https://github.com/BautistaAlosMartorell/chess-outcome-prediction)"
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  clean_parquet: "data/processed/partidas_ajedrez_clean.parquet"
+  clean_sample_csv: "data/processed/partidas_ajedrez_clean_sample.csv"
+  summary_json: "data/processed/data_summary.json"
+
+processing:
+  sample_size: 5000
+  random_state: 42
+
+elo:
+  bandas:
+    principiante: [0, 1200]
+    intermedio: [1200, 1800]
+    avanzado: [1800, 2200]
+    experto: [2200, 2600]
+    top_mundial: [2600, 4000]
+
+download:
+  timeout_seconds: 60
+  max_retries: 5
+  backoff_factor: 2
+  request_delay_seconds: 0.25
+  # Ventana temporal congelada: se ignoran los archivos mensuales posteriores a
+  # este mes (YYYY-MM). Fija el dataset para la Entrega 1 — una corrida desde cero
+  # produce el mismo conjunto de partidas. Poner null para tomar hasta el mes actual.
+  until_month: "2026-08"
+  # Umbrales mínimos tras tolerar fallos por usuario (cuenta borrada, sin partidas, red).
+  # Por debajo de esto el dataset no sirve y la descarga corta con error.
+  min_users_ok: 6
+  min_total_games: 4000
