@@ -175,6 +175,11 @@ class DataCleaner:
         administrativos inmediatos (partidas cortadas en la primera o segunda
         jugada), que no son partidas jugadas y distorsionan la cola inferior
         de ``cantidad_jugadas``. Requiere que ``parse_date`` se haya corrido antes.
+
+        Tras este filtro, ``Rated`` (siempre ``True``), ``Variant`` (siempre
+        ``"Standard"``) y ``Event`` (siempre ``"Live Chess"``) quedan constantes.
+        Se conservan a propósito: documentan por fila qué garantiza el filtro y
+        sirven de traza de auditoría, no como features de modelo.
         """
         valid = (
             df["resultado"].notna()
