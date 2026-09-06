@@ -117,6 +117,7 @@ class ChessPipelineTest(unittest.TestCase):
                 "resultado": ["Gana Blancas", "Gana Blancas"],
                 "WhiteElo": [1500, 1500],
                 "BlackElo": [1500, 1500],
+                "Date": pd.to_datetime(["2026-08-01", "2026-08-01"]),
                 "Variant": ["Standard", "Standard"],
                 "TimeClass": ["blitz", "blitz"],
                 "Rated": [True, True],
@@ -126,6 +127,26 @@ class ChessPipelineTest(unittest.TestCase):
         filtered = cleaner.filter_invalid_rows(df)
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered["cantidad_jugadas"].iloc[0], 40)
+
+    def test_clean_drops_rows_with_unparseable_date(self) -> None:
+        cleaner = DataCleaner(self.config)
+        df = pd.DataFrame(
+            {
+                "resultado": ["Gana Blancas", "Gana Negras"],
+                "WhiteElo": [1500, 1500],
+                "BlackElo": [1500, 1500],
+                "Date": ["2026.08.22", "????.??.??"],
+                "Variant": ["Standard", "Standard"],
+                "TimeClass": ["blitz", "blitz"],
+                "Rated": [True, True],
+                "cantidad_jugadas": [40, 40],
+            }
+        )
+        df = cleaner.parse_date(df)
+        self.assertEqual(int(df["Date"].isna().sum()), 1)
+        filtered = cleaner.filter_invalid_rows(df)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered["Date"].iloc[0], pd.Timestamp("2026-08-22"))
 
 
 if __name__ == "__main__":

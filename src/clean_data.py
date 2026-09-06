@@ -144,18 +144,30 @@ class DataCleaner:
         df["cantidad_jugadas"] = df["moves_text"].fillna("").apply(_count)
         return df
 
+    @staticmethod
+    def parse_date(df: pd.DataFrame) -> pd.DataFrame:
+        """Convierte el header PGN ``Date`` a ``datetime``; deja ``NaT`` si no parsea.
+
+        Chess.com a veces emite ``"????.??.??"`` u otras fechas incompletas. Se
+        pasan a ``NaT`` acá para que ``filter_invalid_rows`` descarte esas filas,
+        en vez de dejar que un nulo se cuele al dataset final.
+        """
+        df["Date"] = pd.to_datetime(df["Date"], format="%Y.%m.%d", errors="coerce")
+        return df
+
     def filter_invalid_rows(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Conserva partidas rated, estándar, con resultado, ratings y jugadas válidas.
+        """Conserva partidas rated, estándar, con resultado, ratings, fecha y jugadas válidas.
 
         El umbral ``MIN_PLIES`` descarta además abandonos o resultados
         administrativos inmediatos (partidas cortadas en la primera o segunda
         jugada), que no son partidas jugadas y distorsionan la cola inferior
-        de ``cantidad_jugadas``.
+        de ``cantidad_jugadas``. Requiere que ``parse_date`` se haya corrido antes.
         """
         valid = (
             df["resultado"].notna()
             & df["WhiteElo"].notna()
             & df["BlackElo"].notna()
+            & df["Date"].notna()
             & (df["Variant"] == "Standard")
             & df["TimeClass"].isin(self.time_classes)
             & (df["Rated"] == True)  # noqa: E712
@@ -189,7 +201,10 @@ class DataCleaner:
             df[col] = pd.to_numeric(df[col], downcast="integer")
         for col in ["resultado", "Termination", "ECO", "Opening", "Event", "TimeClass"]:
             df[col] = df[col].astype("category")
-        df["Date"] = pd.to_datetime(df["Date"], format="%Y.%m.%d", errors="coerce")
+        # ``Date`` ya viene parseada desde ``parse_date``; se re-parsea solo si
+        # ``optimize_dtypes`` se llamara sobre datos sin limpiar.
+        if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+            df["Date"] = pd.to_datetime(df["Date"], format="%Y.%m.%d", errors="coerce")
         return df
 
     def clean(self, raw_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
@@ -198,6 +213,12 @@ class DataCleaner:
         df = self.parse_result(df)
         df = self.parse_numeric_fields(df)
         df = self.count_moves(df)
+        df = self.parse_date(df)
+
+        invalid_dates = int(df["Date"].isna().sum())
+        if invalid_dates:
+            logger.info("%d partidas descartadas por fecha inválida (p. ej. '????.??.??').", invalid_dates)
+
         df = self.filter_invalid_rows(df)
         df = self.normalize_termination(df)
         logger.info(
