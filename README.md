@@ -30,6 +30,13 @@ segundo desde el mes más reciente hacia atrás y conserva hasta 1.000 partidas 
 ajedrez estándar en bullet, blitz o rapid por usuario. Todas las solicitudes se hacen en
 serie, tal como recomienda Chess.com; los archivos ya descargados se reutilizan.
 
+**Ventana temporal congelada.** `config.yaml` fija `download.until_month: "2026-08"`: se
+ignoran los archivos mensuales posteriores a agosto de 2026. Sin este tope, correr el
+pipeline en octubre traería los meses nuevos y el dataset cambiaría de tamaño en cada
+corrida. Con el tope, **una corrida desde cero (sin `data/raw/` previo) produce el mismo
+conjunto de partidas** que la corrida validada. Para retomar la ingesta en curso en
+entregas siguientes basta con mover el mes o ponerlo en `null`.
+
 ### Jugadores configurados
 
 Las ocho cuentas fueron verificadas contra la API y aportan niveles distintos:

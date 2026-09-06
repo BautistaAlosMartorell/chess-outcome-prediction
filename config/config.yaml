@@ -48,3 +48,7 @@ download:
   max_retries: 5
   backoff_factor: 2
   request_delay_seconds: 0.25
+  # Ventana temporal congelada: se ignoran los archivos mensuales posteriores a
+  # este mes (YYYY-MM). Fija el dataset para la Entrega 1 — una corrida desde cero
+  # produce el mismo conjunto de partidas. Poner null para tomar hasta el mes actual.
+  until_month: "2026-08"

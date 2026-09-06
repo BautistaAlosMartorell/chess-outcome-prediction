@@ -39,7 +39,28 @@ class DataDownloader:
         self.timeout: int = config["download"]["timeout_seconds"]
         self.max_retries: int = config["download"]["max_retries"]
         self.request_delay: float = config["download"]["request_delay_seconds"]
+        self.until_month: tuple[int, int] | None = self._parse_until_month(
+            config["download"].get("until_month")
+        )
         self._session = self._build_session()
+
+    @staticmethod
+    def _parse_until_month(value: str | None) -> tuple[int, int] | None:
+        """Convierte ``"YYYY-MM"`` en ``(año, mes)``; ``None`` desactiva el tope."""
+        if not value:
+            return None
+        year, month = value.split("-")
+        return int(year), int(month)
+
+    @staticmethod
+    def _archive_year_month(archive_url: str) -> tuple[int, int]:
+        """Extrae ``(año, mes)`` de una URL ``.../games/YYYY/MM``."""
+        year, month = archive_url.rstrip("/").rsplit("/", 2)[-2:]
+        return int(year), int(month)
+
+    def _archive_in_window(self, archive_url: str) -> bool:
+        """Indica si el archivo mensual entra en la ventana temporal configurada."""
+        return self.until_month is None or self._archive_year_month(archive_url) <= self.until_month
 
     def _build_session(self) -> requests.Session:
         """Construye una sesión identificada con reintentos para errores transitorios."""
@@ -73,7 +94,12 @@ class DataDownloader:
         )
 
     def download_user_games(self, username: str, dest_path: str | Path) -> Path:
-        """Descarga hasta ``max_games_per_user`` partidas de un usuario (idempotente)."""
+        """Descarga hasta ``max_games_per_user`` partidas de un usuario (idempotente).
+
+        Recorre los archivos mensuales del más reciente al más antiguo, salteando
+        los posteriores a ``download.until_month`` (ventana temporal congelada), y
+        se detiene al alcanzar el máximo.
+        """
         dest = Path(dest_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +116,8 @@ class DataDownloader:
         selected_games: list[dict[str, Any]] = []
         used_archives: list[str] = []
         for archive_url in reversed(archives):
+            if not self._archive_in_window(archive_url):
+                continue
             monthly_games = self._get_json(archive_url).get("games", [])
             eligible = [game for game in reversed(monthly_games) if self._is_eligible(game)]
             remaining = self.max_games_per_user - len(selected_games)

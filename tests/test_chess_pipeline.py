@@ -25,6 +25,18 @@ class ChessPipelineTest(unittest.TestCase):
         self.assertFalse(downloader._is_eligible({**valid, "time_class": "daily"}))
         self.assertFalse(downloader._is_eligible({**valid, "rated": False}))
 
+    def test_downloader_respects_frozen_month_window(self) -> None:
+        downloader = DataDownloader(self.config)
+        base = "https://api.chess.com/pub/player/erik/games"
+        self.assertEqual(downloader.until_month, (2026, 8))
+        self.assertTrue(downloader._archive_in_window(f"{base}/2026/08"))
+        self.assertTrue(downloader._archive_in_window(f"{base}/2025/12"))
+        self.assertFalse(downloader._archive_in_window(f"{base}/2026/09"))
+        self.assertFalse(downloader._archive_in_window(f"{base}/2027/01"))
+        # until_month = None desactiva el tope
+        no_cap = {**self.config, "download": {**self.config["download"], "until_month": None}}
+        self.assertTrue(DataDownloader(no_cap)._archive_in_window(f"{base}/2030/01"))
+
     def test_parser_handles_chess_com_move_numbers_and_opening(self) -> None:
         game = {
             "url": "https://www.chess.com/game/live/1",
