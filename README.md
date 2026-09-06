@@ -86,13 +86,18 @@ general.
 
 ```text
 config/config.yaml                         parámetros y cuentas de Chess.com
-data/raw/                                 JSON regenerables, ignorados por Git
-data/processed/                           Parquet, sample y resumen, ignorados por Git
+data/raw/                                  JSON regenerables, ignorados por Git
+data/processed/                            Parquet, sample y resumen, ignorados por Git
+dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga → limpieza → features → export → verificación
+docker-compose.yml                         stack de Airflow (postgres, redis, webserver, scheduler, worker)
+Dockerfile                                 imagen de Airflow con las dependencias del proyecto
+.env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
-src/download_data.py                      descarga secuencial e idempotente
-src/clean_data.py                         parseo de JSON + PGN y limpieza
-src/feature_engineering.py                features analíticas
-src/pipeline.py                           orquestador CLI
+src/download_data.py                       descarga secuencial e idempotente
+src/clean_data.py                          parseo de JSON + PGN y limpieza
+src/feature_engineering.py                 features analíticas
+src/pipeline.py                            orquestador CLI
+tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 ```
 
 ## Diccionario de datos
@@ -133,32 +138,59 @@ src/pipeline.py                           orquestador CLI
 
 ## Cómo ejecutar
 
-Requiere Python 3.11 o superior.
+### Con Airflow (Docker) — es la forma en que se evalúa la entrega
 
-### Linux/macOS
+Requiere Docker con el plugin `compose`. Un compañero que clona el repo no toca nada
+más que copiar el `.env`:
+
+```bash
+git clone <repo> && cd <repo>
+cp .env.example .env                 # la primera vez; .env está en .gitignore
+docker compose up airflow-init       # inicializa la BD de metadatos y el usuario admin
+docker compose up -d                 # levanta postgres, redis, webserver, scheduler y worker
+```
+
+Después:
+
+1. Abrir <http://localhost:8080> y entrar con `admin` / `admin`.
+2. Buscar el DAG `pipeline_ajedrez_chesscom`, activarlo con el toggle (viene pausado) y
+   dispararlo con ▶ (*Trigger DAG*).
+3. La corrida recorre cinco tareas en cadena: `descarga_partidas` →
+   `limpieza_y_parseo` → `feature_engineering` → `exportar_dataset` →
+   `verificar_calidad`. La última hace `assert` de los siete criterios de calidad, así
+   que una corrida en verde implica un dataset válido.
+
+Los artefactos quedan en `data/` del host (el `docker-compose.yml` monta `./data`):
+
+```text
+data/raw/chesscom_<usuario>_raw.json          capa cruda, un archivo por cuenta
+data/processed/partidas_ajedrez_clean.parquet dataset final
+data/processed/partidas_ajedrez_clean_sample.csv
+data/processed/data_summary.json
+```
+
+Volver a disparar el DAG sin borrar `data/raw/` reutiliza los JSON ya descargados
+(descarga idempotente). Para apagar la stack: `docker compose down` (conserva los
+volúmenes) o `docker compose down -v` (reset total).
+
+### Sin Docker (CLI / notebook)
+
+Mismo pipeline, mismos módulos de `src/`, sin Airflow. Requiere Python 3.11 o superior.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m src.pipeline
-```
-
-### Windows PowerShell
-
-```powershell
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m src.pipeline
-```
-
-Si los JSON crudos ya existen:
-
-```bash
-python -m src.pipeline --skip-download
+.venv/bin/python -m pip install -r requirements.txt      # Windows: py -m venv .venv; .venv\Scripts\python.exe ...
+.venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen
 ```
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` y ejecutarse con
 **Restart & Run All**.
+
+### Tests
+
+```bash
+python -m unittest discover -s tests
+```
 
 ## Artefactos generados
 
