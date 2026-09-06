@@ -88,7 +88,7 @@ def tarea_limpieza(**context) -> None:
     """Parsea los JSON crudos, deduplica por GameUrl y filtra partidas inválidas.
 
     Filtra: rated=True, rules=chess, TimeClass in {bullet, blitz, rapid},
-    resultado no nulo, ELOs presentes, al menos 1 jugada.
+    resultado no nulo, ELOs presentes, al menos 5 medio-movimientos (MIN_PLIES).
     """
     from src.clean_data import DataCleaner
     from src.utils import load_config
@@ -192,6 +192,12 @@ def tarea_exportar(**context) -> None:
     interim_path.unlink(missing_ok=True)
 
 
+# Columnas donde se aceptan nulos, con su explicación (criterio 5). Hoy el
+# pipeline descarta las filas incompletas en vez de imputar, así que el conjunto
+# está vacío: cualquier nulo inesperado hace fallar el DAG.
+NULOS_DOCUMENTADOS: dict[str, str] = {}
+
+
 def tarea_verificar_calidad(**context) -> None:
     """Verifica los 7 criterios de calidad del dataset.
 
@@ -201,11 +207,11 @@ def tarea_verificar_calidad(**context) -> None:
     Criterios:
         1. Clave sin duplicados (GameUrl)
         2. Volumen mínimo de 1 000 filas
-        3. Al menos 5 columnas útiles
+        3. Al menos 5 columnas
         4. Mezcla de tipos (numérico + categórico + fecha)
-        5. Nulos conocidos (ninguna columna desconocida al 100 %)
-        6. Sin columnas vacías (0 % de nulos en columna objetivo)
-        7. Columna objetivo presente y sin nulos
+        5. Nulos conocidos y documentados (solo en columnas de NULOS_DOCUMENTADOS)
+        6. Sin columnas 100 % vacías
+        7. Columnas objetivo (resultado, cantidad_jugadas) presentes y sin nulos
     """
     import pandas as pd
 
@@ -237,29 +243,40 @@ def tarea_verificar_calidad(**context) -> None:
     )
     log.info("✅ Criterio 3: ancho suficiente (%d columnas)", df.shape[1])
 
-    # 4. Mezcla de tipos
+    # 4. Mezcla de tipos: numérico + categórico + fecha
     dtypes = df.dtypes.astype(str)
-    has_numeric = dtypes.str.contains("int|float").any()
-    has_categorical = (dtypes == "category").any() or (dtypes == "object").any()
-    assert has_numeric and has_categorical, (
-        "❌ Criterio 4 FALLÓ: falta mezcla de tipos (numérico + categórico)"
+    has_numeric = dtypes.str.contains("int|float", case=False).any()
+    has_categorical = dtypes.isin(["category", "object", "string", "str"]).any()
+    has_datetime = dtypes.str.contains("datetime").any()
+    assert has_numeric and has_categorical and has_datetime, (
+        "❌ Criterio 4 FALLÓ: falta mezcla de tipos "
+        f"(numérico={has_numeric}, categórico={has_categorical}, fecha={has_datetime})"
     )
-    log.info("✅ Criterio 4: mezcla de tipos presente")
+    log.info("✅ Criterio 4: mezcla de tipos presente (numérico + categórico + fecha)")
 
-    # 5 & 6. Sin columnas vacías
+    # 5. Nulos conocidos y documentados
+    cols_con_nulos = set(df.columns[df.isna().any()])
+    nulos_inesperados = cols_con_nulos - set(NULOS_DOCUMENTADOS)
+    assert not nulos_inesperados, (
+        f"❌ Criterio 5 FALLÓ: nulos no documentados en {sorted(nulos_inesperados)}"
+    )
+    log.info("✅ Criterio 5: nulos conocidos (columnas con nulos: %s)", sorted(cols_con_nulos) or "ninguna")
+
+    # 6. Sin columnas 100 % vacías
     empty_cols = list(df.columns[df.isna().all()])
     assert not empty_cols, (
-        f"❌ Criterio 5/6 FALLÓ: columnas al 100 % nulas: {empty_cols}"
+        f"❌ Criterio 6 FALLÓ: columnas al 100 % nulas: {empty_cols}"
     )
-    log.info("✅ Criterio 5/6: no hay columnas vacías")
+    log.info("✅ Criterio 6: no hay columnas 100 %% vacías")
 
-    # 7. Columna objetivo presente y sin nulos
-    assert "resultado" in df.columns, "❌ Criterio 7 FALLÓ: columna 'resultado' no existe"
-    null_target = df["resultado"].isna().sum()
-    assert null_target == 0, (
-        f"❌ Criterio 7 FALLÓ: columna objetivo 'resultado' tiene {null_target} nulos"
-    )
-    log.info("✅ Criterio 7: columna objetivo 'resultado' sin nulos")
+    # 7. Columnas objetivo presentes y sin nulos
+    for target in ("resultado", "cantidad_jugadas"):
+        assert target in df.columns, f"❌ Criterio 7 FALLÓ: columna objetivo '{target}' no existe"
+        n_nulos = int(df[target].isna().sum())
+        assert n_nulos == 0, (
+            f"❌ Criterio 7 FALLÓ: columna objetivo '{target}' tiene {n_nulos} nulos"
+        )
+    log.info("✅ Criterio 7: columnas objetivo 'resultado' y 'cantidad_jugadas' sin nulos")
 
     # Summary to log
     log.info("=== Dataset aprobado ✅ ===")
