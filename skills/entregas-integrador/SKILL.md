@@ -38,15 +38,19 @@ el doble que los dos parciales. Se aprueba con 60 %.
 
 <!-- Actualizar esta sección al cerrar cada entrega. -->
 
-**Al 24/08/2026:** Pipeline de ajedrez online migrado a Chess.com y validado de punta a
-punta con datos reales: 7.215 registros descargados, 7.203 partidas procesadas, 99,83%
-de retención y cero nulos finales. Se eliminó un duplicado entre usuarios y once
-partidas con menos de 5 medio-movimientos (abandonos o resultados administrativos
-inmediatos). Dos limitaciones quedan documentadas en el README para el modelado de
-Entrega 3: el rating que informa Chess.com es posterior al cierre de la partida (fuga
-de información hacia `resultado`, no sólo un matiz), y la muestra está concentrada en 8
-jugadores de nivel club a élite mundial, no es representativa de "ajedrez online" en
-general.
+**Al 06/09/2026 (Entrega 1 lista):** Pipeline de ajedrez online sobre Chess.com,
+orquestado con **Airflow en Docker** (`docker-compose.yml` + `Dockerfile`, DAG
+`pipeline_ajedrez_chesscom` en `dags/`, cinco tareas 1:1 con los módulos de `src/` y una
+tarea final de verificación de los 7 criterios). Validado de punta a punta con la
+corrida completa del DAG en verde: 7.215 registros descargados, 7.204 partidas
+procesadas, 99,85% de retención y cero nulos finales. Se descartaron 1 duplicado entre
+usuarios y 10 partidas con menos de 5 medio-movimientos. La ventana temporal está
+congelada (`download.until_month: "2026-08"`) para que una corrida desde cero reproduzca
+el dataset. Dos limitaciones quedan documentadas en el README y el notebook para el
+modelado de Entrega 3: el rating que informa Chess.com es posterior al cierre de la
+partida (fuga de información hacia `resultado`, no sólo un matiz), y la muestra está
+concentrada en 8 jugadores de nivel club a élite mundial, no es representativa de
+"ajedrez online" en general.
 
 ## Qué pide cada entrega
 

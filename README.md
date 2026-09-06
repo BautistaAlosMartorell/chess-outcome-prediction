@@ -85,7 +85,7 @@ general.
 | 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
 | 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida validada produjo 7.203 partidas limpias. |
+| 5 | Volumen | La corrida validada produjo 7.204 partidas limpias. |
 | 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -205,14 +205,16 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
 
-Corrida real validada el 24/08/2026:
+Corrida validada el 06/09/2026 (DAG completo en Airflow, ventana congelada hasta
+agosto de 2026):
 
 - 7.215 registros descargados.
-- 7.203 partidas finales.
-- 99,83% de retención.
-- 1 duplicado eliminado porque dos cuentas configuradas participaron en la misma partida.
-- 11 partidas descartadas por tener menos de 5 medio-movimientos (abandonos o
-  resultados administrativos inmediatos, no partidas jugadas).
+- 7.204 partidas finales.
+- 99,85% de retención.
+- 11 registros descartados: 1 duplicado (dos cuentas configuradas jugaron entre sí y
+  ambas reportan la partida) + 10 partidas con menos de 5 medio-movimientos (abandonos
+  o resultados administrativos inmediatos, no partidas jugadas).
 - 0 nulos en el dataset final.
 
-Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline.
+Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline. Con la
+ventana temporal congelada, una corrida desde cero reproduce estos números.
