@@ -148,13 +148,52 @@ class DataDownloader:
         logger.info("Descarga completa: %s (%d partidas)", dest, len(selected_games))
         return dest
 
+    @staticmethod
+    def _count_games(path: Path) -> int:
+        """Cuenta las partidas guardadas en un archivo crudo consolidado."""
+        with path.open("r", encoding="utf-8") as file:
+            return len(json.load(file).get("games", []))
+
     def download_all(self) -> dict[str, Path]:
-        """Descarga secuencialmente las partidas de todos los usuarios configurados."""
+        """Descarga las partidas de cada usuario configurado, tolerando fallos aislados.
+
+        Si un usuario falla (cuenta borrada -> 404, sin archivos, sin partidas
+        elegibles, error de red), se registra un ``warning`` y se sigue con el
+        resto. Al final se exige un mínimo de usuarios y de partidas totales
+        (``download.min_users_ok`` / ``download.min_total_games``): por debajo de
+        eso el dataset no sirve y se corta con ``RuntimeError``.
+        """
+        min_users = self.config["download"].get("min_users_ok", 1)
+        min_total = self.config["download"].get("min_total_games", 1)
+
         results: dict[str, Path] = {}
+        failed: dict[str, str] = {}
         for username in self.usernames:
             dest = self.raw_dir / self.raw_filename_template.format(username=username)
-            results[username] = self.download_user_games(username, dest)
+            try:
+                results[username] = self.download_user_games(username, dest)
+            except Exception as exc:  # noqa: BLE001 - se degrada por usuario a propósito
+                failed[username] = f"{type(exc).__name__}: {exc}"
+                logger.warning("Descarga de %s falló, se saltea: %s", username, failed[username])
             time.sleep(self.request_delay)
+
+        total_games = sum(self._count_games(path) for path in results.values())
+        logger.info(
+            "Descarga terminada: %d/%d usuarios OK, %d partidas crudas. Fallaron: %s",
+            len(results),
+            len(self.usernames),
+            total_games,
+            list(failed) or "ninguno",
+        )
+
+        if len(results) < min_users:
+            raise RuntimeError(
+                f"Solo {len(results)} usuarios descargados (mínimo {min_users}). Fallaron: {failed}"
+            )
+        if total_games < min_total:
+            raise RuntimeError(
+                f"Solo {total_games} partidas crudas (mínimo {min_total}). Fallaron: {failed}"
+            )
         return results
 
 

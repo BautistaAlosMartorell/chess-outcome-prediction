@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import copy
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import pandas as pd
+import requests
 
 from src.clean_data import DataCleaner
 from src.download_data import DataDownloader
@@ -36,6 +42,32 @@ class ChessPipelineTest(unittest.TestCase):
         # until_month = None desactiva el tope
         no_cap = {**self.config, "download": {**self.config["download"], "until_month": None}}
         self.assertTrue(DataDownloader(no_cap)._archive_in_window(f"{base}/2030/01"))
+
+    def test_download_all_tolerates_failed_user_and_enforces_minimums(self) -> None:
+        def fake_download_user_games(self, username, dest_path):
+            if username == "bad":
+                raise requests.HTTPError("404 Client Error: Not Found")
+            dest = Path(dest_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(json.dumps({"games": [{"pgn": "x"}, {"pgn": "y"}, {"pgn": "z"}]}))
+            return dest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = copy.deepcopy(self.config)
+            cfg["chess_com"]["usernames"] = ["good1", "good2", "bad"]
+            cfg["paths"]["raw_dir"] = tmp
+            cfg["download"]["min_users_ok"] = 2
+            cfg["download"]["min_total_games"] = 4
+
+            with mock.patch.object(DataDownloader, "download_user_games", fake_download_user_games):
+                # 'bad' se saltea, los otros dos quedan y se superan los mínimos
+                results = DataDownloader(cfg).download_all()
+                self.assertEqual(set(results), {"good1", "good2"})
+
+                # mínimo de partidas inalcanzable -> corta con RuntimeError
+                cfg["download"]["min_total_games"] = 999
+                with self.assertRaises(RuntimeError):
+                    DataDownloader(cfg).download_all()
 
     def test_parser_handles_chess_com_move_numbers_and_opening(self) -> None:
         game = {
