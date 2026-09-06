@@ -23,14 +23,27 @@ _MOVE_NUMBER_RE = re.compile(r"^\d+\.(?:\.\.)?$")
 MIN_PLIES = 5
 
 # Chess.com embebe el username del ganador en el texto de Termination
-# ("fulano ganó por abandono"), lo que vuelve la columna casi un identificador
+# ("fulano won by resignation"), lo que vuelve la columna casi un identificador
 # (cardinalidad ~ cantidad de filas). Se normaliza al motivo puro para que sea
-# utilizable como categórica en EDA.
-_TERMINATION_REASON_RE = re.compile(
-    r"(checkmate|resignation|time|agreement|abandon(?:ed|ment)?|"
-    r"insufficient material|repetition|stalemate|50.move rule|timeout)",
-    re.IGNORECASE,
-)
+# utilizable como categórica en EDA. El motivo se toma SOLO de la parte anclada
+# ("... won by/on <motivo>" o "Game drawn by <motivo>"), nunca de un match suelto
+# en cualquier lugar del string —así un username como "Timmy" no se lee como "time".
+_TERMINATION_WON_RE = re.compile(r"\bwon (?:by|on) (.+)$", re.IGNORECASE)
+_TERMINATION_DRAWN_RE = re.compile(r"\bdrawn by (.+)$", re.IGNORECASE)
+_TERMINATION_ABANDON_RE = re.compile(r"abandon", re.IGNORECASE)
+
+# Frases que no mapean 1:1 a snake_case, o que hay que distinguir a propósito.
+_TERMINATION_ALIASES = {
+    "abandonment": "abandoned",
+    "game abandoned": "abandoned",
+    "insufficient material": "insufficient_material",
+    "50-move rule": "50-move_rule",
+    "50 move rule": "50-move_rule",
+    "threefold repetition": "repetition",
+    # Empate: un jugador cae por tiempo pero el rival no tiene material para dar
+    # mate. Es tablas, NO una victoria por tiempo: se marca aparte de "time".
+    "timeout vs insufficient material": "timeout_vs_insufficient_material",
+}
 
 
 class DataCleaner:
@@ -177,11 +190,20 @@ class DataCleaner:
 
     @staticmethod
     def _termination_reason(text: str | None) -> str | None:
-        """Extrae el motivo de finalización, sin el username del ganador."""
+        """Extrae el motivo de finalización, sin el username del ganador.
+
+        Lee el motivo solo de la parte anclada del texto de Chess.com
+        (``"... won by/on X"`` o ``"Game drawn by X"``); todo lo demás cae en
+        ``"abandoned"`` (formato ``"... won - game abandoned"``) o ``"otro"``.
+        """
         if not isinstance(text, str):
             return None
-        match = _TERMINATION_REASON_RE.search(text)
-        return match.group(1).lower().replace(" ", "_") if match else "otro"
+        stripped = text.strip()
+        match = _TERMINATION_WON_RE.search(stripped) or _TERMINATION_DRAWN_RE.search(stripped)
+        if match is None:
+            return "abandoned" if _TERMINATION_ABANDON_RE.search(stripped) else "otro"
+        reason = match.group(1).strip().rstrip(".").lower()
+        return _TERMINATION_ALIASES.get(reason, reason.replace(" ", "_"))
 
     def normalize_termination(self, df: pd.DataFrame) -> pd.DataFrame:
         """Reemplaza ``Termination`` por su motivo puro (sin username embebido)."""

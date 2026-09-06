@@ -107,8 +107,22 @@ class ChessPipelineTest(unittest.TestCase):
         cleaner = DataCleaner(self.config)
         self.assertEqual(cleaner._termination_reason("erik won by resignation"), "resignation")
         self.assertEqual(cleaner._termination_reason("RebeccaHarris won - game abandoned"), "abandoned")
+        self.assertEqual(cleaner._termination_reason("x won by abandonment"), "abandoned")
         self.assertEqual(cleaner._termination_reason("Game drawn by agreement"), "agreement")
+        self.assertEqual(cleaner._termination_reason("Game drawn by 50-move rule"), "50-move_rule")
         self.assertIsNone(cleaner._termination_reason(None))
+
+    def test_termination_reason_anchors_and_splits_timeout_draw(self) -> None:
+        cleaner = DataCleaner(self.config)
+        # un username que contiene "time" no debe leerse como motivo "time"
+        self.assertEqual(cleaner._termination_reason("Timmy won by resignation"), "resignation")
+        self.assertEqual(cleaner._termination_reason("SirTime won on time"), "time")
+        # tablas por bandera con material insuficiente: categoría propia, no "time"
+        self.assertEqual(
+            cleaner._termination_reason("Game drawn by timeout vs insufficient material"),
+            "timeout_vs_insufficient_material",
+        )
+        self.assertEqual(cleaner._termination_reason("frase rara sin patron"), "otro")
 
     def test_filter_invalid_rows_drops_short_abandons(self) -> None:
         cleaner = DataCleaner(self.config)
