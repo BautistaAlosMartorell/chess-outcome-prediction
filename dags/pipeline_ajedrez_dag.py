@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from airflow import DAG
@@ -32,6 +33,18 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
 log = logging.getLogger(__name__)
+
+# The Airflow worker runs with CWD = AIRFLOW_HOME (/opt/airflow), which is *not*
+# a mounted volume. The relative paths in config.yaml (data/raw, data/processed)
+# must resolve against the project root that docker-compose mounts from the host,
+# otherwise every artifact the pipeline writes is trapped inside the container.
+# Each task calls _enter_project_root() before touching the filesystem.
+PROJECT_ROOT = "/project"
+
+
+def _enter_project_root() -> None:
+    """Set the working directory to the mounted project root (see note above)."""
+    os.chdir(PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
 # Configuración del DAG
@@ -61,6 +74,7 @@ def tarea_descarga(**context) -> None:
     from src.download_data import DataDownloader
     from src.utils import load_config
 
+    _enter_project_root()
     config = load_config(CONFIG_PATH)
     downloader = DataDownloader(config)
     paths = downloader.download_all()
@@ -79,6 +93,7 @@ def tarea_limpieza(**context) -> None:
     from src.clean_data import DataCleaner
     from src.utils import load_config
 
+    _enter_project_root()
     config = load_config(CONFIG_PATH)
 
     # Recover raw_paths from previous task or reconstruct from config
@@ -119,6 +134,7 @@ def tarea_features(**context) -> None:
     from src.feature_engineering import FeatureEngineer
     from src.utils import load_config
 
+    _enter_project_root()
     config = load_config(CONFIG_PATH)
     interim_path = PROCESSED_DIR / "_interim_clean.parquet"
     df = pd.read_parquet(interim_path)
@@ -144,6 +160,7 @@ def tarea_exportar(**context) -> None:
     from src.pipeline import build_summary
     from src.utils import load_config
 
+    _enter_project_root()
     config = load_config(CONFIG_PATH)
     interim_path = PROCESSED_DIR / "_interim_clean.parquet"
     df = pd.read_parquet(interim_path)
@@ -194,6 +211,7 @@ def tarea_verificar_calidad(**context) -> None:
 
     from src.utils import load_config
 
+    _enter_project_root()
     config = load_config(CONFIG_PATH)
     parquet_path = Path(config["paths"]["clean_parquet"])
     df = pd.read_parquet(parquet_path)
