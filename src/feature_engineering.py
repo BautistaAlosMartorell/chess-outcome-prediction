@@ -30,10 +30,13 @@ class FeatureEngineer:
         """Agrega ``diferencia_elo``, ``elo_promedio`` y ``favorito``."""
         df["diferencia_elo"] = df["WhiteElo"] - df["BlackElo"]
         df["elo_promedio"] = (df["WhiteElo"] + df["BlackElo"]) / 2
-        df["favorito"] = np.select(
-            [df["diferencia_elo"] > 0, df["diferencia_elo"] < 0],
-            ["Blancas", "Negras"],
-            default="Ninguno",
+        df["favorito"] = pd.Categorical(
+            np.select(
+                [df["diferencia_elo"] > 0, df["diferencia_elo"] < 0],
+                ["Blancas", "Negras"],
+                default="Ninguno",
+            ),
+            categories=["Blancas", "Negras", "Ninguno"],
         )
         return df
 
@@ -77,7 +80,10 @@ class FeatureEngineer:
             "D": "Cerrada",
             "E": "India",
         }
-        df["familia_apertura"] = letra.map(mapping).fillna("Desconocida")
+        df["familia_apertura"] = pd.Categorical(
+            letra.map(mapping).fillna("Desconocida"),
+            categories=["Flanco", "Semiabierta", "Abierta", "Cerrada", "India", "Desconocida"],
+        )
         return df
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:

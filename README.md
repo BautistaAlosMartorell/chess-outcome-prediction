@@ -137,7 +137,7 @@ tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 | `tiempo_base_seg`, `incremento_seg` | int | Componentes del control de tiempo. |
 | `diferencia_elo` | int | `WhiteElo - BlackElo`. |
 | `elo_promedio` | float | Rating promedio de ambos jugadores. |
-| `favorito` | str | Color con mayor rating o `Ninguno`. |
+| `favorito` | category | Color con mayor rating o `Ninguno`. |
 | `nivel_promedio` | category | Banda de rating configurada. |
 | `modalidad` | category | Bullet, Blitz o Rapid según `TimeClass`. |
 | `es_sorpresa` | int8 | 1 cuando gana el jugador con menor rating. |
