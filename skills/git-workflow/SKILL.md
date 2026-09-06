@@ -109,9 +109,9 @@ Consecuencias prácticas:
   versión entera y se vuelve a correr:
 
   ```bash
-  git checkout --theirs notebooks/01_pipeline_ingesta.ipynb   # o --ours
+  git checkout --theirs notebooks/01_data_ingestion_verification.ipynb   # o --ours
   # abrir, Restart & Run All, guardar
-  git add notebooks/01_pipeline_ingesta.ipynb
+  git add notebooks/01_data_ingestion_verification.ipynb
   ```
 
 - Para evitar conflictos: que dos personas no editen el mismo notebook en paralelo.

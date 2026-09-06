@@ -13,11 +13,14 @@ grupal de 5-6 personas, con cuatro entregas parciales entre septiembre y noviemb
 antes de llegar a este, y qué falta validar con datos reales de volumen.
 
 ```
-src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook
-notebooks/   pipeline narrado y verificación, numerados por entrega
-config/      config.yaml — usuarios de Chess.com, bandas de ELO, parámetros de descarga
+src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG
+dags/        DAG de Airflow que orquesta el pipeline (5 tareas 1:1 con src/ + verificación de calidad)
+notebooks/   pipeline narrado y verificación (01_data_ingestion_verification.ipynb)
+config/      config.yaml — usuarios de Chess.com, bandas de ELO, ventana temporal, parámetros de descarga
 data/        vacío en git — se regenera corriendo el pipeline
+tests/       pruebas unitarias sin acceso de red (python -m unittest discover -s tests)
 skills/      instrucciones reutilizables para agentes (leer más abajo)
+docker-compose.yml, Dockerfile, .env.example   stack de Airflow
 ```
 
 Stack: Python 3.11+, pandas, requests, pyarrow, matplotlib, rich, Jupyter. Ver
@@ -48,12 +51,18 @@ trabajes de memoria ni por defecto propio cuando hay una skill que cubre el caso
 
 ## Correr el pipeline
 
+La entrega se evalúa sobre el DAG de Airflow (`README.md` → "Con Airflow (Docker)"):
+`cp .env.example .env`, `docker compose up airflow-init`, `docker compose up -d`, y
+disparar `pipeline_ajedrez_chesscom` desde <http://localhost:8080>.
+
+Mismo pipeline sin Docker:
+
 ```bash
 pip install -r requirements.txt
-jupyter lab notebooks/01_data_ingestion_verification.ipynb   # Restart & Run All
-# o, por consola:
-python -m src.pipeline
+python -m src.pipeline                                       # --skip-download si ya hay JSON
+jupyter lab notebooks/01_data_ingestion_verification.ipynb   # o Restart & Run All
 ```
 
-La primera corrida descarga hasta 1.000 partidas rated de 8 usuarios de Chess.com,
-recorriendo archivos mensuales en serie. Las siguientes saltean los JSON ya descargados.
+La primera corrida descarga hasta 1.000 partidas rated por usuario (8 cuentas de
+Chess.com), recorriendo archivos mensuales en serie hasta `download.until_month`. Las
+siguientes saltean los JSON ya descargados (idempotente).
