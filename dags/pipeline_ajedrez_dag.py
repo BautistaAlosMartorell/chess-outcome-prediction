@@ -7,18 +7,25 @@ Pregunta de investigación:
 Fuente: PubAPI pública de Chess.com (sin autenticación).
 
 Estructura del grafo:
-    descarga_partidas
-        └── limpieza_y_parseo
-                └── feature_engineering
-                        └── exportar_dataset
-                                └── verificar_calidad
+    listar_usuarios
+        └── descarga_usuario  (mapeada por cuenta con .expand())
+                └── consolidar_descarga
+                        └── limpieza_y_parseo
+                                └── feature_engineering
+                                        └── verificar_calidad
+                                                └── exportar_dataset
 
-Cada tarea mapea 1:1 a un módulo de src/:
-    - descarga_partidas    → src/download_data.py (DataDownloader)
+Módulos de src/ detrás de cada tarea:
+    - descarga_usuario / consolidar_descarga → src/download_data.py (DataDownloader)
     - limpieza_y_parseo   → src/clean_data.py    (DataCleaner)
     - feature_engineering → src/feature_engineering.py (FeatureEngineer)
+    - verificar_calidad   → assert de los 7 criterios sobre el parquet INTERMEDIO
     - exportar_dataset    → src/pipeline.py (exporta parquet + CSV + summary)
-    - verificar_calidad   → assert de los 7 criterios de calidad del dataset
+
+La descarga se paraleliza por cuenta con dynamic task mapping (.expand()); la tolerancia a
+fallos (min_users_ok / min_total_games) se evalúa en consolidar_descarga, DESPUÉS del fan-out.
+La validación corre ANTES de exportar: si el dataset no cumple, ``exportar_dataset`` no
+llega a correr y no se materializan artefactos finales de un dataset inválido.
 
 Escrito con la TaskFlow API de Airflow 3 (``@dag`` / ``@task`` de ``airflow.sdk``).
 Por XCom viajan solo metadatos (rutas y conteos); el DataFrame intermedio se
@@ -75,15 +82,65 @@ INTERIM_PATH = PROCESSED_DIR / "_interim_clean.parquet"
     doc_md=__doc__,
 )
 def pipeline_ajedrez_chesscom():
-    """Grafo lineal de cinco tareas; las dependencias salen de pasar los returns."""
+    """Fan-out de descarga por cuenta (.expand()) + cadena lineal; las dependencias
+    salen de pasar los returns de una tarea como argumento de la siguiente."""
 
-    @task(task_id="descarga_partidas")
-    def descarga() -> dict[str, str]:
-        """Descarga hasta max_games_per_user partidas rated de cada usuario configurado.
+    @task(task_id="listar_usuarios")
+    def listar_usuarios() -> list[str]:
+        """Devuelve la lista de usuarios del config; es la fuente del ``.expand()``."""
+        from src.utils import load_config
 
-        Es idempotente: si el JSON ya existe en data/raw/, la descarga se saltea.
-        Los archivos crudos se guardan tal cual llegan de la API (capa bronce).
-        Devuelve por XCom las rutas crudas (metadatos, no datos).
+        _enter_project_root()
+        config = load_config(CONFIG_PATH)
+        usuarios = config["chess_com"]["usernames"]
+        log.info("Usuarios a descargar (%d): %s", len(usuarios), usuarios)
+        return usuarios
+
+    # max_active_tis_per_dag=3: no es arbitrario. Cada cuenta emite requests en serie con
+    # request_delay=0.25s y reintentos con backoff ante 429/5xx (ver DataDownloader). Correr
+    # las 8 cuentas en paralelo multiplicaría ×8 la tasa de requests contra Chess.com y
+    # dispararía rate-limiting; con 3 en paralelo el burst queda acotado, el backoff absorbe
+    # algún 429 ocasional y en cold-run rinde ~3× sobre el serial. En re-runs es indistinto
+    # porque las descargas idempotentes se saltean.
+    @task(
+        task_id="descarga_usuario",
+        map_index_template="{{ username }}",  # muestra el username en el índice del map en la UI
+        max_active_tis_per_dag=3,
+    )
+    def descarga_usuario(username: str) -> dict:
+        """Descarga las partidas de UNA cuenta, tolerando su propio fallo.
+
+        Idempotente (si el JSON ya existe, se saltea). No re-lanza la excepción: devuelve un
+        dict de estado para que un usuario caído no rompa el fan-out; los mínimos se evalúan
+        después en ``consolidar_descarga``.
+        """
+        from airflow.sdk import get_current_context
+
+        from src.download_data import DataDownloader
+        from src.utils import load_config
+
+        get_current_context()["username"] = username  # alimenta map_index_template
+        _enter_project_root()
+        config = load_config(CONFIG_PATH)
+        downloader = DataDownloader(config)
+        dest = downloader.dest_for(username)
+        try:
+            path = downloader.download_user_games(username, dest)
+            games = downloader.count_games(path)
+            log.info("Descarga OK de %s: %d partidas → %s", username, games, path)
+            return {"username": username, "path": str(path), "games": games, "ok": True}
+        except Exception as exc:  # noqa: BLE001 - se degrada por usuario a propósito
+            log.warning("Descarga de %s falló, se saltea: %s: %s", username, type(exc).__name__, exc)
+            return {"username": username, "path": None, "games": 0, "ok": False}
+
+    @task(task_id="consolidar_descarga")
+    def consolidar_descarga(resultados: list[dict]) -> dict[str, str]:
+        """Reduce los resultados mapeados: aplica los mínimos y arma las rutas crudas.
+
+        Recibe la lista de dicts de estado de ``descarga_usuario`` (uno por cuenta), exige
+        ``min_users_ok`` / ``min_total_games`` con la MISMA lógica que el CLI
+        (``DataDownloader.enforce_minimums``) y devuelve por XCom las rutas de los usuarios
+        exitosos (metadatos, no datos) para ``limpieza_y_parseo``.
         """
         from src.download_data import DataDownloader
         from src.utils import load_config
@@ -91,10 +148,16 @@ def pipeline_ajedrez_chesscom():
         _enter_project_root()
         config = load_config(CONFIG_PATH)
         downloader = DataDownloader(config)
-        paths = downloader.download_all()
-        raw_paths = {u: str(p) for u, p in paths.items()}
-        log.info("Descarga completa. Archivos: %s", list(raw_paths.values()))
-        return raw_paths
+
+        ok = {r["username"]: r["path"] for r in resultados if r["ok"]}
+        failed = {r["username"]: "descarga falló" for r in resultados if not r["ok"]}
+        total_games = sum(r["games"] for r in resultados if r["ok"])
+        log.info(
+            "Descarga consolidada: %d/%d usuarios OK, %d partidas crudas. Fallaron: %s",
+            len(ok), len(resultados), total_games, list(failed) or "ninguno",
+        )
+        downloader.enforce_minimums(len(ok), total_games, failed)
+        return ok
 
     @task(task_id="limpieza_y_parseo")
     def limpieza(raw_paths: dict[str, str]) -> int:
@@ -114,11 +177,25 @@ def pipeline_ajedrez_chesscom():
         if raw_paths:
             paths = {u: Path(p) for u, p in raw_paths.items()}
         else:
+            # Sólo se reconstruyen rutas de usuarios cuyo JSON crudo EXISTE en disco. El
+            # config lista los 8 usuarios objetivo, pero la descarga tolera fallos por
+            # usuario (min_users_ok): reconstruir a ciegas para todos incluía cuentas que
+            # pudieron no descargarse y hacía explotar el parseo con FileNotFoundError.
             template = config["chess_com"]["raw_filename_template"]
             paths = {
                 u: RAW_DIR / template.format(username=u)
                 for u in config["chess_com"]["usernames"]
+                if (RAW_DIR / template.format(username=u)).exists()
             }
+            if not paths:
+                raise FileNotFoundError(
+                    f"raw_paths vacío y no hay JSON crudos en {RAW_DIR}: "
+                    "correr descarga_partidas primero."
+                )
+            log.warning(
+                "raw_paths vacío; reconstruidas %d rutas desde disco: %s",
+                len(paths), sorted(paths),
+            )
 
         cleaner = DataCleaner(config)
         df, raw_count = cleaner.clean(paths)
@@ -205,15 +282,21 @@ def pipeline_ajedrez_chesscom():
         return str(parquet_path)
 
     @task(task_id="verificar_calidad")
-    def verificar_calidad(parquet_path: str) -> None:
-        """Verifica los 7 criterios de calidad del dataset.
+    def verificar_calidad(raw_count: int) -> int:
+        """Verifica los 7 criterios de calidad sobre el parquet INTERMEDIO.
 
-        Falla el DAG (raise AssertionError) si algún criterio no se cumple,
-        garantizando que cualquier corrida en verde implica un dataset válido.
+        Corre ANTES de ``exportar_dataset``: valida el DataFrame ya con features
+        (``_interim_clean.parquet``) y, sólo si pasa, deja que ``exportar`` materialice
+        los artefactos finales. Falla el DAG (raise AssertionError) si algún criterio no
+        se cumple, garantizando que cualquier artefacto exportado corresponde a un dataset
+        válido (antes esta tarea releía el Parquet final ya escrito).
+
+        Recibe ``raw_count`` sólo para encadenar (depende de ``feature_engineering``) y lo
+        retorna para que ``exportar`` lo use en el resumen.
 
         Criterios:
             1. Clave sin duplicados (GameUrl)
-            2. Volumen mínimo de 1 000 filas
+            2. Volumen mínimo (piso anclado a download.min_total_games)
             3. Al menos 5 columnas
             4. Mezcla de tipos (numérico + categórico + fecha)
             5. Nulos conocidos y documentados (solo en columnas de NULOS_DOCUMENTADOS)
@@ -222,13 +305,19 @@ def pipeline_ajedrez_chesscom():
         """
         import pandas as pd
 
+        from src.utils import load_config
+
         # Columnas donde se aceptan nulos, con su explicación (criterio 5). Hoy el
         # pipeline descarta las filas incompletas en vez de imputar, así que el
         # conjunto está vacío: cualquier nulo inesperado hace fallar el DAG.
         nulos_documentados: dict[str, str] = {}
 
         _enter_project_root()
-        df = pd.read_parquet(parquet_path)
+        config = load_config(CONFIG_PATH)
+        # Se valida el parquet intermedio (post feature_engineering): tiene el mismo
+        # contenido que el final, pero validarlo antes de exportar evita escribir
+        # Parquet/CSV/summary de un dataset que no cumple.
+        df = pd.read_parquet(INTERIM_PATH)
 
         log.info("=== Verificación de calidad del dataset ===")
         log.info("Shape: %s", df.shape)
@@ -240,10 +329,20 @@ def pipeline_ajedrez_chesscom():
         log.info("✅ Criterio 1: clave GameUrl sin duplicados")
 
         # 2. Volumen mínimo
-        assert len(df) >= 1_000, (
-            f"❌ Criterio 2 FALLÓ: solo {len(df)} filas (mínimo 1 000)"
+        # El piso hardcodeado de 1 000 venía del ejemplo de cátedra y no tenía relación
+        # con nuestro caso. Se ancla al gate de descarga: `download.min_total_games`
+        # (4000) ya garantiza ese mínimo de partidas CRUDAS antes de limpiar, y la
+        # limpieza retiene históricamente ~99.85 % (7215 → 7204 en la corrida validada).
+        # Se aplica un 0.9 sobre el piso crudo para tolerar variación normal del filtrado
+        # (deduplicación entre cuentas, PGNs sin parsear) sin dejar de discriminar una
+        # caída real de la fuente. Resultado: 4000 * 0.9 = 3600, ~50 % por debajo del
+        # baseline (7204) pero muy por encima de un colapso. Al leerlo del config, si
+        # mañana se mueve min_total_games el piso de este criterio se mueve solo.
+        min_rows = int(config["download"]["min_total_games"] * 0.9)
+        assert len(df) >= min_rows, (
+            f"❌ Criterio 2 FALLÓ: solo {len(df)} filas (mínimo {min_rows})"
         )
-        log.info("✅ Criterio 2: volumen suficiente (%d filas)", len(df))
+        log.info("✅ Criterio 2: volumen suficiente (%d filas, mínimo %d)", len(df), min_rows)
 
         # 3. Ancho mínimo
         assert df.shape[1] >= 5, (
@@ -261,6 +360,27 @@ def pipeline_ajedrez_chesscom():
             f"(numérico={has_numeric}, categórico={has_categorical}, fecha={has_datetime})"
         )
         log.info("✅ Criterio 4: mezcla de tipos presente (numérico + categórico + fecha)")
+
+        # 4b. Rangos plausibles de ELO (dimensión precisión — extensión propia, no
+        # altera la numeración de los 7 criterios de la cátedra).
+        # Rango plausible de rating Glicko de Chess.com en vivo: piso 100 (cuentas
+        # nuevas/débiles rondan varios cientos; nunca ratings de un o dos dígitos) y
+        # techo 3600, que deja aire sobre el pico élite mundial en bullet (Hikaru ~3400-3500).
+        # Un valor fuera de [100, 3600] no es un jugador real: es corrupción del dato
+        # (0, negativos, ratings absurdos por un parseo mal hecho). Los descarta el DAG.
+        ELO_MIN, ELO_MAX = 100, 3600
+        for col in ("WhiteElo", "BlackElo"):
+            fuera_rango = df[(df[col] < ELO_MIN) | (df[col] > ELO_MAX)]
+            assert fuera_rango.empty, (
+                f"❌ Precisión FALLÓ: {len(fuera_rango)} filas con {col} fuera de "
+                f"[{ELO_MIN}, {ELO_MAX}] (min={df[col].min()}, max={df[col].max()})"
+            )
+        log.info(
+            "✅ Precisión: WhiteElo/BlackElo dentro de [%d, %d] (rangos observados %d-%d / %d-%d)",
+            ELO_MIN, ELO_MAX,
+            df["WhiteElo"].min(), df["WhiteElo"].max(),
+            df["BlackElo"].min(), df["BlackElo"].max(),
+        )
 
         # 5. Nulos conocidos y documentados
         cols_con_nulos = set(df.columns[df.isna().any()])
@@ -293,12 +413,52 @@ def pipeline_ajedrez_chesscom():
         log.info("Nulos por columna (solo las que tienen):\n%s",
                  df.isna().sum()[df.isna().sum() > 0].to_string() or "ninguna")
 
-    # Grafo lineal: cada etapa consume el output de la anterior.
-    raw_paths = descarga()
+        # Observabilidad de volumen (dimensión actualidad). Guarda el volumen de la última
+        # corrida exitosa en una Airflow Variable y AVISA (no frena) si la corrida actual se
+        # desvía mucho del baseline.
+        # Umbral 5 %: `download.until_month` está congelado a propósito para esta entrega
+        # (config: "2026-08"), así que la fuente no incorpora partidas nuevas y el volumen
+        # debería ser estable entre corridas (una descarga desde cero reproduce el mismo
+        # conjunto). Con ese contexto no hay razón legítima para que el volumen se mueva: un
+        # desvío > 5 % señala un cambio real (until_month movido, filtro tocado, fuente
+        # alterada) y merece revisión — pero se avisa, no se rompe el DAG, porque no invalida
+        # el dataset por sí solo. Cuando en Entrega 2 se descongele until_month, este umbral
+        # habrá que revisarlo (ahí sí se espera crecimiento de volumen).
+        from airflow.sdk import Variable
+
+        baseline_key = "pipeline_ajedrez_volumen_baseline"
+        baseline = Variable.get(baseline_key, default=None)
+        if baseline is not None and int(baseline) > 0:
+            desvio = abs(len(df) - int(baseline)) / int(baseline)
+            if desvio > 0.05:
+                log.warning(
+                    "⚠️ Volumen %d se desvía %.1f%% del baseline %s (>5%%). "
+                    "until_month está congelado: revisar si cambió la config o la fuente.",
+                    len(df), 100 * desvio, baseline,
+                )
+            else:
+                log.info("Volumen %d dentro del ±5%% del baseline %s.", len(df), baseline)
+        else:
+            log.info("Sin baseline previo de volumen; se establece con esta corrida.")
+        # La Task Execution API de Airflow 3 (PutVariable) exige que el value sea str; se
+        # guarda como texto y se relee con int(...) más arriba. Pasar un int crudo rompe con
+        # ValidationError sólo bajo el worker real (dags test no valida ese contrato).
+        Variable.set(baseline_key, str(len(df)))
+        log.info("Baseline de volumen actualizado a %d (%s).", len(df), baseline_key)
+
+        return raw_count
+
+    # La descarga se abre en fan-out por cuenta (.expand()) y se cierra en
+    # consolidar_descarga; de ahí en adelante el grafo es lineal. La validación
+    # (verificar_calidad) corre antes de exportar: si el dataset no cumple, exportar
+    # no llega a escribir los artefactos finales.
+    usuarios = listar_usuarios()
+    resultados = descarga_usuario.expand(username=usuarios)
+    raw_paths = consolidar_descarga(resultados)
     raw_count = limpieza(raw_paths)
     raw_count_fe = feature_engineering(raw_count)
-    parquet_path = exportar(raw_count_fe)
-    verificar_calidad(parquet_path)
+    raw_count_ok = verificar_calidad(raw_count_fe)
+    exportar(raw_count_ok)
 
 
 pipeline_ajedrez_chesscom()

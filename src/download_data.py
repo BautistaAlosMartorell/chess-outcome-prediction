@@ -148,11 +148,34 @@ class DataDownloader:
         logger.info("Descarga completa: %s (%d partidas)", dest, len(selected_games))
         return dest
 
+    def dest_for(self, username: str) -> Path:
+        """Ruta del JSON crudo consolidado de un usuario según el template del config."""
+        return self.raw_dir / self.raw_filename_template.format(username=username)
+
     @staticmethod
-    def _count_games(path: Path) -> int:
+    def count_games(path: Path) -> int:
         """Cuenta las partidas guardadas en un archivo crudo consolidado."""
         with path.open("r", encoding="utf-8") as file:
             return len(json.load(file).get("games", []))
+
+    def enforce_minimums(self, ok_count: int, total_games: int, failed: dict[str, str]) -> None:
+        """Aplica los pisos de tolerancia a fallos; corta con ``RuntimeError`` si no se cumplen.
+
+        ``download.min_users_ok`` y ``download.min_total_games`` fijan cuánto puede degradarse
+        la descarga (cuentas caídas, sin partidas, red) antes de que el dataset deje de servir.
+        Extraído de ``download_all`` para reusarlo desde el DAG, donde los mínimos se evalúan
+        DESPUÉS del fan-out mapeado por cuenta y no dentro de un loop.
+        """
+        min_users = self.config["download"].get("min_users_ok", 1)
+        min_total = self.config["download"].get("min_total_games", 1)
+        if ok_count < min_users:
+            raise RuntimeError(
+                f"Solo {ok_count} usuarios descargados (mínimo {min_users}). Fallaron: {failed}"
+            )
+        if total_games < min_total:
+            raise RuntimeError(
+                f"Solo {total_games} partidas crudas (mínimo {min_total}). Fallaron: {failed}"
+            )
 
     def download_all(self) -> dict[str, Path]:
         """Descarga las partidas de cada usuario configurado, tolerando fallos aislados.
@@ -162,14 +185,14 @@ class DataDownloader:
         resto. Al final se exige un mínimo de usuarios y de partidas totales
         (``download.min_users_ok`` / ``download.min_total_games``): por debajo de
         eso el dataset no sirve y se corta con ``RuntimeError``.
-        """
-        min_users = self.config["download"].get("min_users_ok", 1)
-        min_total = self.config["download"].get("min_total_games", 1)
 
+        Es la ruta secuencial que usa el CLI (``python -m src.pipeline``). El DAG
+        paraleliza esto por cuenta con ``.expand()`` reusando ``enforce_minimums``.
+        """
         results: dict[str, Path] = {}
         failed: dict[str, str] = {}
         for username in self.usernames:
-            dest = self.raw_dir / self.raw_filename_template.format(username=username)
+            dest = self.dest_for(username)
             try:
                 results[username] = self.download_user_games(username, dest)
             except Exception as exc:  # noqa: BLE001 - se degrada por usuario a propósito
@@ -177,7 +200,7 @@ class DataDownloader:
                 logger.warning("Descarga de %s falló, se saltea: %s", username, failed[username])
             time.sleep(self.request_delay)
 
-        total_games = sum(self._count_games(path) for path in results.values())
+        total_games = sum(self.count_games(path) for path in results.values())
         logger.info(
             "Descarga terminada: %d/%d usuarios OK, %d partidas crudas. Fallaron: %s",
             len(results),
@@ -185,15 +208,7 @@ class DataDownloader:
             total_games,
             list(failed) or "ninguno",
         )
-
-        if len(results) < min_users:
-            raise RuntimeError(
-                f"Solo {len(results)} usuarios descargados (mínimo {min_users}). Fallaron: {failed}"
-            )
-        if total_games < min_total:
-            raise RuntimeError(
-                f"Solo {total_games} partidas crudas (mínimo {min_total}). Fallaron: {failed}"
-            )
+        self.enforce_minimums(len(results), total_games, failed)
         return results
 
 

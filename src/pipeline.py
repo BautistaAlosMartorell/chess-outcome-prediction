@@ -54,7 +54,31 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         "tasa_sorpresa_pct": round(100 * df["es_sorpresa"].mean(), 2),
         "cantidad_jugadas_promedio": round(float(df["cantidad_jugadas"].mean()), 1),
         "nulos_por_columna": df.isna().sum().loc[lambda s: s > 0].to_dict(),
+        # Categorías "fallback": cuando el crudo no trae el dato, no queda nulo sino una
+        # etiqueta de reemplazo (familia_apertura="Desconocida" si el ECO no clasifica,
+        # Termination="otro" si el motivo no matchea el vocabulario conocido). Es una
+        # decisión de diseño válida, pero contra la dimensión completitud esos casos son
+        # missingness disfrazada: se reportan explícitamente para que sean visibles y no
+        # se confundan con datos presentes de verdad.
+        "categorias_fallback": _fallback_category_counts(df),
     }
+
+
+def _fallback_category_counts(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    """Cuenta las filas que caen en categorías de reemplazo (ver ``build_summary``)."""
+    total = len(df)
+    fallbacks = {
+        "familia_apertura": "Desconocida",  # ECO ausente o fuera de A-E
+        "Termination": "otro",              # motivo de finalización no reconocido
+    }
+    resumen: dict[str, dict[str, Any]] = {}
+    for col, etiqueta in fallbacks.items():
+        n = int((df[col] == etiqueta).sum())
+        resumen[f"{col}={etiqueta}"] = {
+            "filas": n,
+            "pct": round(100 * n / total, 2) if total else 0.0,
+        }
+    return resumen
 
 
 def run_pipeline(config_path: str = "config/config.yaml", skip_download: bool = False) -> pd.DataFrame:
