@@ -61,53 +61,64 @@ Los 20 minutos son para mostrar y explicar, **no** para instalar ni esperar desc
 
 ## 2. La corrida (min 2–7) — recorrer el grafo tarea por tarea
 
-El DAG es `pipeline_ajedrez_chesscom` (`dags/pipeline_ajedrez_dag.py`). Es un grafo
-**lineal**: cada etapa depende de la anterior porque cada una consume lo que produjo la
-previa. Cada tarea mapea 1:1 a un módulo de `src/`.
+El DAG es `pipeline_ajedrez_chesscom` (`dags/pipeline_ajedrez_dag.py`). La descarga se **abre
+en paralelo por cuenta** (una task instance por usuario, con dynamic task mapping `.expand()`)
+y se **cierra** en una tarea que consolida; de ahí en adelante el grafo es **lineal** porque
+cada etapa consume lo que produjo la previa.
 
 ```
-descarga_partidas → limpieza_y_parseo → feature_engineering → exportar_dataset → verificar_calidad
+listar_usuarios → descarga_usuario (×8, .expand) → consolidar_descarga → limpieza_y_parseo → feature_engineering → verificar_calidad → exportar_dataset
 ```
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
 |---|---|---|---|---|
-| 1 | `descarga_partidas` | `src/download_data.py` | Para cada una de las 8 cuentas pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** de ajedrez estándar (bullet/blitz/rapid) por cuenta en un JSON crudo en `data/raw/`. Si una cuenta falla (404, sin partidas, red) **loguea un warning y sigue**; solo corta si baja de `min_users_ok: 6` o `min_total_games: 4000`. | Es la **ingesta automatizada**: sin esto no hay dato. Guarda el crudo **tal como llega** (capa bronce). |
-| 2 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
-| 3 | `feature_engineering` | `src/feature_engineering.py` | Deriva features analíticas: `diferencia_elo`, `elo_promedio`, `favorito`, `nivel_promedio` (bandas de ELO), `modalidad`, `es_sorpresa`, `familia_apertura` (letra ECO). | Agrega las variables sobre las que se va a modelar en la Entrega 3. |
-| 4 | `exportar_dataset` | `src/pipeline.py` | Escribe el **Parquet completo**, una **muestra CSV** de hasta 5.000 filas (`random_state=42`) y `data_summary.json` con métricas. | Materializa la **capa plata** (el entregable) en disco. |
-| 5 | `verificar_calidad` | inline en el DAG | Vuelve a leer el Parquet y hace `assert` de los **7 criterios** (entre ellos: mezcla de tipos **con fecha obligatoria**, nulos solo en columnas documentadas, y **ambos** targets `resultado` y `cantidad_jugadas` sin nulos). Si alguno falla, **el DAG se pone en rojo**. | Garantía operativa: **toda corrida en verde ⟹ dataset válido**. No podés tener verde y basura. |
+| 1 | `listar_usuarios` | inline (lee config) | Devuelve la lista de las 8 cuentas del config: es la fuente sobre la que se hace el `.expand()`. | Da el input del fan-out mapeado. |
+| 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (índice `0..7`, el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, ahora paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
+| 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 6` o `min_total_games: 4000`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
+| 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
+| 5 | `feature_engineering` | `src/feature_engineering.py` | Deriva features analíticas: `diferencia_elo`, `elo_promedio`, `favorito`, `nivel_promedio` (bandas de ELO), `modalidad`, `es_sorpresa`, `familia_apertura` (letra ECO). | Agrega las variables sobre las que se va a modelar en la Entrega 3. |
+| 6 | `verificar_calidad` | inline en el DAG | Lee el parquet **intermedio** (antes de exportar) y hace `assert` de los **7 criterios** (entre ellos: mezcla de tipos **con fecha obligatoria**, nulos solo en columnas documentadas, y **ambos** targets `resultado` y `cantidad_jugadas` sin nulos), más un chequeo de **rango plausible de ELO** `[100, 3600]`. Si algo falla, **el DAG se pone en rojo y `exportar_dataset` no llega a correr**. También registra el volumen en una Airflow Variable y avisa si se desvía > 5 % del baseline. | Garantía operativa: **toda corrida en verde ⟹ dataset válido**, y no se materializan artefactos de un dataset inválido. |
+| 7 | `exportar_dataset` | `src/pipeline.py` | Escribe el **Parquet completo**, una **muestra CSV** de hasta 5.000 filas (`random_state=42`) y `data_summary.json` con métricas. | Materializa la **capa plata** (el entregable) en disco, **solo si la validación pasó**. |
 
 **Cómo pasan los datos entre tareas:** el DAG está escrito con la **TaskFlow API de
-Airflow 3** (`@dag` / `@task` de `airflow.sdk`); las dependencias salen de pasar el
-return de una tarea como argumento de la siguiente. Por XCom viajan solo *metadatos*
-(las rutas y los conteos, no los DataFrames); el DataFrame intermedio se serializa en
-`data/processed/_interim_clean.parquet` y la última tarea lo borra. Airflow corre sobre
-**Apache Airflow 3.3** con **CeleryExecutor**: postgres = metadatos, redis = broker,
-api-server = UI/API, scheduler + dag-processor + triggerer = orquestación, worker =
-ejecución.
+Airflow 3** (`@dag` / `@task` de `airflow.sdk`), con **dynamic task mapping** (`.expand()`) en
+la descarga; las dependencias salen de pasar el return de una tarea como argumento de la
+siguiente. Por XCom viajan solo *metadatos* (las rutas y los conteos, no los DataFrames); el
+DataFrame intermedio se serializa en `data/processed/_interim_clean.parquet` y `exportar_dataset`
+lo borra. Airflow corre sobre **Apache Airflow 3.3** con **CeleryExecutor**: postgres =
+metadatos, redis = broker, api-server = UI/API, scheduler + dag-processor + triggerer =
+orquestación, worker = ejecución.
 
-**Frase para el grafo:** "Es lineal porque cada tarea necesita el output de la anterior;
-no hay paralelismo posible: no podés limpiar lo que no descargaste ni verificar lo que no
-exportaste. La última tarea es un portero de calidad que rompe la corrida si el dataset no
-cumple."
+**Frase para el grafo:** "La descarga es paralela **por cuenta** (fan-out con `.expand()`),
+porque las 8 cuentas son independientes; después el grafo es lineal, porque no podés limpiar lo
+que no descargaste ni exportar lo que no validaste. La validación es un portero de calidad que
+corre **antes** de exportar: si el dataset no cumple, ni siquiera se escriben los artefactos."
 
 ---
 
 ## 3. El dataset contra los 7 criterios (min 7–12) — con números
 
-Corrida real validada el **06/09/2026** (DAG completo en Airflow, ventana congelada hasta
-agosto de 2026): **7.215 registros descargados → 7.204 partidas finales** (99,85 % de
-retención). Comandos para verificar **en vivo** sobre `df`:
+Corrida real validada el **07/09/2026** (DAG completo en **Airflow 3.3**, disparada por el
+scheduler con CeleryExecutor, ventana congelada hasta agosto de 2026): **7.215 registros
+descargados → 7.204 partidas finales** (99,85 % de retención). Comandos para verificar **en
+vivo** sobre `df`:
 
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
 |---|---|---|---|---|
 | 1 | **Clave sin duplicados** | `True` | `df["GameUrl"].is_unique` | ✅ `True` |
-| 2 | **Volumen suficiente** | > 1.000 filas | `len(df)` | ✅ `7204` |
+| 2 | **Volumen suficiente** | ≥ `min_total_games × 0.9` = **3.600** filas | `len(df)` | ✅ `7204` |
 | 3 | **Ancho suficiente** | ≥ 5 columnas útiles | `df.shape` | ✅ `(7204, 27)` |
 | 4 | **Mezcla de tipos** | numéricas + categóricas **+ fecha** | `df.dtypes.value_counts()` | ✅ int/float + category/object + datetime64 (las tres, fecha obligatoria) |
 | 5 | **Nulos conocidos** | solo en columnas documentadas | `df.isna().mean().sort_values(ascending=False)` | ✅ ninguna (ver sección 4) |
 | 6 | **Sin columnas vacías** | ninguna 100 % nula | `df.columns[df.isna().all()]` | ✅ vacío |
 | 7 | **Columnas objetivo** | `resultado` **y** `cantidad_jugadas` sin nulos | `df[["resultado","cantidad_jugadas"]].isna().sum()` | ✅ `0` y `0` |
+| + | **Precisión de ELO** (extensión propia) | `WhiteElo`/`BlackElo` en rango plausible `[100, 3600]` | `df[["WhiteElo","BlackElo"]].agg(["min","max"])` | ✅ observado 732–3468 / 218–3469 |
+
+> **El criterio 2 ya no usa el "1.000" heredado del ejemplo de cátedra.** El piso se calcula
+> como `min_total_games × 0.9` (= 3.600 con la config actual): el gate de descarga ya garantiza
+> ≥ 4.000 partidas crudas y la limpieza retiene ~99,85 %, así que 3.600 discrimina una caída
+> real de la fuente sin castigar la variación normal. Si mañana se cambia `min_total_games`,
+> el umbral se mueve solo.
 
 > **El criterio 1 (clave) es el más importante y el más subestimado.** Es el test operativo
 > de la unidad de análisis: si `GameUrl` repitiera, o la unidad está mal definida o el
@@ -153,6 +164,22 @@ Dónde **podrían** aparecer nulos si en el futuro se relaja el filtro, y qué s
 `df.isna().mean().sort_values(ascending=False)`, señalar la columna con más nulos y explicar
 la causa de esa columna puntual, nunca "no sé". (Con la config actual no deberían aparecer:
 si aparecen, el DAG habría quedado en rojo en `verificar_calidad`.)
+
+### Nulos "disfrazados" de categoría (completitud honesta)
+Dos columnas usan una etiqueta de reemplazo cuando el crudo no trae el dato:
+`familia_apertura="Desconocida"` (ECO ausente o fuera de A–E) y `Termination="otro"` (motivo de
+finalización no reconocido). No son nulos técnicos, pero contra la dimensión **completitud** son
+missingness disfrazada. Por eso `data_summary.json` los **reporta explícitamente** (sección
+`categorias_fallback`, con filas y %): en la corrida validada ambos dan **0 filas (0 %)**, lo que
+confirma que no hay datos encubiertos. Es una decisión de diseño (no se imputan ni se descartan),
+pero queda visible, no escondida.
+
+### Cómo sabés que el volumen no se degradó entre corridas
+`verificar_calidad` guarda el volumen de la última corrida exitosa en una **Airflow Variable**
+(`pipeline_ajedrez_volumen_baseline`) y **avisa** (no rompe) si la corrida actual se desvía > 5 %
+del baseline. Como `until_month` está congelado, el volumen debería ser estable entre corridas
+(≈ 7.204); un desvío grande señala que cambió la config o la fuente. Es observabilidad, no un
+criterio de rechazo.
 
 ### Qué pasa si lo corrés de nuevo — ¿sale el mismo archivo?
 **Sí, sale el mismo dataset**, por dos motivos que se refuerzan:
@@ -215,11 +242,15 @@ mesa antes de que las encuentren:
 La pregunta sobre el scraping le puede caer a quien escribió la transformación. Todos
 deberían poder contestar esto:
 
-- **"¿Por qué el grafo es lineal y no paralelo?"** Porque cada tarea consume el output de la
-  anterior; no hay ramas independientes.
-- **"¿Cómo garantizás que una corrida verde = dataset bueno?"** La última tarea
-  (`verificar_calidad`) hace `assert` de los 7 criterios; si alguno falla, el DAG queda en
-  rojo. Verde implica que los 7 pasaron.
+- **"¿Qué parte del grafo es paralela y qué parte es lineal?"** La **descarga es paralela por
+  cuenta**: `descarga_usuario` es una tarea mapeada con `.expand()` (una instancia por usuario,
+  hasta 3 en paralelo), porque las 8 cuentas son independientes. Después `consolidar_descarga`
+  cierra el fan-out y el resto es **lineal**, porque cada tarea consume el output de la anterior
+  (no podés limpiar lo que no descargaste ni exportar lo que no validaste).
+- **"¿Cómo garantizás que una corrida verde = dataset bueno?"** `verificar_calidad` hace
+  `assert` de los 7 criterios (más el rango de ELO) **antes** de exportar; si alguno falla, el
+  DAG queda en rojo y `exportar_dataset` ni siquiera corre. Verde implica que todo pasó y que los
+  artefactos en disco corresponden a un dataset válido.
 - **"¿Cuál es la clave y cómo sabés que no repite?"** `GameUrl`; `df["GameUrl"].is_unique`
   da `True`; la tarea 2 deduplica por esa columna.
 - **"¿Por qué filtran partidas con menos de 5 jugadas?"** Son abandonos o resultados
@@ -232,16 +263,18 @@ deberían poder contestar esto:
 - **"¿Y si la API está caída el día de la defensa?"** No importa: la corrida ya está hecha y
   en verde en el historial, y el crudo está en `data/raw/`. La descarga es idempotente.
 - **"¿Y si una de las 8 cuentas falla al descargar?"** El pipeline **tolera fallos por
-  usuario**: si una cuenta da 404, no tiene partidas o hay error de red, loguea un warning y
-  sigue con las demás. Solo corta con error si quedan menos de `min_users_ok: 6` cuentas o
-  menos de `min_total_games: 4000` partidas crudas. Así una cuenta caída no tira abajo toda
-  la corrida, pero un dataset demasiado chico sí se rechaza.
+  usuario**: cada cuenta es una tarea mapeada aparte, así que si una da 404, no tiene partidas o
+  hay error de red, esa instancia devuelve un estado "falló" y **no rompe el fan-out**. Recién
+  `consolidar_descarga` corta con error si quedan menos de `min_users_ok: 6` cuentas o menos de
+  `min_total_games: 4000` partidas crudas. Una cuenta caída no tira abajo la corrida, pero un
+  dataset demasiado chico sí se rechaza.
 - **"¿Sale el mismo dataset si lo corrés de nuevo?"** Sí: la **ventana congelada**
   (`until_month: "2026-08"`) hace que incluso una descarga desde cero reproduzca el mismo
   conjunto; y con el crudo presente la descarga se saltea (idempotente). Ver §4.
 - **"¿Dónde está el rate-limiting / cómo respetás a Chess.com?"** Sesión identificada con
-  `User-Agent`, requests en serie con `request_delay` y reintentos con backoff ante 429/5xx
-  (`src/download_data.py`).
+  `User-Agent`, requests en serie por cuenta con `request_delay` y reintentos con backoff ante
+  429/5xx (`src/download_data.py`). El fan-out corre **como mucho 3 cuentas en paralelo**
+  (`max_active_tis_per_dag=3`) justo para no exceder el rate-limit al paralelizar.
 - **"¿Es reproducible la muestra CSV?"** Sí, `df.sample(n=5000, random_state=42)`.
 
 ---

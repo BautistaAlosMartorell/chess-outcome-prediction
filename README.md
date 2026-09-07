@@ -95,12 +95,12 @@ general.
 config/config.yaml                         parámetros y cuentas de Chess.com
 data/raw/                                  JSON regenerables, ignorados por Git
 data/processed/                            Parquet, sample y resumen, ignorados por Git
-dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga → limpieza → features → export → verificación
+dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga (mapeada por cuenta) → limpieza → features → verificación → export
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
-src/download_data.py                       descarga secuencial e idempotente
+src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 features analíticas
 src/pipeline.py                            orquestador CLI
