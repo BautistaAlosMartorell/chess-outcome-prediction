@@ -96,7 +96,7 @@ config/config.yaml                         parámetros y cuentas de Chess.com
 data/raw/                                  JSON regenerables, ignorados por Git
 data/processed/                            Parquet, sample y resumen, ignorados por Git
 dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga → limpieza → features → export → verificación
-docker-compose.yml                         stack de Airflow (postgres, redis, webserver, scheduler, worker)
+docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
@@ -147,14 +147,15 @@ tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 
 ### Con Airflow (Docker) — es la forma en que se evalúa la entrega
 
-Requiere Docker con el plugin `compose`. Un compañero que clona el repo no toca nada
-más que copiar el `.env`:
+Requiere Docker con el plugin `compose`. El stack corre sobre **Apache Airflow 3.3**
+(la versión que dicta la cátedra). Un compañero que clona el repo no toca nada más que
+copiar el `.env`:
 
 ```bash
 git clone <repo> && cd <repo>
 cp .env.example .env                 # la primera vez; .env está en .gitignore
-docker compose up airflow-init       # inicializa la BD de metadatos y el usuario admin
-docker compose up -d                 # levanta postgres, redis, webserver, scheduler y worker
+docker compose up airflow-init       # migra la BD de metadatos (esquema 3.x) y crea el admin
+docker compose up -d                 # levanta postgres, redis, api-server, scheduler, dag-processor, triggerer y worker
 ```
 
 Después:
