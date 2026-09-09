@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from src.utils import setup_logger
@@ -27,17 +26,9 @@ class FeatureEngineer:
         self.bandas_elo = config["elo"]["bandas"]
 
     def add_elo_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Agrega ``diferencia_elo``, ``elo_promedio`` y ``favorito``."""
+        """Agrega ``diferencia_elo`` y ``elo_promedio``."""
         df["diferencia_elo"] = df["WhiteElo"] - df["BlackElo"]
         df["elo_promedio"] = (df["WhiteElo"] + df["BlackElo"]) / 2
-        df["favorito"] = pd.Categorical(
-            np.select(
-                [df["diferencia_elo"] > 0, df["diferencia_elo"] < 0],
-                ["Blancas", "Negras"],
-                default="Ninguno",
-            ),
-            categories=["Blancas", "Negras", "Ninguno"],
-        )
         return df
 
     def add_elo_banda(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -45,15 +36,6 @@ class FeatureEngineer:
         bins = [0] + [v[1] for v in self.bandas_elo.values()]
         labels = list(self.bandas_elo.keys())
         df["nivel_promedio"] = pd.cut(df["elo_promedio"], bins=bins, labels=labels)
-        return df
-
-    def add_time_control_category(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Agrega ``modalidad`` usando la clasificación provista por Chess.com."""
-        mapping = {"bullet": "Bullet", "blitz": "Blitz", "rapid": "Rapid"}
-        df["modalidad"] = pd.Categorical(
-            df["TimeClass"].astype("string").map(mapping),
-            categories=["Bullet", "Blitz", "Rapid"],
-        )
         return df
 
     def add_upset_flag(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -91,7 +73,6 @@ class FeatureEngineer:
         logger.info("Generando features sobre %d partidas...", len(df))
         df = self.add_elo_features(df)
         df = self.add_elo_banda(df)
-        df = self.add_time_control_category(df)
         df = self.add_upset_flag(df)
         df = self.add_opening_family(df)
         logger.info("Features generadas: %s", list(df.columns))
