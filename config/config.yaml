@@ -63,3 +63,25 @@ download:
   # (cuenta borrada, sin partidas, red). Por debajo de esto la descarga corta con error.
   min_users_ok: 6
   min_total_games: 4000
+
+# Política para rediseñar la muestra de forma ocasional. No se ejecuta desde Airflow.
+# El selector propone usuarios nuevos; sólo --apply modifica chess_com.usernames.
+player_selection:
+  source: "oponentes de los 8 usuarios originales en el parquet procesado"
+  seed_usernames:
+    - RebeccaHarris
+    - erik
+    - AnnaCramling
+    - AlexandraBotez
+    - GothamChess
+    - IMRosen
+    - chessbrah
+    - hikaru
+  cutoff: "2026-08"
+  random_state: 42
+  min_eligible_games: 500
+  max_games_per_candidate: 1000
+  target_per_band:
+    intermedio: 8
+    avanzado: 8
+  manifest_path: "config/player_selection_manifest.yaml"
