@@ -11,14 +11,14 @@ Estructura del grafo:
         └── descarga_usuario  (mapeada por cuenta con .expand())
                 └── consolidar_descarga
                         └── limpieza_y_parseo
-                                └── feature_engineering
+                                └── ingenieria_de_caracteristicas
                                         └── verificar_calidad
                                                 └── exportar_dataset
 
 Módulos de src/ detrás de cada tarea:
     - descarga_usuario / consolidar_descarga → src/download_data.py (DataDownloader)
     - limpieza_y_parseo   → src/clean_data.py    (DataCleaner)
-    - feature_engineering → src/feature_engineering.py (FeatureEngineer)
+    - ingenieria_de_caracteristicas → src/feature_engineering.py (FeatureEngineer)
     - verificar_calidad   → assert de los 7 criterios sobre el parquet INTERMEDIO
     - exportar_dataset    → src/pipeline.py (exporta parquet + CSV + summary)
 
@@ -73,7 +73,7 @@ INTERIM_PATH = PROCESSED_DIR / "_interim_clean.parquet"
 
 @dag(
     dag_id="pipeline_ajedrez_chesscom",
-    description="Pipeline completo: descarga Chess.com → limpieza → features → CSV verificado",
+    description="Pipeline completo: descarga Chess.com → limpieza → ingeniería de características → CSV verificado",
     default_args=DEFAULT_ARGS,
     schedule=None,  # manual — se dispara desde la UI o con CLI
     start_date=pendulum.datetime(2026, 8, 1, tz="America/Argentina/Buenos_Aires"),
@@ -206,9 +206,9 @@ def pipeline_ajedrez_chesscom():
         log.info("Limpieza completa: %d / %d partidas retenidas → %s", len(df), raw_count, INTERIM_PATH)
         return raw_count
 
-    @task(task_id="feature_engineering")
-    def feature_engineering(raw_count: int) -> int:
-        """Genera features derivadas sobre el DataFrame limpio.
+    @task(task_id="ingenieria_de_caracteristicas")
+    def ingenieria_de_caracteristicas(raw_count: int) -> int:
+        """Genera características derivadas sobre el DataFrame limpio.
 
         Recibe ``raw_count`` solo para ordenar la cadena (depende de ``limpieza`` y
         precede a ``exportar``) y para llevar el conteo hasta el resumen; su trabajo
@@ -234,7 +234,7 @@ def pipeline_ajedrez_chesscom():
         df = engineer.transform(df)
 
         df.to_parquet(INTERIM_PATH, index=False)
-        log.info("Features generadas. Columnas finales: %s", list(df.columns))
+        log.info("Características generadas. Columnas finales: %s", list(df.columns))
         return raw_count
 
     @task(task_id="exportar_dataset")
@@ -285,18 +285,18 @@ def pipeline_ajedrez_chesscom():
     def verificar_calidad(raw_count: int) -> int:
         """Verifica los 7 criterios de calidad sobre el parquet INTERMEDIO.
 
-        Corre ANTES de ``exportar_dataset``: valida el DataFrame ya con features
+        Corre ANTES de ``exportar_dataset``: valida el DataFrame ya con características derivadas
         (``_interim_clean.parquet``) y, sólo si pasa, deja que ``exportar`` materialice
         los artefactos finales. Falla el DAG (raise AssertionError) si algún criterio no
         se cumple, garantizando que cualquier artefacto exportado corresponde a un dataset
         válido (antes esta tarea releía el Parquet final ya escrito).
 
-        Recibe ``raw_count`` sólo para encadenar (depende de ``feature_engineering``) y lo
+        Recibe ``raw_count`` sólo para encadenar (depende de ``ingenieria_de_caracteristicas``) y lo
         retorna para que ``exportar`` lo use en el resumen.
 
         Criterios:
             1. Clave sin duplicados (GameUrl)
-            2. Volumen mínimo (piso anclado a download.min_total_games)
+            2. Volumen mínimo final (quality.min_final_games)
             3. Al menos 5 columnas
             4. Mezcla de tipos (numérico + categórico + fecha)
             5. Nulos conocidos y documentados (solo en columnas de NULOS_DOCUMENTADOS)
@@ -314,7 +314,7 @@ def pipeline_ajedrez_chesscom():
 
         _enter_project_root()
         config = load_config(CONFIG_PATH)
-        # Se valida el parquet intermedio (post feature_engineering): tiene el mismo
+        # Se valida el parquet intermedio (post ingeniería de características): tiene el mismo
         # contenido que el final, pero validarlo antes de exportar evita escribir
         # Parquet/CSV/summary de un dataset que no cumple.
         df = pd.read_parquet(INTERIM_PATH)
@@ -329,18 +329,13 @@ def pipeline_ajedrez_chesscom():
         log.info("✅ Criterio 1: clave GameUrl sin duplicados")
 
         # 2. Volumen mínimo
-        # El piso hardcodeado de 1 000 venía del ejemplo de cátedra y no tenía relación
-        # con nuestro caso. Se ancla al gate de descarga: `download.min_total_games`
-        # (4000) ya garantiza ese mínimo de partidas CRUDAS antes de limpiar, y la
-        # limpieza retiene históricamente ~99.85 % (7215 → 7204 en la corrida validada).
-        # Se aplica un 0.9 sobre el piso crudo para tolerar variación normal del filtrado
-        # (deduplicación entre cuentas, PGNs sin parsear) sin dejar de discriminar una
-        # caída real de la fuente. Resultado: 4000 * 0.9 = 3600, ~50 % por debajo del
-        # baseline (7204) pero muy por encima de un colapso. Al leerlo del config, si
-        # mañana se mueve min_total_games el piso de este criterio se mueve solo.
-        min_rows = int(config["download"]["min_total_games"] * 0.9)
+        # Este es el mínimo del dataset ANALIZABLE, por eso es explícito y se toma de
+        # quality.min_final_games. download.min_total_games controla otra cosa: que la
+        # fuente haya entregado suficiente crudo. No se descuenta un porcentaje aquí.
+        min_rows = config["quality"]["min_final_games"]
         assert len(df) >= min_rows, (
-            f"❌ Criterio 2 FALLÓ: solo {len(df)} filas (mínimo {min_rows})"
+            f"❌ Criterio 2 FALLÓ: quedaron {len(df)} partidas válidas tras la limpieza "
+            f"(mínimo final explícito {min_rows}; crudas leídas {raw_count})"
         )
         log.info("✅ Criterio 2: volumen suficiente (%d filas, mínimo %d)", len(df), min_rows)
 
@@ -456,7 +451,7 @@ def pipeline_ajedrez_chesscom():
     resultados = descarga_usuario.expand(username=usuarios)
     raw_paths = consolidar_descarga(resultados)
     raw_count = limpieza(raw_paths)
-    raw_count_fe = feature_engineering(raw_count)
+    raw_count_fe = ingenieria_de_caracteristicas(raw_count)
     raw_count_ok = verificar_calidad(raw_count_fe)
     exportar(raw_count_ok)
 

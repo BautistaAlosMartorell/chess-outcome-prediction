@@ -11,7 +11,7 @@ online, y qué tan larga es esa partida?
 
 La unidad de análisis es una partida individual. Esta primera entrega implementa el
 pipeline automatizado de ingeniería de datos: descarga, parseo, limpieza, validación,
-ingeniería de features y exportación del dataset de trabajo.
+ingeniería de características y exportación del dataset de trabajo.
 
 ## Fuente de datos
 
@@ -95,14 +95,14 @@ general.
 config/config.yaml                         parámetros y cuentas de Chess.com
 data/raw/                                  JSON regenerables, ignorados por Git
 data/processed/                            Parquet, sample y resumen, ignorados por Git
-dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga (mapeada por cuenta) → limpieza → features → verificación → export
+dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
-src/feature_engineering.py                 features analíticas
+src/feature_engineering.py                 características analíticas derivadas
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 ```
@@ -163,10 +163,11 @@ Después:
 1. Abrir <http://localhost:8080> y entrar con `admin` / `admin`.
 2. Buscar el DAG `pipeline_ajedrez_chesscom`, activarlo con el toggle (viene pausado) y
    dispararlo con ▶ (*Trigger DAG*).
-3. La corrida recorre cinco tareas en cadena: `descarga_partidas` →
-   `limpieza_y_parseo` → `feature_engineering` → `exportar_dataset` →
-   `verificar_calidad`. La última hace `assert` de los siete criterios de calidad, así
-   que una corrida en verde implica un dataset válido.
+3. La corrida lista usuarios, descarga en paralelo por cuenta y luego recorre la cadena
+   `consolidar_descarga` → `limpieza_y_parseo` →
+   `ingenieria_de_caracteristicas` → `verificar_calidad` → `exportar_dataset`.
+   La verificación hace `assert` de los siete criterios de calidad, así que una corrida
+   en verde implica un dataset válido.
 
 Los artefactos quedan en `data/` del host (el `docker-compose.yml` monta `./data`):
 

@@ -43,6 +43,9 @@ class ChessPipelineTest(unittest.TestCase):
         no_cap = {**self.config, "download": {**self.config["download"], "until_month": None}}
         self.assertTrue(DataDownloader(no_cap)._archive_in_window(f"{base}/2030/01"))
 
+    def test_config_declares_explicit_final_volume_minimum(self) -> None:
+        self.assertEqual(self.config["quality"]["min_final_games"], 4000)
+
     def test_download_all_tolerates_failed_user_and_enforces_minimums(self) -> None:
         def fake_download_user_games(self, username, dest_path):
             if username == "bad":

@@ -36,6 +36,12 @@ processing:
   sample_size: 5000
   random_state: 42
 
+# Requisito del dataset que se entrega: se controla DESPUÉS de parsear,
+# deduplicar y limpiar. No se deriva del mínimo de descarga porque son etapas
+# con contratos distintos.
+quality:
+  min_final_games: 4000
+
 elo:
   bandas:
     principiante: [0, 1200]
@@ -53,7 +59,7 @@ download:
   # este mes (YYYY-MM). Fija el dataset para la Entrega 1 — una corrida desde cero
   # produce el mismo conjunto de partidas. Poner null para tomar hasta el mes actual.
   until_month: "2026-08"
-  # Umbrales mínimos tras tolerar fallos por usuario (cuenta borrada, sin partidas, red).
-  # Por debajo de esto el dataset no sirve y la descarga corta con error.
+  # Umbrales mínimos de la descarga cruda tras tolerar fallos por usuario
+  # (cuenta borrada, sin partidas, red). Por debajo de esto la descarga corta con error.
   min_users_ok: 6
   min_total_games: 4000
