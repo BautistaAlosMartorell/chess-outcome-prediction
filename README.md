@@ -141,7 +141,7 @@ tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 | `nivel_promedio` | category | Banda de rating configurada. |
 | `modalidad` | category | Bullet, Blitz o Rapid según `TimeClass`. |
 | `es_sorpresa` | int8 | 1 cuando gana el jugador con menor rating. |
-| `familia_apertura` | category | Familia ECO: flanco, semiabierta, abierta, cerrada o india. |
+| `familia_apertura` | category | Familia ECO: flanco, semiabierta, abierta, cerrada, india o desconocida. |
 
 ## Cómo ejecutar
 

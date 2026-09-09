@@ -15,6 +15,7 @@ import requests
 from src.clean_data import DataCleaner
 from src.download_data import DataDownloader
 from src.feature_engineering import FeatureEngineer
+from src.pipeline import build_summary
 from src.utils import load_config
 
 
@@ -139,6 +140,33 @@ class ChessPipelineTest(unittest.TestCase):
         df = pd.DataFrame({"ECO": ["B20", None, pd.NA]})
         df = engineer.add_opening_family(df)
         self.assertEqual(df["familia_apertura"].astype("string").tolist(), ["Semiabierta", "Desconocida", "Desconocida"])
+
+    def test_summary_includes_all_opening_family_counts(self) -> None:
+        df = pd.DataFrame(
+            {
+                "resultado": ["Gana Blancas", "Empate", "Gana Negras"],
+                "modalidad": ["Blitz", "Blitz", "Rapid"],
+                "nivel_promedio": ["avanzado", "avanzado", "experto"],
+                "familia_apertura": ["Abierta", "Abierta", "Desconocida"],
+                "es_sorpresa": [0, 1, 0],
+                "cantidad_jugadas": [20, 30, 40],
+                "Termination": ["resignation", "otro", "checkmate"],
+            }
+        )
+
+        summary = build_summary(df, raw_row_count=3)
+
+        self.assertEqual(
+            summary["distribucion_familia_apertura"],
+            {
+                "Flanco": 0,
+                "Semiabierta": 0,
+                "Abierta": 2,
+                "Cerrada": 0,
+                "India": 0,
+                "Desconocida": 1,
+            },
+        )
 
     def test_parse_all_deduplicates_shared_game(self) -> None:
         cleaner = DataCleaner(self.config)

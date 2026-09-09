@@ -51,6 +51,7 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         "distribucion_resultado": df["resultado"].value_counts().to_dict(),
         "distribucion_modalidad": df["modalidad"].value_counts().to_dict(),
         "distribucion_nivel_promedio": df["nivel_promedio"].value_counts().to_dict(),
+        "distribucion_familia_apertura": _opening_family_counts(df),
         "tasa_sorpresa_pct": round(100 * df["es_sorpresa"].mean(), 2),
         "cantidad_jugadas_promedio": round(float(df["cantidad_jugadas"].mean()), 1),
         "nulos_por_columna": df.isna().sum().loc[lambda s: s > 0].to_dict(),
@@ -62,6 +63,13 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         # se confundan con datos presentes de verdad.
         "categorias_fallback": _fallback_category_counts(df),
     }
+
+
+def _opening_family_counts(df: pd.DataFrame) -> dict[str, int]:
+    """Cuenta las seis categorías de familia ECO, incluyendo las que tienen cero filas."""
+    familias = ["Flanco", "Semiabierta", "Abierta", "Cerrada", "India", "Desconocida"]
+    conteos = df["familia_apertura"].value_counts().reindex(familias, fill_value=0)
+    return {familia: int(conteo) for familia, conteo in conteos.items()}
 
 
 def _fallback_category_counts(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
