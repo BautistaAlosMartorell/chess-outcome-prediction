@@ -218,3 +218,30 @@ agosto de 2026):
 
 Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline. Con la
 ventana temporal congelada, una corrida desde cero reproduce estos números.
+
+### Casos límite observados en la corrida validada
+
+Dos filas puntuales de las 7.204, encontradas inspeccionando el parquet final directamente
+(no sólo el summary), documentadas para que no se confundan con errores del pipeline si
+aparecen en el EDA:
+
+- **Una partida con `Date` = 2026-09-01**, un día después del tope `download.until_month:
+  "2026-08"`. No es un bug del filtro: la ventana congelada decide qué archivo mensual
+  bajar por su URL (`.../games/2026/08`), no por la fecha de cada partida individual. Esa
+  partida quedó agrupada por Chess.com en el archivo de agosto, pero su header PGN `Date`
+  marca setiembre — probablemente un corte de huso horario cerca de medianoche en el
+  propio servidor de Chess.com. La ventana congelada es exacta a nivel de archivo
+  descargado, no a nivel de fecha de cada partida.
+- **Una partida con `tiempo_base_seg` = 181** (`TimeControl` crudo `"181"`, sin
+  incremento). No es un error de parseo: Chess.com permite controles de tiempo
+  personalizados, y esa fila corresponde a una partida real con ese ritmo puntual, fuera
+  de los controles estándar (10/30/60/180/300/600/900 s).
+
+Además, algunos usernames de las 8 cuentas configuradas aparecen en más filas del dataset
+final que `max_games_per_user` (1000) — por ejemplo `annacramling` en 1.004. No es un error
+de la descarga: el tope de 1000 se aplica a la descarga *de esa cuenta*, pero partidas
+contra otra cuenta configurada (8 de esas 1.004 filas de `annacramling` son contra
+`AlexandraBotez`) pueden entrar al dataset a través de la descarga de la otra cuenta. Es el
+mismo mecanismo de deduplicación por `GameUrl` que evita contar dos veces el "1 duplicado"
+de arriba; acá no duplica ninguna fila, pero sí permite que un username supere su propio
+tope de descarga en apariciones totales.
