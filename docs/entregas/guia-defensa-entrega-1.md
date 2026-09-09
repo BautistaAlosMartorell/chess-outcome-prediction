@@ -67,7 +67,7 @@ y se **cierra** en una tarea que consolida; de ahí en adelante el grafo es **li
 cada etapa consume lo que produjo la previa.
 
 ```
-listar_usuarios → descarga_usuario (×8, .expand) → consolidar_descarga → limpieza_y_parseo → feature_engineering → verificar_calidad → exportar_dataset
+listar_usuarios → descarga_usuario (×8, .expand) → consolidar_descarga → limpieza_y_parseo → ingenieria_de_caracteristicas → verificar_calidad → exportar_dataset
 ```
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
@@ -76,7 +76,7 @@ listar_usuarios → descarga_usuario (×8, .expand) → consolidar_descarga → 
 | 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (índice `0..7`, el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, ahora paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
 | 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 6` o `min_total_games: 4000`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
 | 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
-| 5 | `feature_engineering` | `src/feature_engineering.py` | Deriva features analíticas: `diferencia_elo`, `elo_promedio`, `favorito`, `nivel_promedio` (bandas de ELO), `modalidad`, `es_sorpresa`, `familia_apertura` (letra ECO). | Agrega las variables sobre las que se va a modelar en la Entrega 3. |
+| 5 | `ingenieria_de_caracteristicas` | `src/feature_engineering.py` | Deriva características analíticas: `diferencia_elo`, `elo_promedio`, `favorito`, `nivel_promedio` (bandas de ELO), `modalidad`, `es_sorpresa`, `familia_apertura` (letra ECO). | Agrega las variables sobre las que se va a modelar en la Entrega 3. |
 | 6 | `verificar_calidad` | inline en el DAG | Lee el parquet **intermedio** (antes de exportar) y hace `assert` de los **7 criterios** (entre ellos: mezcla de tipos **con fecha obligatoria**, nulos solo en columnas documentadas, y **ambos** targets `resultado` y `cantidad_jugadas` sin nulos), más un chequeo de **rango plausible de ELO** `[100, 3600]`. Si algo falla, **el DAG se pone en rojo y `exportar_dataset` no llega a correr**. También registra el volumen en una Airflow Variable y avisa si se desvía > 5 % del baseline. | Garantía operativa: **toda corrida en verde ⟹ dataset válido**, y no se materializan artefactos de un dataset inválido. |
 | 7 | `exportar_dataset` | `src/pipeline.py` | Escribe el **Parquet completo**, una **muestra CSV** de hasta 5.000 filas (`random_state=42`) y `data_summary.json` con métricas. | Materializa la **capa plata** (el entregable) en disco, **solo si la validación pasó**. |
 
@@ -106,7 +106,7 @@ vivo** sobre `df`:
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
 |---|---|---|---|---|
 | 1 | **Clave sin duplicados** | `True` | `df["GameUrl"].is_unique` | ✅ `True` |
-| 2 | **Volumen suficiente** | ≥ `min_total_games × 0.9` = **3.600** filas | `len(df)` | ✅ `7204` |
+| 2 | **Volumen suficiente** | ≥ `quality.min_final_games` = **4.000** filas | `len(df)` | ✅ `7204` |
 | 3 | **Ancho suficiente** | ≥ 5 columnas útiles | `df.shape` | ✅ `(7204, 27)` |
 | 4 | **Mezcla de tipos** | numéricas + categóricas **+ fecha** | `df.dtypes.value_counts()` | ✅ int/float + category/object + datetime64 (las tres, fecha obligatoria) |
 | 5 | **Nulos conocidos** | solo en columnas documentadas | `df.isna().mean().sort_values(ascending=False)` | ✅ ninguna (ver sección 4) |
@@ -114,11 +114,11 @@ vivo** sobre `df`:
 | 7 | **Columnas objetivo** | `resultado` **y** `cantidad_jugadas` sin nulos | `df[["resultado","cantidad_jugadas"]].isna().sum()` | ✅ `0` y `0` |
 | + | **Precisión de ELO** (extensión propia) | `WhiteElo`/`BlackElo` en rango plausible `[100, 3600]` | `df[["WhiteElo","BlackElo"]].agg(["min","max"])` | ✅ observado 732–3468 / 218–3469 |
 
-> **El criterio 2 ya no usa el "1.000" heredado del ejemplo de cátedra.** El piso se calcula
-> como `min_total_games × 0.9` (= 3.600 con la config actual): el gate de descarga ya garantiza
-> ≥ 4.000 partidas crudas y la limpieza retiene ~99,85 %, así que 3.600 discrimina una caída
-> real de la fuente sin castigar la variación normal. Si mañana se cambia `min_total_games`,
-> el umbral se mueve solo.
+> **El criterio 2 no usa el "1.000" heredado del ejemplo de cátedra.** Exige el mínimo
+> explícito `quality.min_final_games: 4000`, porque ese es el requisito del dataset final.
+> `download.min_total_games: 4000` controla por separado el volumen de la descarga cruda.
+> Si la limpieza deja menos de 4.000 partidas, el DAG falla y el log muestra los conteos
+> crudo y final para investigar la causa.
 
 > **El criterio 1 (clave) es el más importante y el más subestimado.** Es el test operativo
 > de la unidad de análisis: si `GameUrl` repitiera, o la unidad está mal definida o el

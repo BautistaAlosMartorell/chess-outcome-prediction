@@ -1,5 +1,18 @@
 # Changelog
 
+## Corrección del criterio de volumen final (2026-09-09)
+
+- **Qué:** el criterio 2 de `verificar_calidad` ahora exige el mínimo explícito
+  `quality.min_final_games: 4000`. Se eliminó el cálculo `min_total_games * 0.9`.
+- **Por qué:** `download.min_total_games` es el piso de la **descarga cruda** y no debe
+  redefinir el tamaño mínimo del dataset **analizable**. Son contratos distintos: la
+  descarga debe traer al menos 4.000 partidas y, tras limpieza, el dataset final también
+  debe conservar al menos 4.000. Si el segundo no se cumple, el log informa las partidas
+  válidas, el mínimo final y el total crudo leído.
+- **Además:** el task id `feature_engineering` se renombró a
+  `ingenieria_de_caracteristicas` para que todas las tareas visibles del DAG estén en
+  español.
+
 ## Mejoras del diagnóstico sobre el pipeline (2026-09-07)
 
 Serie de mejoras sobre la base ya migrada a Airflow 3.3 (branch `feat/mejoras-diagnostico`),
