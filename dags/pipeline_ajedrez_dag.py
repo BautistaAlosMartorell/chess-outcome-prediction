@@ -360,10 +360,11 @@ def pipeline_ajedrez_chesscom():
         # altera la numeración de los 7 criterios de la cátedra).
         # Rango plausible de rating Glicko de Chess.com en vivo: piso 100 (cuentas
         # nuevas/débiles rondan varios cientos; nunca ratings de un o dos dígitos) y
-        # techo 3600, que deja aire sobre el pico élite mundial en bullet (Hikaru ~3400-3500).
-        # Un valor fuera de [100, 3600] no es un jugador real: es corrupción del dato
+        # techo amplio 4000. No pretende fijar el récord histórico: deja margen a futuros
+        # picos de élite y detecta solo valores claramente corruptos.
+        # Un valor fuera de [100, 4000] no es un jugador real: es corrupción del dato
         # (0, negativos, ratings absurdos por un parseo mal hecho). Los descarta el DAG.
-        ELO_MIN, ELO_MAX = 100, 3600
+        ELO_MIN, ELO_MAX = 100, 4000
         for col in ("WhiteElo", "BlackElo"):
             fuera_rango = df[(df[col] < ELO_MIN) | (df[col] > ELO_MAX)]
             assert fuera_rango.empty, (
