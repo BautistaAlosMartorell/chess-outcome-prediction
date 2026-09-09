@@ -215,9 +215,8 @@ def pipeline_ajedrez_chesscom():
         real es leer y reescribir ``_interim_clean.parquet``.
 
         Features agregadas:
-            - diferencia_elo, elo_promedio, favorito
+            - diferencia_elo, elo_promedio
             - nivel_promedio (bandas de ELO del config)
-            - modalidad (Bullet / Blitz / Rapid)
             - es_sorpresa (1 si ganó el de menor ELO)
             - familia_apertura (clasificación ECO A-E)
         """

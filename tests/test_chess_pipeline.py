@@ -145,7 +145,7 @@ class ChessPipelineTest(unittest.TestCase):
         df = pd.DataFrame(
             {
                 "resultado": ["Gana Blancas", "Empate", "Gana Negras"],
-                "modalidad": ["Blitz", "Blitz", "Rapid"],
+                "TimeClass": ["blitz", "blitz", "rapid"],
                 "nivel_promedio": ["avanzado", "avanzado", "experto"],
                 "familia_apertura": ["Abierta", "Abierta", "Desconocida"],
                 "es_sorpresa": [0, 1, 0],
@@ -155,6 +155,8 @@ class ChessPipelineTest(unittest.TestCase):
         )
 
         summary = build_summary(df, raw_row_count=3)
+
+        self.assertEqual(summary["distribucion_time_class"], {"blitz": 2, "rapid": 1})
 
         self.assertEqual(
             summary["distribucion_familia_apertura"],
@@ -192,10 +194,21 @@ class ChessPipelineTest(unittest.TestCase):
         df = engineer.add_upset_flag(df)
         self.assertEqual(df["es_sorpresa"].tolist(), [0, 0, 0])
 
-    def test_time_class_maps_to_modality(self) -> None:
-        df = pd.DataFrame({"TimeClass": ["bullet", "blitz", "rapid"]})
-        transformed = FeatureEngineer(self.config).add_time_control_category(df)
-        self.assertEqual(transformed["modalidad"].astype("string").tolist(), ["Bullet", "Blitz", "Rapid"])
+    def test_transform_does_not_duplicate_time_class_or_elo_sign(self) -> None:
+        df = pd.DataFrame(
+            {
+                "WhiteElo": [1400, 1600, 1500],
+                "BlackElo": [1500, 1500, 1500],
+                "TimeClass": ["bullet", "blitz", "rapid"],
+                "resultado": ["Gana Blancas", "Gana Negras", "Empate"],
+                "ECO": ["B20", "C50", "D00"],
+            }
+        )
+        transformed = FeatureEngineer(self.config).transform(df)
+
+        self.assertNotIn("modalidad", transformed.columns)
+        self.assertNotIn("favorito", transformed.columns)
+        self.assertEqual(transformed["es_sorpresa"].tolist(), [1, 1, 0])
 
     def test_termination_reason_strips_username(self) -> None:
         cleaner = DataCleaner(self.config)

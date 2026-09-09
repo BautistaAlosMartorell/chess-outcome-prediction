@@ -49,7 +49,7 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         "partidas_descartadas": int(raw_row_count - len(df)),
         "tasa_retencion_pct": round(100 * len(df) / raw_row_count, 2) if raw_row_count else 0.0,
         "distribucion_resultado": df["resultado"].value_counts().to_dict(),
-        "distribucion_modalidad": df["modalidad"].value_counts().to_dict(),
+        "distribucion_time_class": df["TimeClass"].value_counts().to_dict(),
         "distribucion_nivel_promedio": df["nivel_promedio"].value_counts().to_dict(),
         "distribucion_familia_apertura": _opening_family_counts(df),
         "tasa_sorpresa_pct": round(100 * df["es_sorpresa"].mean(), 2),

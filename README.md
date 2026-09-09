@@ -62,7 +62,7 @@ aislar el rating estrictamente anterior sin reconstruir el historial cronológic
 completo de cada jugador.
 
 En consecuencia, `WhiteElo`, `BlackElo` y todo lo derivado de ellos (`diferencia_elo`,
-`elo_promedio`, `favorito`, `nivel_promedio`, `es_sorpresa`) contienen una fuga de
+`elo_promedio`, `nivel_promedio`, `es_sorpresa`) contienen una fuga de
 información hacia `resultado`, de magnitud pequeña pero sistemática, concentrada
 justamente en las partidas de rating parejo. Se documenta como limitación conocida de
 la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado.
@@ -137,9 +137,7 @@ tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 | `tiempo_base_seg`, `incremento_seg` | int | Componentes del control de tiempo. |
 | `diferencia_elo` | int | `WhiteElo - BlackElo`. |
 | `elo_promedio` | float | Rating promedio de ambos jugadores. |
-| `favorito` | category | Color con mayor rating o `Ninguno`. |
 | `nivel_promedio` | category | Banda de rating configurada. |
-| `modalidad` | category | Bullet, Blitz o Rapid según `TimeClass`. |
 | `es_sorpresa` | int8 | 1 cuando gana el jugador con menor rating. |
 | `familia_apertura` | category | Familia ECO: flanco, semiabierta, abierta, cerrada, india o desconocida. |
 
