@@ -13,6 +13,13 @@
   `ingenieria_de_caracteristicas` para que todas las tareas visibles del DAG estén en
   español.
 
+### Ajuste del rango plausible de ELO
+
+- **Qué:** el techo de la verificación de ELO sube de `3600` a `4000`.
+- **Por qué:** 3.600 era un margen elegido a partir de picos históricos conocidos, no un
+  máximo oficial de Chess.com. El nuevo techo mantiene la detección de valores corruptos
+  (cero, negativos o absurdamente altos) sin rechazar un futuro récord válido.
+
 ## Mejoras del diagnóstico sobre el pipeline (2026-09-07)
 
 Serie de mejoras sobre la base ya migrada a Airflow 3.3 (branch `feat/mejoras-diagnostico`),
