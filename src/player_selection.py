@@ -1,8 +1,11 @@
 """Selección reproducible de jugadores para ampliar la muestra del proyecto.
 
-Este módulo no forma parte del DAG. Su ejecución es una decisión ocasional de diseño
-de muestra: parte de los oponentes ya observados, valida su actividad en la PubAPI y
-produce una propuesta reproducible antes de modificar la configuración del pipeline.
+Ejecutable desde la tarea ``listar_jugadores`` del DAG o desde la línea de comandos.
+Parte de los oponentes ya observados en el parquet procesado, valida su actividad en
+la PubAPI y produce una selección reproducible por banda de ELO.
+
+Si no existe un parquet procesado de una corrida anterior (primera corrida bootstrap),
+la función ``bootstrap_username_list`` devuelve solo los seed_usernames del config.
 """
 
 from __future__ import annotations
@@ -179,6 +182,81 @@ class PlayerSelector:
         self._api_get = api_get or self.downloader._get_json
         self._sleep = sleep
 
+    def discover_opponents_from_api(self) -> pd.DataFrame:
+        """Fetch recent games of seed users from the PubAPI to discover opponents.
+
+        Used on the first run when no processed parquet exists yet. For each seed,
+        fetches the most recent monthly archives (within the cutoff window) and
+        collects opponent usernames and ratings from eligible games.
+
+        Returns a DataFrame with ``White``, ``Black``, ``WhiteElo``, ``BlackElo``
+        columns — the same schema that ``extract_candidate_pools`` expects.
+        """
+        rows: list[dict[str, Any]] = []
+        # Limit how many games we sample per seed to keep discovery fast.
+        # 300 recent games per seed × 8 seeds = up to 2400 observations, which
+        # is plenty to build diverse candidate pools across ELO bands.
+        discovery_limit = 300
+
+        for seed in self.seed_usernames:
+            try:
+                username_path = seed.lower()
+                logger.info("Descubriendo oponentes del seed %s...", seed)
+                archives_payload = self._get_json(
+                    f"{self.base_url}/{username_path}/games/archives"
+                )
+                archives = [
+                    url
+                    for url in archives_payload.get("archives", [])
+                    if self.downloader._archive_in_window(url)
+                ]
+                if not archives:
+                    logger.warning("Seed %s: sin archivos en la ventana temporal", seed)
+                    continue
+
+                games_seen = 0
+                for archive_url in reversed(archives):
+                    monthly = self._get_json(archive_url).get("games", [])
+                    for game in reversed(monthly):
+                        if not self.downloader._is_eligible(game):
+                            continue
+                        white = game.get("white") or {}
+                        black = game.get("black") or {}
+                        rows.append(
+                            {
+                                "White": white.get("username", ""),
+                                "Black": black.get("username", ""),
+                                "WhiteElo": white.get("rating", 0),
+                                "BlackElo": black.get("rating", 0),
+                            }
+                        )
+                        games_seen += 1
+                        if games_seen >= discovery_limit:
+                            break
+                    if games_seen >= discovery_limit:
+                        break
+
+                logger.info(
+                    "Seed %s: %d partidas elegibles recolectadas para descubrimiento",
+                    seed, games_seen,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Error descubriendo oponentes del seed %s, se sigue: %s: %s",
+                    seed, type(exc).__name__, exc,
+                )
+
+        if not rows:
+            logger.warning("No se encontraron partidas de ningún seed para descubrimiento")
+            return pd.DataFrame(columns=["White", "Black", "WhiteElo", "BlackElo"])
+
+        df = pd.DataFrame(rows)
+        logger.info(
+            "Descubrimiento completo: %d observaciones de %d seeds",
+            len(df), len(self.seed_usernames),
+        )
+        return df
+
     def _get_json(self, url: str) -> dict[str, Any]:
         payload = self._api_get(url)
         self._sleep(self.request_delay)
@@ -288,8 +366,10 @@ class PlayerSelector:
             archives_checked=archives_checked,
         )
 
-    def select_from_dataframe(self, df: pd.DataFrame) -> SelectionResult:
-        """Construye pools, los baraja y valida hasta cubrir cada objetivo."""
+    def _run_selection(self, df: pd.DataFrame) -> tuple[
+        dict[str, list[str]], list[CandidateValidation], dict[str, int],
+    ]:
+        """Core loop: build pools, shuffle, validate until targets are met."""
         pools = extract_candidate_pools(
             df,
             self.seed_usernames,
@@ -303,6 +383,10 @@ class PlayerSelector:
         for band, target in self.target_per_band.items():
             candidates = list(pools[band])
             rng.shuffle(candidates)
+            logger.info(
+                "Banda %s: %d candidatos disponibles, objetivo %d",
+                band, len(candidates), target,
+            )
             for candidate in candidates:
                 logger.info(
                     "Validando %s para %s (%d/%d seleccionados)",
@@ -321,7 +405,12 @@ class PlayerSelector:
                 if len(selected[band]) == target:
                     break
 
-        result = SelectionResult(
+        candidate_counts = {band: len(pool) for band, pool in pools.items()}
+        return selected, evaluated, candidate_counts
+
+    def _build_result(self, selected, evaluated, candidate_counts) -> SelectionResult:
+        """Wrap raw selection data into a SelectionResult."""
+        return SelectionResult(
             policy={
                 "source": self.policy["source"],
                 "seed_usernames": self.seed_usernames,
@@ -332,13 +421,86 @@ class PlayerSelector:
                 "target_per_band": self.target_per_band,
                 "bands": {band: self.bands[band] for band in self.target_per_band},
             },
-            candidate_counts={band: len(candidates) for band, candidates in pools.items()},
+            candidate_counts=candidate_counts,
             evaluated=evaluated,
             selected=selected,
         )
+
+    def select_from_dataframe(self, df: pd.DataFrame) -> SelectionResult:
+        """Construye pools, los baraja y valida hasta cubrir cada objetivo.
+
+        Raises ``InsufficientCandidatesError`` if any band falls short.
+        """
+        selected, evaluated, counts = self._run_selection(df)
+        result = self._build_result(selected, evaluated, counts)
         if not result.is_complete:
             raise InsufficientCandidatesError(result)
         return result
+
+    def select_lenient_from_dataframe(self, df: pd.DataFrame) -> SelectionResult:
+        """Like ``select_from_dataframe`` but tolerates incomplete bands.
+
+        Logs a warning for each band that didn't reach its target instead of
+        raising. Intended for the DAG where a partial selection is still useful.
+        """
+        selected, evaluated, counts = self._run_selection(df)
+        result = self._build_result(selected, evaluated, counts)
+        if not result.is_complete:
+            for band, target in self.target_per_band.items():
+                got = len(result.selected.get(band, []))
+                if got < target:
+                    logger.warning(
+                        "Banda %s: solo %d/%d jugadores seleccionados (pool: %d candidatos)",
+                        band, got, target, counts.get(band, 0),
+                    )
+        return result
+
+    def build_username_list(self, df: pd.DataFrame) -> tuple[list[str], SelectionResult]:
+        """Run lenient selection and return a flat, deduplicated username list.
+
+        The list starts with ``seed_usernames`` followed by the selected players,
+        ready to feed the ``.expand()`` in the DAG's download task.
+
+        Returns
+        -------
+        tuple[list[str], SelectionResult]
+            The combined username list and the full selection result (for the manifest).
+        """
+        result = self.select_lenient_from_dataframe(df)
+        seen: set[str] = set()
+        combined: list[str] = []
+        for username in self.seed_usernames:
+            key = _normalise_username(username)
+            if key not in seen:
+                combined.append(username)
+                seen.add(key)
+        for usernames in result.selected.values():
+            for username in usernames:
+                key = _normalise_username(username)
+                if key not in seen:
+                    combined.append(username)
+                    seen.add(key)
+        logger.info(
+            "Lista final: %d jugadores (seeds: %d, seleccionados: %d)",
+            len(combined), len(self.seed_usernames),
+            len(combined) - len(self.seed_usernames),
+        )
+        return combined, result
+
+
+def bootstrap_username_list(config: dict[str, Any]) -> list[str]:
+    """Return only the seed usernames when no processed parquet exists yet.
+
+    This is the first-run path: the DAG downloads games for the seeds, processes
+    them, and on the *next* run ``PlayerSelector.build_username_list`` can find
+    opponents in the parquet to expand the sample.
+    """
+    seeds = config["player_selection"]["seed_usernames"]
+    logger.info(
+        "Modo bootstrap (sin parquet previo): usando %d seed_usernames: %s",
+        len(seeds), seeds,
+    )
+    return list(seeds)
 
 
 def _atomic_write_text(path: Path, text: str) -> None:

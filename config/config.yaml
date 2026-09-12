@@ -40,7 +40,7 @@ processing:
 # deduplicar y limpiar. No se deriva del mínimo de descarga porque son etapas
 # con contratos distintos.
 quality:
-  min_final_games: 4000
+  min_final_games: 1500
 
 elo:
   bandas:
@@ -61,13 +61,15 @@ download:
   until_month: "2026-08"
   # Umbrales mínimos de la descarga cruda tras tolerar fallos por usuario
   # (cuenta borrada, sin partidas, red). Por debajo de esto la descarga corta con error.
-  min_users_ok: 6
-  min_total_games: 4000
+  min_users_ok: 8
+  min_total_games: 1500
 
-# Política para rediseñar la muestra de forma ocasional. No se ejecuta desde Airflow.
-# El selector propone usuarios nuevos; sólo --apply modifica chess_com.usernames.
+# Política de selección automática de jugadores ejecutada por listar_jugadores en el DAG.
+# El selector extrae candidatos de los oponentes observados en el parquet, los valida
+# contra la PubAPI y selecciona por banda de ELO hasta cubrir los objetivos.
+# Si no hay parquet previo (primera corrida bootstrap), usa solo los seed_usernames.
 player_selection:
-  source: "oponentes de los 8 usuarios originales en el parquet procesado"
+  source: "oponentes de los seeds en el parquet procesado + PubAPI"
   seed_usernames:
     - RebeccaHarris
     - erik
@@ -79,9 +81,14 @@ player_selection:
     - hikaru
   cutoff: "2026-08"
   random_state: 42
-  min_eligible_games: 500
+  min_eligible_games: 15
   max_games_per_candidate: 1000
+  # ~100 jugadores total, distribuidos en las 5 bandas de ELO.
+  # Si una banda no alcanza el target, se loguea un warning y se sigue.
   target_per_band:
-    intermedio: 8
-    avanzado: 8
-  manifest_path: "config/player_selection_manifest.yaml"
+    principiante: 20
+    intermedio: 20
+    avanzado: 20
+    experto: 20
+    top_mundial: 20
+  manifest_path: "data/processed/player_selection_manifest.yaml"
