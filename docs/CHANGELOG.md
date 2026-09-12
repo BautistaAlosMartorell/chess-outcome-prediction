@@ -1,5 +1,52 @@
 # Changelog
 
+## Selección automática de jugadores dentro del DAG (2026-09-12)
+
+Branch `feat/selector-jugadores-dag`. El selector de jugadores (antes un script ocasional
+fuera de Airflow) pasa a ser la **primera tarea del DAG**, que arma dinámicamente la lista
+de cuentas a descargar en cada corrida.
+
+### Qué
+
+- La tarea `listar_usuarios` (leía una lista fija de `chess_com.usernames`) se renombró a
+  **`listar_jugadores`** y ahora delega en `src/player_selection.py`:
+  - Si existe el Parquet procesado de una corrida previa, extrae los oponentes observados y
+    los usa como pool de candidatos.
+  - Si no hay Parquet (**bootstrap**, primera corrida), descubre oponentes de los seeds
+    consultando la PubAPI (`PlayerSelector.discover_opponents_from_api`).
+  - Valida cada candidato contra la PubAPI y selecciona por banda de ELO hasta cubrir
+    `player_selection.target_per_band`. Devuelve `seeds + seleccionados` (sin duplicados)
+    como fuente del `.expand()` y escribe un manifiesto auditable.
+- **Selección tolerante:** `select_lenient_from_dataframe` reemplaza el corte duro. Si una
+  banda no llega a su cupo, loguea un *warning* y sigue en vez de abortar (una selección
+  parcial sigue siendo útil y los seeds siempre están incluidos).
+- Nuevos métodos en `PlayerSelector`: `discover_opponents_from_api`, `build_username_list`,
+  `select_lenient_from_dataframe` y el helper `bootstrap_username_list`.
+
+### Cambios de configuración (`config/config.yaml`)
+
+- `player_selection.target_per_band`: de `{intermedio: 8, avanzado: 8}` a las **5 bandas ×
+  20** (`principiante`, `intermedio`, `avanzado`, `experto`, `top_mundial`) → ~100 jugadores.
+- `player_selection.min_eligible_games`: **500 → 15** (umbral por candidato para validar).
+- `player_selection.manifest_path`: `config/…` → **`data/processed/player_selection_manifest.yaml`**.
+- `player_selection.source`: ahora describe "oponentes de los seeds + PubAPI".
+- `download.min_users_ok`: **6 → 8**; `download.min_total_games`: **4000 → 1500**.
+- `quality.min_final_games`: **4000 → 1500**.
+
+### Por qué
+
+Congelar la muestra en 8 cuentas fijas concentraba el dataset en niveles altos y obligaba a
+editar el config a mano para ampliarla. Moviendo la selección al DAG, cada corrida amplía la
+muestra de forma reproducible (semilla 42) y auditable (manifiesto), partiendo siempre de los
+oponentes ya trazables. Los umbrales de ingesta/calidad bajan a 1.500 porque el tamaño y la
+composición de la muestra dejan de estar fijos: el piso protege contra una corrida degradada
+sin presuponer el volumen de la muestra original.
+
+### Docs actualizados
+
+`README.md`, `docs/entregas/criterio-seleccion-jugadores.md`,
+`docs/entregas/explicacion-codigo-pipeline.md` y `docs/entregas/guia-defensa-entrega-1.md`.
+
 ## Corrección del criterio de volumen final (2026-09-09)
 
 - **Qué:** el criterio 2 de `verificar_calidad` ahora exige el mínimo explícito

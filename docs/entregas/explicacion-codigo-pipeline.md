@@ -14,10 +14,10 @@ dataset válido sin intervención manual?** El archivo que orquesta esa respuest
 PubAPI de Chess.com
         |
         v
-listar_usuarios
+listar_jugadores  -- selección automática por banda de ELO
         |
         v
-descarga_usuario x 8  -- fan-out: una tarea por cuenta
+descarga_usuario x N  -- fan-out: una tarea por cuenta
         |
         v
 consolidar_descarga
@@ -47,7 +47,8 @@ los controles de calidad.
 | Parte | Responsabilidad | Archivo principal |
 |---|---|---|
 | Orquestación | Define tareas, dependencias, reintentos y estado en Airflow | `dags/pipeline_ajedrez_dag.py` |
-| Configuración | Centraliza usuarios, filtros, rutas y umbrales | `config/config.yaml` |
+| Configuración | Centraliza seeds, filtros, rutas, umbrales y política de selección | `config/config.yaml` |
+| Selección | Arma la lista de jugadores por banda de ELO (seeds + oponentes validados) | `src/player_selection.py` |
 | Descarga | Consulta la PubAPI y guarda los JSON crudos | `src/download_data.py` |
 | Limpieza | Parsea PGN, deduplica, tipa y filtra partidas | `src/clean_data.py` |
 | Features | Crea variables derivadas de ELO, ritmo y apertura | `src/feature_engineering.py` |
@@ -173,44 +174,65 @@ partidas cuando Airflow lee este archivo: registra el grafo para que aparezca en
 no se generan corridas automáticas: la ventana de datos de Chess.com la define
 `download.until_month` en `config.yaml`, no `start_date`.
 
-## 4. `listar_usuarios`: entrada del fan-out
+## 4. `listar_jugadores`: selección automática y entrada del fan-out
 
 ```python
-@task(task_id="listar_usuarios")
-def listar_usuarios() -> list[str]:
+@task(task_id="listar_jugadores")
+def listar_jugadores() -> list[str]:
+    import pandas as pd
+    from src.player_selection import PlayerSelector, write_manifest
     from src.utils import load_config
 
     _enter_project_root()
     config = load_config(CONFIG_PATH)
-    usuarios = config["chess_com"]["usernames"]
-    log.info("Usuarios a descargar (%d): %s", len(usuarios), usuarios)
-    return usuarios
+    parquet_path = Path(config["paths"]["clean_parquet"])
+    selector = PlayerSelector(config)
+
+    if parquet_path.exists():
+        df = pd.read_parquet(parquet_path)          # extrae oponentes ya observados
+    else:
+        df = selector.discover_opponents_from_api() # bootstrap: descubre por la PubAPI
+
+    jugadores, result = selector.build_username_list(df)
+    write_manifest(result, Path(config["player_selection"]["manifest_path"]))
+    log.info("Jugadores a descargar (%d): %s", len(jugadores), jugadores)
+    return jugadores
 ```
 
-Lee los usernames desde el YAML y devuelve una lista. Los imports de módulos del proyecto
-se hacen dentro de cada tarea para que ocurran en el worker cuando la tarea se ejecuta, no
-solo cuando Airflow analiza el archivo para dibujar el DAG.
+Esta tarea ya no lee una lista fija del YAML: **selecciona los jugadores automáticamente por
+banda de ELO** (ver [`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)).
+Funciona en dos modos:
+
+- **Selección completa:** si existe el Parquet de una corrida anterior, extrae los oponentes
+  observados en el dataset, los valida contra la PubAPI y elige hasta 20 por banda.
+- **Bootstrap (primera corrida):** si no hay Parquet previo, descubre oponentes de los seeds
+  consultando la PubAPI (`discover_opponents_from_api`).
+
+En ambos casos la lista final es `seeds + seleccionados` (sin duplicados) y se guarda un
+manifiesto auditable en `data/processed/player_selection_manifest.yaml`. Los imports de
+módulos del proyecto se hacen dentro de la tarea para que ocurran en el worker cuando la
+tarea se ejecuta, no cuando Airflow analiza el archivo para dibujar el DAG.
 
 Ejemplo de retorno:
 
 ```python
-["RebeccaHarris", "erik", "AnnaCramling", ..., "hikaru"]
+["RebeccaHarris", "erik", "AnnaCramling", ..., "hikaru", "otro_oponente", ...]
 ```
 
-Esta lista es la entrada para el mapeo dinámico de la descarga. Así, el código no necesita
-escribir ocho tareas manualmente y se adapta si la configuración cambia de 8 a 10 cuentas.
+Esta lista es la entrada para el mapeo dinámico de la descarga. Su longitud es variable: el
+fan-out se adapta solo a cuántos jugadores devuelva la selección.
 
 ## 5. `.expand()`: mapeo dinámico y paralelismo controlado
 
 Al final de la función del DAG aparece:
 
 ```python
-usuarios = listar_usuarios()
-resultados = descarga_usuario.expand(username=usuarios)
+jugadores = listar_jugadores()
+resultados = descarga_usuario.expand(username=jugadores)
 ```
 
-`.expand()` es **dynamic task mapping**. Si `usuarios` contiene ocho nombres, Airflow crea
-ocho instancias de la misma tarea:
+`.expand()` es **dynamic task mapping**. Si `jugadores` contiene N nombres, Airflow crea N
+instancias de la misma tarea:
 
 ```text
 descarga_usuario[RebeccaHarris]
@@ -331,11 +353,11 @@ Recibe una lista de resultados, uno por cuenta. Separa las cuentas exitosas de l
 fallidas, suma partidas crudas y aplica los umbrales de `config.yaml`:
 
 ```yaml
-min_users_ok: 6
-min_total_games: 4000
+min_users_ok: 8
+min_total_games: 1500
 ```
 
-Si hay menos de seis cuentas exitosas o menos de 4.000 partidas crudas, lanza un error y
+Si hay menos de ocho cuentas exitosas o menos de 1.500 partidas crudas, lanza un error y
 el DAG queda en rojo. Si aprueba, devuelve solo las rutas Bronze exitosas.
 
 La decisión ocurre **después** del fan-out porque antes no se conoce el estado global. Es
@@ -472,7 +494,7 @@ cumple. Es un **quality gate** o portero de calidad.
 | Criterio | Verificación en código | Sentido de calidad |
 |---|---|---|
 | Clave única | `df["GameUrl"].is_unique` | Una fila por partida; sin duplicación. |
-| Volumen | `len(df) >= min_total_games * 0.9` | Dataset suficiente tras limpieza. |
+| Volumen | `len(df) >= quality.min_final_games` | Dataset suficiente tras limpieza. |
 | Ancho | `df.shape[1] >= 5` | Hay suficientes variables útiles. |
 | Tipos | numérico + categórico + fecha | Dataset apto para análisis y modelos. |
 | Nulos | solo columnas declaradas | Completitud conocida y documentada. |
@@ -483,9 +505,11 @@ Además valida que `WhiteElo` y `BlackElo` estén entre 100 y 3.600. Es una veri
 extra de precisión: ratings negativos, cero o absurdamente altos señalarían corrupción o
 un error de parseo.
 
-El criterio de volumen usa 90% de `min_total_games`. La descarga exige al menos 4.000
-partidas crudas; es razonable que limpieza elimine algunas por duplicación o invalidez.
-Con la configuración actual el mínimo final es 3.600, no el número genérico de 1.000.
+El criterio de volumen usa el mínimo explícito `quality.min_final_games` (hoy **1.500**),
+no un porcentaje de la descarga. Son contratos distintos: `download.min_total_games`
+(también 1.500) es el piso de la **descarga cruda**, mientras que `quality.min_final_games`
+es el piso del dataset **limpio y analizable**. La limpieza retiene ~99,85 %, así que el
+final queda cómodamente por encima del mínimo.
 
 Por último guarda un baseline de volumen en una Variable de Airflow. Si el volumen cambia
 más de 5% respecto a la última corrida exitosa, avisa en logs. No corta el DAG porque el
@@ -534,8 +558,8 @@ elimina al terminar correctamente la exportación.
 ## 13. La construcción del grafo
 
 ```python
-usuarios = listar_usuarios()
-resultados = descarga_usuario.expand(username=usuarios)
+jugadores = listar_jugadores()
+resultados = descarga_usuario.expand(username=jugadores)
 raw_paths = consolidar_descarga(resultados)
 raw_count = limpieza(raw_paths)
 raw_count_fe = feature_engineering(raw_count)
@@ -574,7 +598,7 @@ Airflow crea una instancia por username sin duplicar código.
 de Chess.com y evitar rate limiting.
 
 **¿Qué ocurre si falla una cuenta?** Se registra el fallo y se continúa; el DAG falla solo
-si no se cumplen los mínimos globales de seis usuarios y 4.000 partidas crudas.
+si no se cumplen los mínimos globales de ocho usuarios y 1.500 partidas crudas.
 
 **¿Cómo se sabe que el dato final es válido?** `verificar_calidad` corre antes de exportar
 y detiene el DAG si falla cualquiera de los siete criterios.

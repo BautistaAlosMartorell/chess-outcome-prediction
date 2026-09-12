@@ -37,9 +37,26 @@ corrida. Con el tope, **una corrida desde cero (sin `data/raw/` previo) produce 
 conjunto de partidas** que la corrida validada. Para retomar la ingesta en curso en
 entregas siguientes basta con mover el mes o ponerlo en `null`.
 
-### Jugadores configurados
+### Selección automática de jugadores
 
-Las ocho cuentas fueron verificadas contra la API y aportan niveles distintos:
+La primera tarea del DAG (`listar_jugadores`) selecciona automáticamente los jugadores
+a descargar. Funciona en dos modos:
+
+1. **Bootstrap (primera corrida):** si no existe un parquet procesado de una corrida
+   anterior, usa los 8 *seed_usernames* del config — cuentas públicas verificadas que
+   cubren desde nivel club (~1400) hasta élite mundial (~3400).
+2. **Selección completa (corridas siguientes):** lee el parquet de la corrida anterior,
+   extrae los oponentes observados, los valida contra la PubAPI de Chess.com (perfil
+   activo, al menos 15 partidas rated elegibles) y selecciona hasta 20 jugadores por
+   cada una de las 5 bandas de ELO (principiante, intermedio, avanzado, experto,
+   top_mundial), con una semilla aleatoria fija (`random_state: 42`) para
+   reproducibilidad.
+
+Los 8 seeds siempre están incluidos en la lista final. La selección se guarda en un
+manifiesto auditable (`data/processed/player_selection_manifest.yaml`). La configuración
+viva está en `config/config.yaml` bajo `player_selection`.
+
+**Seeds iniciales:**
 
 - `RebeccaHarris` — nivel club, alrededor de 1400.
 - `erik` — nivel club/intermedio, alrededor de 1700.
@@ -49,9 +66,6 @@ Las ocho cuentas fueron verificadas contra la API y aportan niveles distintos:
 - `IMRosen` — maestro internacional, alrededor de 2900.
 - `chessbrah` — cuenta de gran maestro/streaming, alrededor de 3200.
 - `hikaru` — élite mundial, alrededor de 3400.
-
-Los ratings son orientativos y cambian con el tiempo. La configuración viva está en
-`config/config.yaml`.
 
 ### Limitación del rating (fuga de información hacia el resultado)
 
@@ -67,15 +81,15 @@ información hacia `resultado`, de magnitud pequeña pero sistemática, concentr
 justamente en las partidas de rating parejo. Se documenta como limitación conocida de
 la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado.
 
-### Limitación de la muestra (no es una muestra aleatoria de Chess.com)
+### Limitación de la muestra
 
-Las 8 cuentas configuradas son jugadores de nivel club a élite mundial, varias de ellas
-streamers de alto seguimiento, no una muestra aleatoria de la población general de
-Chess.com. Por construcción del método de descarga, el 100 % de las filas del dataset
-contiene al menos una de estas 8 cuentas, y la mediana de `WhiteElo` es 2778 (nivel
-Gran Maestro). Las conclusiones de las próximas entregas se formulan sobre "jugadores
-de nivel intermedio a élite mundial en Chess.com", no sobre "ajedrez online" en
-general.
+La muestra no es una selección aleatoria de la población general de Chess.com. Los
+jugadores se seleccionan a partir de los oponentes observados de los 8 seeds, lo que
+introduce un sesgo de red: los candidatos tienden a estar en los mismos pools de
+emparejamiento que los seeds. La selección por banda de ELO mitiga parcialmente la
+concentración en niveles altos, pero no garantiza representatividad. Las conclusiones
+de las próximas entregas se formulan sobre el universo de jugadores alcanzados por
+este método, no sobre "ajedrez online" en general.
 
 ## Por qué la fuente cumple los siete criterios
 
@@ -95,7 +109,7 @@ general.
 config/config.yaml                         parámetros y cuentas de Chess.com
 data/raw/                                  JSON regenerables, ignorados por Git
 data/processed/                            Parquet, sample y resumen, ignorados por Git
-dags/pipeline_ajedrez_dag.py               DAG de Airflow: descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
+dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
@@ -103,8 +117,10 @@ notebooks/01_data_ingestion_verification.ipynb
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas
+src/player_selection.py                    selección automática y reproducible de jugadores por banda de ELO
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
+tests/test_player_selection.py             pruebas del selector de jugadores
 ```
 
 ## Diccionario de datos
