@@ -18,6 +18,7 @@ from src.player_selection import (
     PlayerSelector,
     SelectionResult,
     apply_selection_to_config,
+    bootstrap_username_list,
     extract_candidate_pools,
     write_manifest,
 )
@@ -241,6 +242,70 @@ class PlayerSelectionTest(unittest.TestCase):
             self.assertIn("# comentario original", updated)
             self.assertTrue(yaml.safe_load(updated)["other"])
             self.assertEqual(yaml.safe_load(updated)["chess_com"]["usernames"], usernames)
+
+    # -- New tests for lenient selection, build_username_list, and bootstrap --
+
+    def test_select_lenient_tolerates_incomplete_bands(self) -> None:
+        """select_lenient_from_dataframe logs warnings but doesn't raise."""
+        config = self.config_for_test()
+        config["player_selection"]["target_per_band"] = {"intermedio": 5}
+        selector = PlayerSelector(config, api_get=lambda _: {}, sleep=lambda _: None)
+
+        with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
+            # Only 2 candidates in pool, target is 5 → incomplete but no error.
+            result = selector.select_lenient_from_dataframe(self.candidate_dataframe(2))
+
+        self.assertFalse(result.is_complete)
+        self.assertEqual(len(result.selected["intermedio"]), 2)
+
+    def test_build_username_list_returns_seeds_first_then_selected(self) -> None:
+        """build_username_list combines seeds + selected, deduplicated."""
+        config = self.config_for_test()
+        config["player_selection"]["target_per_band"] = {"intermedio": 2}
+        selector = PlayerSelector(config, api_get=lambda _: {}, sleep=lambda _: None)
+
+        with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
+            combined, result = selector.build_username_list(self.candidate_dataframe(6))
+
+        # Seeds come first.
+        seeds = config["player_selection"]["seed_usernames"]
+        self.assertEqual(combined[: len(seeds)], seeds)
+        # Selected players follow.
+        self.assertGreater(len(combined), len(seeds))
+        # No duplicates (case-insensitive).
+        normalised = [u.casefold() for u in combined]
+        self.assertEqual(len(normalised), len(set(normalised)))
+
+    def test_build_username_list_deduplicates_seed_in_selected(self) -> None:
+        """If a seed appears in selected, it's not duplicated."""
+        config = self.config_for_test()
+        config["player_selection"]["target_per_band"] = {"intermedio": 1}
+        selector = PlayerSelector(config, api_get=lambda _: {}, sleep=lambda _: None)
+
+        # Dataframe where the only non-seed opponent is another seed.
+        df = pd.DataFrame(
+            {
+                "White": ["RebeccaHarris", "erik"],
+                "Black": ["erik", "RebeccaHarris"],
+                "WhiteElo": [1400, 1700],
+                "BlackElo": [1700, 1400],
+            }
+        )
+        with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
+            combined, result = selector.build_username_list(df)
+
+        # Seeds should not be duplicated even if accepted as candidates.
+        normalised = [u.casefold() for u in combined]
+        self.assertEqual(len(normalised), len(set(normalised)))
+
+    def test_bootstrap_returns_only_seeds(self) -> None:
+        """bootstrap_username_list returns a copy of seed_usernames."""
+        config = self.config_for_test()
+        seeds = config["player_selection"]["seed_usernames"]
+        result = bootstrap_username_list(config)
+        self.assertEqual(result, seeds)
+        # Must be a copy, not the same list.
+        self.assertIsNot(result, seeds)
 
 
 if __name__ == "__main__":

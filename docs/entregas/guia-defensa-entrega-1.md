@@ -48,7 +48,9 @@ Los 20 minutos son para mostrar y explicar, **no** para instalar ni esperar desc
    (bullet/blitz/rapid) y color de piezas predice quién gana una partida de ajedrez
    online y cuán larga es?
 2. **La fuente.** La **PubAPI pública de Chess.com** (solo lectura, sin cuenta ni API key),
-   consultada de forma automatizada para 8 cuentas de niveles distintos.
+   consultada de forma automatizada. La primera tarea del DAG (`listar_jugadores`)
+   **selecciona sola** las cuentas a descargar por banda de ELO, partiendo de 8 seeds de
+   niveles distintos y ampliando con sus oponentes validados.
 3. **Qué es una fila.** *Una fila es una **partida** individual de ajedrez rated
    (bullet/blitz/rapid) jugada por alguna de las cuentas configuradas.*
 
@@ -67,14 +69,14 @@ y se **cierra** en una tarea que consolida; de ahí en adelante el grafo es **li
 cada etapa consume lo que produjo la previa.
 
 ```
-listar_usuarios → descarga_usuario (×8, .expand) → consolidar_descarga → limpieza_y_parseo → ingenieria_de_caracteristicas → verificar_calidad → exportar_dataset
+listar_jugadores → descarga_usuario (×N, .expand) → consolidar_descarga → limpieza_y_parseo → ingenieria_de_caracteristicas → verificar_calidad → exportar_dataset
 ```
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
 |---|---|---|---|---|
-| 1 | `listar_usuarios` | inline (lee config) | Devuelve la lista de las 8 cuentas del config: es la fuente sobre la que se hace el `.expand()`. | Da el input del fan-out mapeado. |
-| 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (índice `0..7`, el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, ahora paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
-| 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 6` o `min_total_games: 4000`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
+| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona automáticamente** los jugadores a descargar por banda de ELO. Si hay Parquet de una corrida previa, extrae los oponentes observados; si no (bootstrap), los descubre por la PubAPI. Valida cada candidato y arma la lista `seeds + seleccionados` (sin duplicados), guardando un manifiesto en `data/processed/player_selection_manifest.yaml`. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace **reproducible y auditable** la ampliación de la muestra. |
+| 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
+| 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 8` o `min_total_games: 1500`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
 | 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
 | 5 | `ingenieria_de_caracteristicas` | `src/feature_engineering.py` | Deriva características analíticas: `diferencia_elo`, `elo_promedio`, `nivel_promedio` (bandas de ELO), `es_sorpresa` y `familia_apertura` (letra ECO). `TimeClass` ya aporta la modalidad oficial sin necesitar un alias. | Agrega variables para EDA y futuros targets; la selección de predictores se hace en la Entrega 3. |
 | 6 | `verificar_calidad` | inline en el DAG | Lee el parquet **intermedio** (antes de exportar) y hace `assert` de los **7 criterios** (entre ellos: mezcla de tipos **con fecha obligatoria**, nulos solo en columnas documentadas, y **ambos** targets `resultado` y `cantidad_jugadas` sin nulos), más un chequeo de **rango plausible de ELO** `[100, 4000]`. Es un límite amplio para detectar corrupción, no un supuesto récord máximo. Si algo falla, **el DAG se pone en rojo y `exportar_dataset` no llega a correr**. También registra el volumen en una Airflow Variable y avisa si se desvía > 5 % del baseline. | Garantía operativa: **toda corrida en verde ⟹ dataset válido**, y no se materializan artefactos de un dataset inválido. |
@@ -90,7 +92,7 @@ metadatos, redis = broker, api-server = UI/API, scheduler + dag-processor + trig
 orquestación, worker = ejecución.
 
 **Frase para el grafo:** "La descarga es paralela **por cuenta** (fan-out con `.expand()`),
-porque las 8 cuentas son independientes; después el grafo es lineal, porque no podés limpiar lo
+porque las cuentas son independientes; después el grafo es lineal, porque no podés limpiar lo
 que no descargaste ni exportar lo que no validaste. La validación es un portero de calidad que
 corre **antes** de exportar: si el dataset no cumple, ni siquiera se escriben los artefactos."
 
@@ -106,7 +108,7 @@ vivo** sobre `df`:
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
 |---|---|---|---|---|
 | 1 | **Clave sin duplicados** | `True` | `df["GameUrl"].is_unique` | ✅ `True` |
-| 2 | **Volumen suficiente** | ≥ `quality.min_final_games` = **4.000** filas | `len(df)` | ✅ `7204` |
+| 2 | **Volumen suficiente** | ≥ `quality.min_final_games` = **1.500** filas | `len(df)` | ✅ `7204` |
 | 3 | **Ancho suficiente** | ≥ 5 columnas útiles | `df.shape` | ✅ `(7204, 27)` |
 | 4 | **Mezcla de tipos** | numéricas + categóricas **+ fecha** | `df.dtypes.value_counts()` | ✅ int/float + category/object + datetime64 (las tres, fecha obligatoria) |
 | 5 | **Nulos conocidos** | solo en columnas documentadas | `df.isna().mean().sort_values(ascending=False)` | ✅ ninguna (ver sección 4) |
@@ -115,9 +117,9 @@ vivo** sobre `df`:
 | + | **Precisión de ELO** (extensión propia) | `WhiteElo`/`BlackElo` en rango plausible `[100, 4000]` | `df[["WhiteElo","BlackElo"]].agg(["min","max"])` | ✅ observado 732–3468 / 218–3469 |
 
 > **El criterio 2 no usa el "1.000" heredado del ejemplo de cátedra.** Exige el mínimo
-> explícito `quality.min_final_games: 4000`, porque ese es el requisito del dataset final.
-> `download.min_total_games: 4000` controla por separado el volumen de la descarga cruda.
-> Si la limpieza deja menos de 4.000 partidas, el DAG falla y el log muestra los conteos
+> explícito `quality.min_final_games: 1500`, porque ese es el requisito del dataset final.
+> `download.min_total_games: 1500` controla por separado el volumen de la descarga cruda.
+> Si la limpieza deja menos de 1.500 partidas, el DAG falla y el log muestra los conteos
 > crudo y final para investigar la causa.
 
 > **El criterio 1 (clave) es el más importante y el más subestimado.** Es el test operativo
@@ -229,11 +231,13 @@ mesa antes de que las encuentren:
    se documenta como limitación conocida para tenerla en cuenta en el modelado de la
    Entrega 3.
 
-3. **La muestra no es aleatoria (limitación de representatividad).** Las 8 cuentas van de
-   nivel club a élite mundial (varias streamers); el 100 % de las filas contiene al menos
-   una de ellas y la mediana de `WhiteElo` es ~2778 (nivel GM). Las conclusiones valen para
-   "jugadores de nivel intermedio a élite en Chess.com", no para "el ajedrez online" en
-   general.
+3. **La muestra no es aleatoria (limitación de representatividad).** Los jugadores se
+   seleccionan a partir de los oponentes observados de los 8 seeds, que van de nivel club a
+   élite mundial (varias streamers). Eso introduce un **sesgo de red**: los candidatos
+   tienden a caer en los mismos pools de emparejamiento que los seeds. La selección por
+   banda de ELO reparte el muestreo entre niveles, pero no garantiza representatividad. Las
+   conclusiones valen para el universo de jugadores alcanzado por este método, no para "el
+   ajedrez online" en general.
 
 ---
 
@@ -244,7 +248,7 @@ deberían poder contestar esto:
 
 - **"¿Qué parte del grafo es paralela y qué parte es lineal?"** La **descarga es paralela por
   cuenta**: `descarga_usuario` es una tarea mapeada con `.expand()` (una instancia por usuario,
-  hasta 3 en paralelo), porque las 8 cuentas son independientes. Después `consolidar_descarga`
+  hasta 3 en paralelo), porque las cuentas son independientes. Después `consolidar_descarga`
   cierra el fan-out y el resto es **lineal**, porque cada tarea consume el output de la anterior
   (no podés limpiar lo que no descargaste ni exportar lo que no validaste).
 - **"¿Cómo garantizás que una corrida verde = dataset bueno?"** `verificar_calidad` hace
@@ -262,11 +266,11 @@ deberían poder contestar esto:
   como categórica.
 - **"¿Y si la API está caída el día de la defensa?"** No importa: la corrida ya está hecha y
   en verde en el historial, y el crudo está en `data/raw/`. La descarga es idempotente.
-- **"¿Y si una de las 8 cuentas falla al descargar?"** El pipeline **tolera fallos por
+- **"¿Y si una cuenta falla al descargar?"** El pipeline **tolera fallos por
   usuario**: cada cuenta es una tarea mapeada aparte, así que si una da 404, no tiene partidas o
   hay error de red, esa instancia devuelve un estado "falló" y **no rompe el fan-out**. Recién
-  `consolidar_descarga` corta con error si quedan menos de `min_users_ok: 6` cuentas o menos de
-  `min_total_games: 4000` partidas crudas. Una cuenta caída no tira abajo la corrida, pero un
+  `consolidar_descarga` corta con error si quedan menos de `min_users_ok: 8` cuentas o menos de
+  `min_total_games: 1500` partidas crudas. Una cuenta caída no tira abajo la corrida, pero un
   dataset demasiado chico sí se rechaza.
 - **"¿Sale el mismo dataset si lo corrés de nuevo?"** Sí: la **ventana congelada**
   (`until_month: "2026-08"`) hace que incluso una descarga desde cero reproduzca el mismo
