@@ -216,10 +216,11 @@ separación cronológica entre entrenamiento y prueba.
 **Modelado.** No entra automáticamente como fecha cruda. Primero debe existir una hipótesis
 temporal. Aunque no sea predictor, debe conservarse para hacer una validación temporal.
 
-**Anomalía conocida.** El dataset contiene una partida con `Date = 2026-09-01` dentro del
-archivo mensual de agosto de GothamChess. El PGN y `end_time` también indican el 1 de
-septiembre UTC. `download.until_month: "2026-08"` limita qué archivo mensual se consulta,
-pero no garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de septiembre.
+**Anomalía conocida.** La corrida ampliada contiene 286 partidas con
+`Date = 2026-09-01` (0,31% del dataset) dentro de archivos mensuales de agosto. El patrón
+aparece en varias cuentas y corresponde al límite horario UTC de Chess.com.
+`download.until_month: "2026-08"` limita qué archivo mensual se consulta, pero no
+garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de septiembre.
 
 ### `White`
 
@@ -229,9 +230,11 @@ pero no garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de 
 
 **Para qué sirve.** Perfiles por jugador, auditoría de la muestra y análisis de color.
 
-**Modelado.** En un modelo general puede hacer que el algoritmo memorice a las ocho cuentas
-que originan la muestra. Sólo debe usarse en un producto explícitamente personalizado y con
-una partición que impida que el mismo jugador contamine entrenamiento y evaluación.
+**Modelado.** En un modelo general puede hacer que el algoritmo memorice identidades y
+patrones de la red de jugadores muestreada. La corrida ampliada contiene 53.655 usuarios
+distintos, no sólo las cuentas seleccionadas, porque cada partida también incorpora al
+oponente real. Sólo debe usarse en un producto explícitamente personalizado y con una
+partición que impida que el mismo jugador contamine entrenamiento y evaluación.
 
 ### `Black`
 
@@ -314,7 +317,7 @@ al presentar un gráfico; no requiere otra columna en el dataset.
 frecuentes y fuente de `familia_apertura`.
 
 **Modelado.** Sólo está disponible después de que se jugaron los primeros movimientos. No
-puede entrar en un modelo estrictamente pre-partida. En un modelo post-apertura tiene 323
+puede entrar en un modelo estrictamente pre-partida. En un modelo post-apertura tiene 454
 categorías observadas, por lo que necesita manejo de categorías raras y validación fuera de
 muestra.
 
@@ -335,7 +338,7 @@ https://www.chess.com/openings/Sicilian-Defense-Delayed-Alapin-Variation-3...Nf6
 **Para qué sirve.** Es mucho más comprensible para el usuario que `B50` y permite explicar
 resultados por apertura concreta.
 
-**Limitación.** Tiene 1.856 valores distintos en 7.204 filas. Muchas etiquetas incluyen
+**Limitación.** Tiene 6.536 valores distintos en 93.669 filas. Muchas etiquetas incluyen
 variaciones y números de movimiento, por lo que los grupos pueden ser muy pequeños.
 
 **Modelado.** No se recomienda en un baseline. Una asociación aparente alta puede surgir
@@ -530,13 +533,12 @@ E → India
 otro o ausente → Desconocida
 ```
 
-**Para qué sirve.** Reducir 323 códigos ECO a cinco grupos principales, obtener tamaños de
+**Para qué sirve.** Reducir 454 códigos ECO a cinco grupos principales, obtener tamaños de
 grupo razonables y comunicar patrones generales.
 
-**Modelado.** Sólo post-apertura. En el primer diagnóstico su asociación fue débil:
-`eta² = 0,012` respecto de `cantidad_jugadas`, y la distribución de resultados cambió poco
-entre familias. Esto no obliga a descartarla todavía: debe formularse una hipótesis previa y
-comparar modelos con y sin apertura fuera de muestra.
+**Modelado.** Sólo post-apertura. En la corrida ampliada su asociación con
+`cantidad_jugadas` fue débil (`eta² = 0,004`). Sale del baseline pre-partida y queda como
+experimento separado: comparar modelos con y sin apertura fuera de muestra.
 
 ### Columnas derivadas descartadas
 
@@ -710,41 +712,41 @@ predictores pre-partida.
 
 ---
 
-## 9. Primer diagnóstico cuantitativo de las 7.204 partidas
+## 9. Diagnóstico cuantitativo de las 93.669 partidas
 
 Estos números son un **screening inicial**, no la selección definitiva de features. Siguen
 la idea de que el número sostiene una decisión y el gráfico explica su forma.
 
 | Relación explorada | Medida | Resultado inicial | Lectura prudente |
 |---|---:|---:|---|
-| `diferencia_elo` y `resultado` | η² de la diferencia agrupada por resultado | 0,216 | Zona amarilla: señal relevante, requiere modelado/control. |
-| `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,214 / 0,162 | Asociación positiva modesta y posible no linealidad. |
-| `TimeClass` y `cantidad_jugadas` | η² | 0,035 | Rojo según el semáforo de la materia. |
-| `TimeControl` y `cantidad_jugadas` | η² | 0,068 | Amarillo; el control exacto retiene más detalle. |
-| `familia_apertura` y `cantidad_jugadas` | η² | 0,012 | Rojo; las familias explican poca variación global. |
-| `Termination` y `cantidad_jugadas` | η² | 0,240 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
+| `diferencia_elo` y `resultado` | η² de la diferencia agrupada por resultado | 0,098 | Zona amarilla: señal relevante, no suficiente por sí sola. |
+| `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,256 / 0,254 | Asociación positiva modesta y consistente. |
+| `TimeClass` y `cantidad_jugadas` | η² | 0,020 | Rojo según el semáforo de la materia. |
+| `TimeControl` y `cantidad_jugadas` | η² | 0,038 | Rojo; el control exacto explica poca variación global. |
+| `familia_apertura` y `cantidad_jugadas` | η² | 0,004 | Rojo; las familias explican muy poca variación global. |
+| `Termination` y `cantidad_jugadas` | η² | 0,206 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
 
 Promedios de longitud observados:
 
 | Modalidad | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Bullet | 3.893 | 81,41 | 77 |
-| Blitz | 3.090 | 93,50 | 88 |
-| Rapid | 221 | 68,10 | 58 |
+| Bullet | 42.075 | 74,36 | 70 |
+| Blitz | 37.670 | 82,60 | 77 |
+| Rapid | 13.924 | 70,36 | 65 |
 
-Que Rapid resulte más corto en movimientos no significa que el ritmo rápido produzca
-partidas más largas ni que Rapid las acorte. La categoría tiene sólo 221 casos y está
-mezclada con diferencias de jugador, rating, fecha y selección de la muestra.
+Que Blitz tenga una media mayor no significa que la modalidad cause partidas más largas.
+Las categorías están mezcladas con diferencias de jugador, rating, fecha y selección de
+la muestra, y el tamaño de efecto global queda en zona roja.
 
 Promedios de longitud por familia:
 
 | Familia | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Flanco | 2.500 | 87,30 | 82 |
-| Semiabierta | 2.003 | 81,10 | 76 |
-| Abierta | 1.051 | 85,19 | 79 |
-| Cerrada | 1.162 | 92,88 | 89 |
-| India | 488 | 87,58 | 83,5 |
+| Flanco | 27.445 | 79,05 | 75 |
+| Semiabierta | 29.619 | 76,01 | 71 |
+| Abierta | 18.659 | 73,86 | 68 |
+| Cerrada | 14.104 | 78,44 | 74 |
+| India | 3.842 | 81,85 | 76 |
 
 Las diferencias visuales o de medias deben acompañarse con tamaño de efecto y control de
 posibles terceras variables antes de transformarse en una conclusión.
