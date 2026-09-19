@@ -95,7 +95,7 @@ Cuatro entregas parciales, una por unidad, más la exposición final.
 |---------|-------|-------------------|
 | Definición | 12/08 (hoy) | Grupo, pregunta y fuente de datos |
 | 1 · Ingeniería de datos | 02/09 | Pipeline automatizado que produce tu dataset |
-| 2 · Análisis exploratorio | 16/09 | Exploración, hipótesis y hallazgos sobre tus datos |
+| 2 · Análisis exploratorio | 23/09 | Exploración, hipótesis y hallazgos sobre tus datos |
 | 3 · Modelado | 14/10 | Objetivo predictivo, modelos comparados y métricas |
 | 4 · Visualización e integración | 04/11 | Visualizaciones y aplicación funcionando |
 | Exposición final | 18/11 | Presentación del proyecto completo y demo en vivo |

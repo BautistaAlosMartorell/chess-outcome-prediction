@@ -28,7 +28,7 @@ el doble que los dos parciales. Se aprueba con 60 %.
 |---|---|---|
 | Definición | 12/08/2026 | Grupo, pregunta y fuente de datos |
 | 1 · Ingeniería de datos | **02/09/2026** | Pipeline automatizado que produce el dataset |
-| 2 · Análisis exploratorio | **16/09/2026** | Exploración, hipótesis y hallazgos |
+| 2 · Análisis exploratorio | **23/09/2026** | Exploración, hipótesis y hallazgos |
 | 3 · Modelado | **14/10/2026** | Objetivo predictivo, modelos comparados y métricas |
 | 4 · Visualización e integración | **04/11/2026** | Visualizaciones y aplicación funcionando |
 | Exposición final | 18/11/2026 | Proyecto completo y demo en vivo |
