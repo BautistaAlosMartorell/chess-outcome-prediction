@@ -17,11 +17,9 @@ Parquet — no son estimaciones ni heredados de la corrida piloto de 8 cuentas.
 
 ## 0. Antes de entrar al aula (checklist físico)
 
-- [ ] **Notebook de EDA ejecutado de punta a punta**, con salidas guardadas. Hoy el repo
-      sólo tiene `notebooks/01_data_ingestion_verification.ipynb`; falta crear el
-      notebook de la Entrega 2 (por convención del repo, algo como
-      `notebooks/02_eda_hipotesis.ipynb`) y correr ahí las celdas ya recalculadas.
-- [ ] Los cuatro gráficos de las fichas de hipótesis (sección 3) generados a partir de
+- [x] **Notebook de EDA ejecutado de punta a punta**, con salidas guardadas:
+      `notebooks/02_eda_hipotesis.ipynb`.
+- [x] Los cuatro gráficos de las fichas de hipótesis (sección 3) generados a partir de
       ese notebook.
 - [ ] Este documento impreso o abierto en una pestaña aparte, para no tener que
       recalcular nada en vivo.
@@ -29,9 +27,8 @@ Parquet — no son estimaciones ni heredados de la corrida piloto de 8 cuentas.
       pregunte por el pipeline de la Entrega 1) — el dataset ya existe en
       `data/processed/`.
 
-> Si el notebook de EDA no llegó a armarse antes del 23/09: **vení igual con este
-> documento y decilo**. Los números y las decisiones ya están; lo que falta es
-> empaquetarlos en celdas ejecutables.
+> Antes de entrar, abrir el notebook ya ejecutado y esta guía en pestañas separadas. No
+> hace falta recalcular nada durante los 20 minutos.
 
 ---
 
@@ -167,8 +164,8 @@ antes de que la partida ocurra?*
 |---|---|---|---|---|
 | `diferencia_elo` | Balance de rating (blancas − negras) | 🟡 | Entra como predictor principal de `resultado` | Parcial — hoy es el rating **posterior** a la partida (limitación de Chess.com, documentada desde la Entrega 1); conceptualmente sí existiría, en este dataset hereda fuga |
 | `elo_promedio` | Nivel general de la partida | 🟡 | Entra, misma advertencia que `diferencia_elo` | Parcial — misma fuga temporal |
-| `tiempo_base_seg` | Segundos base del control de tiempo | 🟢 | Entra, en escala log dado el skew 2,49 | Sí |
-| `incremento_seg` | Segundos de incremento por jugada | 🟡 | Entra, discretizado o en log dado el skew 7,08 | Sí |
+| `tiempo_base_seg` | Segundos base del control de tiempo | 🟢 | Entra, en escala log dado el skew 3,64 | Sí |
+| `incremento_seg` | Segundos de incremento por jugada | 🟡 | Entra, discretizado o en log dado el skew 6,84 | Sí |
 | `TimeClass` | Modalidad oficial (bullet/blitz/rapid) | 🟢 | Entra | Sí |
 | `Date` | Fecha de la partida | 🟡 | No entra como feature cruda; se reserva para partición temporal train/test | Sí, pero su uso es de partición, no de predictor directo |
 | `familia_apertura` | Grupo de apertura (5 categorías) | 🔴 | Sale del baseline (η² = 0,004 con `cantidad_jugadas`, ver H4); sólo en un escenario "post-apertura" aparte | No — se conoce recién tras jugarse la apertura |
@@ -217,9 +214,10 @@ sirven en un modelo estrictamente pre-partida (sí en uno "post-apertura", decla
 tal).
 
 **Qué quedó inconcluso y qué haría falta para resolverlo.**
-1. El notebook ejecutable de esta entrega todavía no existe (sección 0) — los números
-   están calculados y verificados sobre la corrida del 18/09 (93.669 partidas), falta el
-   envase.
+1. Chess.com informa el rating posterior a cada partida. Para eliminar esa fuga haría
+   falta reconstruir cronológicamente el rating previo desde historiales completos o usar
+   una fuente que exponga rating previo y variación por separado; el notebook la mantiene
+   visible como limitación para la Entrega 3.
 2. La banda `principiante` quedó con 13 de los 20 jugadores objetivo en esta corrida (el
    selector lo tolera y sigue, ver sección 1); es la banda con menos partidas del dataset
    (10,91 % del total) y la que menos confianza estadística tiene si se la analiza sola.
@@ -228,7 +226,7 @@ tal).
 
 ## 6. Cómo se aprueba (la vara, para autochequeo)
 
-- [ ] El notebook corre entero y las salidas están guardadas *(pendiente crear — ver §0)*.
+- [x] El notebook corre entero y las salidas están guardadas.
 - [x] El grupo puede describir el dataset con números, no con adjetivos (sección 2).
 - [x] Las cuatro fichas están completas y cada una termina en una decisión (sección 3).
 - [x] La tabla de columnas candidatas existe y cada fila pasó el chequeo de fuga (sección 4).
