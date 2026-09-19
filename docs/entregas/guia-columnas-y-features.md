@@ -719,7 +719,7 @@ la idea de que el número sostiene una decisión y el gráfico explica su forma.
 
 | Relación explorada | Medida | Resultado inicial | Lectura prudente |
 |---|---:|---:|---|
-| `diferencia_elo` y `resultado` | η² de la diferencia agrupada por resultado | 0,098 | Zona amarilla: señal relevante, no suficiente por sí sola. |
+| `diferencia_elo` y `resultado` | V de Cramér sobre bandas de diferencia | 0,217 | Zona amarilla: señal relevante, no suficiente por sí sola. |
 | `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,256 / 0,254 | Asociación positiva modesta y consistente. |
 | `TimeClass` y `cantidad_jugadas` | η² | 0,020 | Rojo según el semáforo de la materia. |
 | `TimeControl` y `cantidad_jugadas` | η² | 0,038 | Rojo; el control exacto explica poca variación global. |

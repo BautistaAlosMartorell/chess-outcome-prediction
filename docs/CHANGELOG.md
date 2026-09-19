@@ -14,7 +14,7 @@
 
 ### Resultados principales
 
-- Diferencia de ELO y resultado: η² = 0,098, señal moderada.
+- Diferencia de ELO y resultado: V de Cramér = 0,217, señal moderada.
 - Diferencia absoluta de ELO y duración: Pearson = 0,031 y Spearman = 0,060; hipótesis
   refutada.
 - Modalidad y terminación por tiempo: η² = 0,075; Bullet 40,9%, Blitz 22,2% y Rapid 7,4%.

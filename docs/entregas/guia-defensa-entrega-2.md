@@ -115,9 +115,9 @@ una columna del modelo (H4), y quedan dos refutadas/matizadas (H2 y H3) para no 
 |---|---|
 | **Afirmación** | A mayor `diferencia_elo` (blancas − negras), mayor proporción de victorias blancas; a menor (más negativa), mayor proporción de victorias negras. |
 | **Qué esperábamos ver** | Una transición ordenada de `resultado` al recorrer bandas de `diferencia_elo`. |
-| **Medida y gráfico** | η² de `diferencia_elo` agrupada por `resultado`; barras apiladas por banda de diferencia. |
-| **Número** | **η² = 0,098** (bajó de 0,216 en la corrida piloto de 8 cuentas) |
-| **Zona del semáforo** | 🟡 Amarilla — señal relevante, no aplastante: el rating explica una porción real de quién gana, pero deja bastante varianza sin explicar. Más débil que en la corrida piloto porque ahí la muestra eran casi todos jugadores de élite muy dispares entre sí; con las cinco bandas de ELO representadas, hay más partidas parejas donde el rating solo no decide. |
+| **Medida y gráfico** | V de Cramér entre bandas de `diferencia_elo` y `resultado`; barras apiladas por banda de diferencia. |
+| **Número** | **V de Cramér = 0,217** |
+| **Zona del semáforo** | 🟡 Amarilla — asociación relevante, no aplastante: el resultado cambia de manera ordenada entre bandas de diferencia, pero el rating no decide por sí solo quién gana. |
 | **Decisión** | **Confirmada con matiz.** `diferencia_elo` entra como predictor principal de `resultado`, pero no alcanza sola: conviene complementar con `TimeClass` o `nivel_promedio` (máximo un control adicional) antes de sacar conclusiones fuertes. |
 
 ### H2 — Partidas parejas y longitud (refutada)
@@ -140,7 +140,7 @@ una columna del modelo (H4), y quedan dos refutadas/matizadas (H2 y H3) para no 
 | **Medida y gráfico** | Proporción de `Termination == "time"` por `TimeClass` (barras normalizadas) + η² de esa relación. |
 | **Número** | Proporciones: Bullet **40,9 %** · Blitz **22,2 %** · Rapid **7,4 %** (n = 42.075 / 37.670 / 13.924). η² (TimeClass ~ indicador de tiempo) = **0,075** |
 | **Zona del semáforo** | 🟡 Amarilla — cambió de zona respecto a la corrida piloto (ahí daba η² = 0,012, roja). Con 93.669 partidas y Rapid ya con 13.924 casos (antes 221), el efecto se sostiene y cruza el umbral de "moderado": esta vez el gráfico y el número están de acuerdo. |
-| **Decisión** | **Confirmada.** El orden Bullet > Blitz > Rapid se sostiene con un tamaño de efecto moderado y ya no depende de una banda con pocas observaciones. `TimeClass` entra como predictor de fuga temporal / terminación, no solo de `resultado`. |
+| **Decisión** | **Confirmada para el mecanismo de terminación.** El orden Bullet > Blitz > Rapid se sostiene con un tamaño de efecto moderado y ya no depende de una banda con pocas observaciones. Esto no demuestra por sí solo señal de `TimeClass` sobre los dos targets del proyecto; esa asociación se informa aparte en la tabla de candidatas. |
 
 ### H4 — Familia de apertura y longitud (decide sobre una columna del modelo)
 
@@ -160,23 +160,23 @@ una columna del modelo (H4), y quedan dos refutadas/matizadas (H2 y H3) para no 
 Chequeo de fuga aplicado a cada fila: *¿esta columna existiría en el momento de predecir,
 antes de que la partida ocurra?*
 
-| Columna | Qué mide | Zona | Decisión | ¿Existiría al predecir? |
+| Columna | Qué mide | Evidencia EDA | Decisión | ¿Existiría al predecir? |
 |---|---|---|---|---|
-| `diferencia_elo` | Balance de rating (blancas − negras) | 🟡 | Entra como predictor principal de `resultado` | Parcial — hoy es el rating **posterior** a la partida (limitación de Chess.com, documentada desde la Entrega 1); conceptualmente sí existiría, en este dataset hereda fuga |
-| `elo_promedio` | Nivel general de la partida | 🟡 | Entra, misma advertencia que `diferencia_elo` | Parcial — misma fuga temporal |
-| `tiempo_base_seg` | Segundos base del control de tiempo | 🟢 | Entra, en escala log dado el skew 3,64 | Sí |
-| `incremento_seg` | Segundos de incremento por jugada | 🟡 | Entra, discretizado o en log dado el skew 6,84 | Sí |
-| `TimeClass` | Modalidad oficial (bullet/blitz/rapid) | 🟢 | Entra | Sí |
-| `Date` | Fecha de la partida | 🟡 | No entra como feature cruda; se reserva para partición temporal train/test | Sí, pero su uso es de partición, no de predictor directo |
-| `familia_apertura` | Grupo de apertura (5 categorías) | 🔴 | Sale del baseline (η² = 0,004 con `cantidad_jugadas`, ver H4); sólo en un escenario "post-apertura" aparte | No — se conoce recién tras jugarse la apertura |
-| `ECO` / `Opening` | Código/nombre detallado de apertura | 🔴 | Sale del baseline (454 / 6.536 categorías, alta cardinalidad — creció respecto a la corrida piloto por la mayor diversidad de jugadores) | No — mismo motivo que `familia_apertura` |
-| `Termination` | Motivo de finalización | 🔴 | Sale — η² = 0,206 con `cantidad_jugadas`, la asociación más fuerte del dataset, pero es fuga pura | No — sólo existe cuando la partida ya terminó |
-| `moves_text` | Texto completo de jugadas | 🔴 | Sale como feature tabular; queda como insumo para derivar otras variables | No aplica como predictor directo — es post-partida en su totalidad |
-| `GameUrl` | Identificador de partida | 🔴 | Sale — cardinalidad = número de filas | Existiría, pero no aporta señal (es el índice) |
-| `White` / `Black` | Usuario por color | 🔴 | Salen del modelo general; sólo tendría sentido en un producto "por jugador" con partición que evite fuga entre entrenamiento y prueba | Existirían, pero **no** son las ~100 cuentas sembradas: `White`+`Black` tienen **53.655 usuarios distintos**, porque cada partida trae también al oponente real de cada jugador sembrado. No es memorización de un puñado de cuentas — es el sesgo de red descripto en `guia-defensa-entrega-1.md` §5 (el grafo de oponentes de 8 seeds + su expansión por banda de ELO, no una muestra aleatoria del universo Chess.com) |
-| `WhiteElo` / `BlackElo` (crudos) | Rating por color | 🔴 | Salen si ya están `diferencia_elo` y `elo_promedio` (dependencia matemática exacta, ver `guia-columnas-y-features.md` §3.2) | Misma fuga temporal que `diferencia_elo` |
-| `Event`, `Variant`, `Rated` | Auditoría | 🔴 | Salen — constantes tras el filtro | No aportan (varianza cero) |
-| `Result` | Resultado en formato PGN | 🔴 | Sale — es el target escrito en otro formato | Es la respuesta, no un predictor |
+| `diferencia_elo` | Balance de rating (blancas − negras) | V resultado = 0,217 | Entra como predictor principal de `resultado` | Parcial — hoy es el rating **posterior** a la partida (limitación de Chess.com, documentada desde la Entrega 1); conceptualmente sí existiría, en este dataset hereda fuga |
+| `elo_promedio` | Nivel general de la partida | r duración = 0,256 / 0,254 | Entra, misma advertencia que `diferencia_elo` | Parcial — misma fuga temporal |
+| `tiempo_base_seg` | Segundos base del control de tiempo | r duración = -0,050 / 0,002; V resultado = 0,054 | Entra por la pregunta de investigación; se evalúa su aporte incremental | Sí |
+| `incremento_seg` | Segundos de incremento por jugada | r duración = -0,082 / -0,128; V resultado = 0,039 | Entra por dominio, en log o discretizado; se evalúa su aporte incremental | Sí |
+| `TimeClass` | Modalidad oficial (bullet/blitz/rapid) | η² duración = 0,020; V resultado = 0,048 | Entra porque forma parte explícita de la pregunta; no porque el EDA muestre señal fuerte sobre los targets | Sí |
+| `Date` | Fecha de la partida | No aplica: variable de partición | No entra como feature cruda; se reserva para partición temporal train/test | Sí, pero su uso es de partición, no de predictor directo |
+| `familia_apertura` | Grupo de apertura (5 categorías) | η² duración = 0,004 | Sale del baseline; sólo se considera en un escenario "post-apertura" aparte | No — se conoce recién tras jugarse la apertura |
+| `ECO` / `Opening` | Código/nombre detallado de apertura | No se evalúa: alta cardinalidad | Sale del baseline | No — mismo motivo que `familia_apertura` |
+| `Termination` | Motivo de finalización | No aplica: fuga post-partida | Sale aunque η² con duración sea 0,206 | No — sólo existe cuando la partida ya terminó |
+| `moves_text` | Texto completo de jugadas | No aplica: fuga post-partida | Sale como feature tabular; queda como insumo para derivar otras variables | No aplica como predictor directo — es post-partida en su totalidad |
+| `GameUrl` | Identificador de partida | No aplica: cardinalidad total | Sale | Existiría, pero no aporta señal (es el índice) |
+| `White` / `Black` | Usuario por color | No se usa en el modelo general | Salen; sólo tendría sentido en un producto "por jugador" con partición que evite fuga | Existirían, pero **no** son las ~100 cuentas sembradas: `White`+`Black` tienen **53.655 usuarios distintos**, porque cada partida trae también al oponente real de cada jugador sembrado. No es memorización de un puñado de cuentas — es el sesgo de red descripto en `guia-defensa-entrega-1.md` §5 |
+| `WhiteElo` / `BlackElo` (crudos) | Rating por color | Redundancia matemática | Salen si ya están `diferencia_elo` y `elo_promedio` | Misma fuga temporal que `diferencia_elo` |
+| `Event`, `Variant`, `Rated` | Auditoría | Varianza cero | Salen | No aportan información |
+| `Result` | Resultado en formato PGN | No aplica: duplicado del target | Sale por fuga | Es la respuesta, no un predictor |
 
 ---
 

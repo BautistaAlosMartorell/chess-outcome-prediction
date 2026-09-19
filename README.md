@@ -200,7 +200,8 @@ volúmenes) o `docker compose down -v` (reset total).
 
 ### Sin Docker (CLI / notebook)
 
-Mismo pipeline, mismos módulos de `src/`, sin Airflow. Requiere Python 3.11 o superior.
+El CLI reutiliza los mismos módulos de `src/`, pero conserva el modo piloto de 8 cuentas
+fijas y no reproduce la muestra ampliada de la Entrega 2. Requiere Python 3.11 o superior.
 
 ```bash
 python3 -m venv .venv
@@ -209,8 +210,10 @@ python3 -m venv .venv
 ```
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` para verificar la
-ingesta. Una vez generado el Parquet, `notebooks/02_eda_hipotesis.ipynb` reproduce el
-análisis exploratorio de la Entrega 2. Ambos deben ejecutarse con **Restart & Run All**.
+ingesta piloto. El análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` requiere el
+Parquet ampliado generado por el **DAG de Airflow** (93.669 partidas finales); no debe
+ejecutarse sobre la salida reducida del CLI. Ambos notebooks deben ejecutarse con
+**Restart & Run All**.
 
 ### Tests
 
@@ -234,8 +237,11 @@ hasta agosto de 2026):
   pipeline.
 - 0 nulos en el dataset final.
 
-Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline. Con la
-ventana temporal congelada, una corrida desde cero reproduce estos números.
+Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
+de Airflow. Con la selección por bandas y la ventana temporal congelada, esa corrida
+produce la muestra ampliada usada en la Entrega 2: 94.247 registros crudos y 93.669
+partidas finales. El CLI de 8 cuentas es sólo una corrida piloto y no reemplaza este
+artefacto.
 
 ### Casos límite observados en la corrida validada
 
