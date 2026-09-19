@@ -1,5 +1,31 @@
 # Changelog
 
+## Entrega 2: análisis exploratorio e hipótesis (2026-09-19)
+
+### Qué
+
+- Se agrega `notebooks/02_eda_hipotesis.ipynb`, ejecutado de punta a punta sobre la
+  corrida ampliada de 93.669 partidas y con sus salidas guardadas.
+- El notebook audita dimensiones, tipos, nulos, constantes, duplicados, asimetría y
+  distribución de los dos objetivos; contrasta cuatro hipótesis con medida, semáforo,
+  gráfico y decisión; y cierra con la tabla de columnas candidatas y control de fuga.
+- Se actualizan el README y la guía de columnas para reemplazar las cifras de la corrida
+  piloto de 7.204 partidas por las de la corrida ampliada.
+
+### Resultados principales
+
+- Diferencia de ELO y resultado: V de Cramér = 0,217, señal moderada.
+- Diferencia absoluta de ELO y duración: Pearson = 0,031 y Spearman = 0,060; hipótesis
+  refutada.
+- Modalidad y terminación por tiempo: η² = 0,075; Bullet 40,9%, Blitz 22,2% y Rapid 7,4%.
+- Familia de apertura y duración: η² = 0,004; sale del baseline pre-partida.
+
+### Anomalía investigada
+
+La muestra ampliada contiene 286 partidas fechadas el 01/09/2026 dentro de archivos
+mensuales de agosto. Todas caen en el mismo límite UTC y aparecen en varias cuentas, por
+lo que se documentan como comportamiento del corte mensual de Chess.com y no se eliminan.
+
 ## Selección automática de jugadores dentro del DAG (2026-09-12)
 
 Branch `feat/selector-jugadores-dag`. El selector de jugadores (antes un script ocasional

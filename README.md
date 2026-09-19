@@ -9,9 +9,10 @@ Información, 2026).
 (bullet/blitz/rapid) y color de piezas predice mejor quién gana una partida de ajedrez
 online, y qué tan larga es esa partida?
 
-La unidad de análisis es una partida individual. Esta primera entrega implementa el
-pipeline automatizado de ingeniería de datos: descarga, parseo, limpieza, validación,
-ingeniería de características y exportación del dataset de trabajo.
+La unidad de análisis es una partida individual. El proyecto incluye el pipeline
+automatizado de ingeniería de datos —descarga, parseo, limpieza, validación, ingeniería
+de características y exportación— y el análisis exploratorio que contrasta hipótesis y
+define las variables candidatas para modelado.
 
 ## Fuente de datos
 
@@ -99,7 +100,7 @@ este método, no sobre "ajedrez online" en general.
 | 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
 | 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida validada produjo 7.204 partidas limpias. |
+| 5 | Volumen | La corrida ampliada validada produjo 93.669 partidas limpias. |
 | 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -114,6 +115,7 @@ docker-compose.yml                         stack de Airflow 3.3 (postgres, redis
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
+notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selección de variables
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas
@@ -198,7 +200,8 @@ volúmenes) o `docker compose down -v` (reset total).
 
 ### Sin Docker (CLI / notebook)
 
-Mismo pipeline, mismos módulos de `src/`, sin Airflow. Requiere Python 3.11 o superior.
+El CLI reutiliza los mismos módulos de `src/`, pero conserva el modo piloto de 8 cuentas
+fijas y no reproduce la muestra ampliada de la Entrega 2. Requiere Python 3.11 o superior.
 
 ```bash
 python3 -m venv .venv
@@ -206,7 +209,10 @@ python3 -m venv .venv
 .venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen
 ```
 
-También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` y ejecutarse con
+También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` para verificar la
+ingesta piloto. El análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` requiere el
+Parquet ampliado generado por el **DAG de Airflow** (93.669 partidas finales); no debe
+ejecutarse sobre la salida reducida del CLI. Ambos notebooks deben ejecutarse con
 **Restart & Run All**.
 
 ### Tests
@@ -221,43 +227,41 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
 
-Corrida validada el 06/09/2026 (DAG completo en Airflow, ventana congelada hasta
-agosto de 2026):
+Corrida ampliada validada el 18/09/2026 (DAG completo en Airflow, ventana congelada
+hasta agosto de 2026):
 
-- 7.215 registros descargados.
-- 7.204 partidas finales.
-- 99,85% de retención.
-- 11 registros descartados: 1 duplicado (dos cuentas configuradas jugaron entre sí y
-  ambas reportan la partida) + 10 partidas con menos de 5 medio-movimientos (abandonos
-  o resultados administrativos inmediatos, no partidas jugadas).
+- 94.247 registros descargados.
+- 93.669 partidas finales.
+- 99,39% de retención.
+- 578 registros descartados por las reglas de deduplicación, alcance y calidad del
+  pipeline.
 - 0 nulos en el dataset final.
 
-Los archivos de `data/` no se versionan: se regeneran ejecutando el pipeline. Con la
-ventana temporal congelada, una corrida desde cero reproduce estos números.
+Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
+de Airflow. Con la selección por bandas y la ventana temporal congelada, esa corrida
+produce la muestra ampliada usada en la Entrega 2: 94.247 registros crudos y 93.669
+partidas finales. El CLI de 8 cuentas es sólo una corrida piloto y no reemplaza este
+artefacto.
 
 ### Casos límite observados en la corrida validada
 
-Dos filas puntuales de las 7.204, encontradas inspeccionando el parquet final directamente
-(no sólo el summary), documentadas para que no se confundan con errores del pipeline si
-aparecen en el EDA:
+Casos encontrados inspeccionando el Parquet final directamente —no sólo el resumen— y
+documentados para que no se confundan con errores del pipeline durante el EDA:
 
-- **Una partida con `Date` = 2026-09-01**, un día después del tope `download.until_month:
-  "2026-08"`. No es un bug del filtro: la ventana congelada decide qué archivo mensual
-  bajar por su URL (`.../games/2026/08`), no por la fecha de cada partida individual. Esa
-  partida quedó agrupada por Chess.com en el archivo de agosto, pero su header PGN `Date`
-  marca setiembre — probablemente un corte de huso horario cerca de medianoche en el
-  propio servidor de Chess.com. La ventana congelada es exacta a nivel de archivo
-  descargado, no a nivel de fecha de cada partida.
+- **286 partidas con `Date` = 2026-09-01** (0,31% del dataset), un día después del tope
+  `download.until_month: "2026-08"`. No es un bug del filtro: la ventana congelada decide
+  qué archivo mensual bajar por su URL (`.../games/2026/08`), no por la fecha individual.
+  En la muestra ampliada el patrón aparece en varias cuentas y confirma un límite horario
+  del archivo mensual de Chess.com. La ventana es exacta a nivel de archivo descargado,
+  no a nivel de fecha PGN.
 - **Una partida con `tiempo_base_seg` = 181** (`TimeControl` crudo `"181"`, sin
   incremento). No es un error de parseo: Chess.com permite controles de tiempo
   personalizados, y esa fila corresponde a una partida real con ese ritmo puntual, fuera
   de los controles estándar (10/30/60/180/300/600/900 s).
 
-Además, algunos usernames de las 8 cuentas configuradas aparecen en más filas del dataset
-final que `max_games_per_user` (1000) — por ejemplo `annacramling` en 1.004. No es un error
-de la descarga: el tope de 1000 se aplica a la descarga *de esa cuenta*, pero partidas
-contra otra cuenta configurada (8 de esas 1.004 filas de `annacramling` son contra
-`AlexandraBotez`) pueden entrar al dataset a través de la descarga de la otra cuenta. Es el
-mismo mecanismo de deduplicación por `GameUrl` que evita contar dos veces el "1 duplicado"
-de arriba; acá no duplica ninguna fila, pero sí permite que un username supere su propio
-tope de descarga en apariciones totales.
+Además, algunos usernames seleccionados aparecen en más filas del dataset final que
+`max_games_per_user` (1000) —por ejemplo `hikaru`, en 1.018—. No es un error: el tope se
+aplica a la descarga *de esa cuenta*, pero una partida también puede entrar a través de la
+descarga de su oponente si ambos fueron seleccionados. La deduplicación por `GameUrl`
+evita contarla dos veces, aunque permite que un username supere su propio tope en
+apariciones totales.
