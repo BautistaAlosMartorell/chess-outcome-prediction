@@ -5,7 +5,8 @@ Parte de los oponentes ya observados en el parquet procesado, valida su activida
 la PubAPI y produce una selección reproducible por banda de ELO.
 
 Si no existe un parquet procesado de una corrida anterior (primera corrida bootstrap),
-la función ``bootstrap_username_list`` devuelve solo los seed_usernames del config.
+``PlayerSelector.discover_opponents_from_api`` descubre los oponentes recientes de los
+seeds consultando la PubAPI y la selección por banda sigue igual.
 """
 
 from __future__ import annotations
@@ -486,21 +487,6 @@ class PlayerSelector:
             len(combined) - len(self.seed_usernames),
         )
         return combined, result
-
-
-def bootstrap_username_list(config: dict[str, Any]) -> list[str]:
-    """Return only the seed usernames when no processed parquet exists yet.
-
-    This is the first-run path: the DAG downloads games for the seeds, processes
-    them, and on the *next* run ``PlayerSelector.build_username_list`` can find
-    opponents in the parquet to expand the sample.
-    """
-    seeds = config["player_selection"]["seed_usernames"]
-    logger.info(
-        "Modo bootstrap (sin parquet previo): usando %d seed_usernames: %s",
-        len(seeds), seeds,
-    )
-    return list(seeds)
 
 
 def _atomic_write_text(path: Path, text: str) -> None:

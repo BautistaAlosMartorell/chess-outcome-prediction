@@ -140,10 +140,10 @@ def pipeline_ajedrez_chesscom():
 
     # max_active_tis_per_dag=3: no es arbitrario. Cada cuenta emite requests en serie con
     # request_delay=0.25s y reintentos con backoff ante 429/5xx (ver DataDownloader). Correr
-    # las 8 cuentas en paralelo multiplicaría ×8 la tasa de requests contra Chess.com y
-    # dispararía rate-limiting; con 3 en paralelo el burst queda acotado, el backoff absorbe
-    # algún 429 ocasional y en cold-run rinde ~3× sobre el serial. En re-runs es indistinto
-    # porque las descargas idempotentes se saltean.
+    # las ~100 cuentas seleccionadas en paralelo multiplicaría la tasa de requests contra
+    # Chess.com y dispararía rate-limiting; con 3 en paralelo el burst queda acotado, el
+    # backoff absorbe algún 429 ocasional y en cold-run rinde ~3× sobre el serial. En re-runs
+    # es indistinto porque las descargas idempotentes se saltean.
     @task(
         task_id="descarga_usuario",
         map_index_template="{{ username }}",  # muestra el username en el índice del map en la UI
@@ -219,20 +219,20 @@ def pipeline_ajedrez_chesscom():
         if raw_paths:
             paths = {u: Path(p) for u, p in raw_paths.items()}
         else:
-            # Sólo se reconstruyen rutas de usuarios cuyo JSON crudo EXISTE en disco. El
-            # config lista los 8 usuarios objetivo, pero la descarga tolera fallos por
-            # usuario (min_users_ok): reconstruir a ciegas para todos incluía cuentas que
-            # pudieron no descargarse y hacía explotar el parseo con FileNotFoundError.
+            # La lista de jugadores la arma listar_jugadores en cada corrida (no está en
+            # el config), así que se reconstruye desde los JSON crudos que EXISTEN en
+            # disco según raw_filename_template. Así sólo entran cuentas realmente
+            # descargadas: la descarga tolera fallos por usuario (min_users_ok).
             template = config["chess_com"]["raw_filename_template"]
+            prefix, suffix = template.split("{username}")
             paths = {
-                u: RAW_DIR / template.format(username=u)
-                for u in config["chess_com"]["usernames"]
-                if (RAW_DIR / template.format(username=u)).exists()
+                f.name[len(prefix) : len(f.name) - len(suffix)]: f
+                for f in sorted(RAW_DIR.glob(f"{prefix}*{suffix}"))
             }
             if not paths:
                 raise FileNotFoundError(
                     f"raw_paths vacío y no hay JSON crudos en {RAW_DIR}: "
-                    "correr descarga_partidas primero."
+                    "correr descarga_usuario primero."
                 )
             log.warning(
                 "raw_paths vacío; reconstruidas %d rutas desde disco: %s",

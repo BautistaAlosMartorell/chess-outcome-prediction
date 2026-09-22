@@ -67,7 +67,8 @@ download:
 # Política de selección automática de jugadores ejecutada por listar_jugadores en el DAG.
 # El selector extrae candidatos de los oponentes observados en el parquet, los valida
 # contra la PubAPI y selecciona por banda de ELO hasta cubrir los objetivos.
-# Si no hay parquet previo (primera corrida bootstrap), usa solo los seed_usernames.
+# Si no hay parquet previo (primera corrida bootstrap), descubre por la PubAPI los oponentes
+# recientes de los seed_usernames y aplica la misma selección por banda.
 player_selection:
   source: "oponentes de los seeds en el parquet procesado + PubAPI"
   seed_usernames:

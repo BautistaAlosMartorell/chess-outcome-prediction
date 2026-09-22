@@ -1,4 +1,4 @@
-"""Pruebas offline del selector ocasional de jugadores."""
+"""Pruebas offline del selector de jugadores (tarea listar_jugadores del DAG)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from src.player_selection import (
     PlayerSelector,
     SelectionResult,
     apply_selection_to_config,
-    bootstrap_username_list,
     extract_candidate_pools,
     write_manifest,
 )
@@ -297,15 +296,6 @@ class PlayerSelectionTest(unittest.TestCase):
         # Seeds should not be duplicated even if accepted as candidates.
         normalised = [u.casefold() for u in combined]
         self.assertEqual(len(normalised), len(set(normalised)))
-
-    def test_bootstrap_returns_only_seeds(self) -> None:
-        """bootstrap_username_list returns a copy of seed_usernames."""
-        config = self.config_for_test()
-        seeds = config["player_selection"]["seed_usernames"]
-        result = bootstrap_username_list(config)
-        self.assertEqual(result, seeds)
-        # Must be a copy, not the same list.
-        self.assertIsNot(result, seeds)
 
 
 if __name__ == "__main__":
