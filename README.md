@@ -113,8 +113,9 @@ no sobre "ajedrez online" en general.
 ## Estructura
 
 ```text
-config/config.yaml                         parámetros y cuentas de Chess.com
+config/config.yaml                         parámetros del pipeline y política de selección de jugadores
 data/raw/                                  JSON regenerables, ignorados por Git
+data/raw/seleccion/                        lista congelada de jugadores + snapshots de las listas públicas
 data/processed/                            Parquet, sample y resumen, ignorados por Git
 dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
@@ -125,7 +126,7 @@ notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selecció
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas
-src/player_selection.py                    selección automática y reproducible de jugadores por banda de ELO
+src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 tests/test_player_selection.py             pruebas del selector de jugadores
