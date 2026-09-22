@@ -16,7 +16,7 @@ Estructura del grafo:
                                                 └── exportar_dataset
 
 Módulos de src/ detrás de cada tarea:
-    - listar_jugadores    → src/player_selection.py (PlayerSelector + bootstrap)
+    - listar_jugadores    → src/player_selection.py (load_or_create_selection: lista congelada)
     - descarga_usuario / consolidar_descarga → src/download_data.py (DataDownloader)
     - limpieza_y_parseo   → src/clean_data.py    (DataCleaner)
     - ingenieria_de_caracteristicas → src/feature_engineering.py (FeatureEngineer)
@@ -88,53 +88,21 @@ def pipeline_ajedrez_chesscom():
 
     @task(task_id="listar_jugadores")
     def listar_jugadores() -> list[str]:
-        """Selecciona jugadores automáticamente por banda de ELO.
+        """Devuelve la lista congelada de jugadores a descargar (fuente del ``.expand()``).
 
-        Si existe un parquet procesado de una corrida anterior, extrae candidatos
-        de los oponentes observados en el parquet (rápido, sin red). Si no hay
-        parquet previo (primera corrida), consulta la PubAPI para descubrir
-        oponentes recientes de cada seed.
-
-        En ambos casos valida los candidatos contra la PubAPI y selecciona por
-        banda hasta cubrir los objetivos de ``player_selection.target_per_band``.
-
-        Devuelve la lista combinada (seeds + seleccionados) como fuente del
-        ``.expand()`` de descarga.
+        Si ya existe ``player_selection.selection_path``, la lee tal cual: todas las
+        corridas descargan los mismos jugadores y el bronce previo se reusa. Si no existe
+        (primera corrida), selecciona ~20 jugadores por banda de ELO a partir de las listas
+        públicas por país y de titulados de la PubAPI, con orden aleatorio de semilla fija,
+        y escribe el archivo, que desde ahí queda congelado. No depende de ninguna cuenta
+        inicial ni del parquet de una corrida anterior.
         """
-        import pandas as pd
-
-        from src.player_selection import (
-            PlayerSelector,
-            write_manifest,
-        )
+        from src.player_selection import load_or_create_selection
         from src.utils import load_config
 
         _enter_project_root()
         config = load_config(CONFIG_PATH)
-        parquet_path = Path(config["paths"]["clean_parquet"])
-
-        selector = PlayerSelector(config)
-
-        if parquet_path.exists():
-            log.info(
-                "Parquet procesado encontrado (%s). Extrayendo oponentes del dataset.",
-                parquet_path,
-            )
-            df = pd.read_parquet(parquet_path)
-        else:
-            log.info(
-                "Sin parquet previo (%s). Descubriendo oponentes desde la API...",
-                parquet_path,
-            )
-            df = selector.discover_opponents_from_api()
-
-        jugadores, result = selector.build_username_list(df)
-
-        # Save the manifest for auditability.
-        manifest_path = Path(config["player_selection"]["manifest_path"])
-        write_manifest(result, manifest_path)
-        log.info("Manifiesto de selección guardado en %s", manifest_path)
-
+        jugadores = load_or_create_selection(config)
         log.info("Jugadores a descargar (%d): %s", len(jugadores), jugadores)
         return jugadores
 
@@ -219,23 +187,26 @@ def pipeline_ajedrez_chesscom():
         if raw_paths:
             paths = {u: Path(p) for u, p in raw_paths.items()}
         else:
-            # La lista de jugadores la arma listar_jugadores en cada corrida (no está en
-            # el config), así que se reconstruye desde los JSON crudos que EXISTEN en
-            # disco según raw_filename_template. Así sólo entran cuentas realmente
-            # descargadas: la descarga tolera fallos por usuario (min_users_ok).
+            # Rebuild from the frozen selection (not a glob of data/raw), so raw JSON
+            # left over from any other selection never leaks into the dataset. Only
+            # accounts actually downloaded are kept: the download tolerates per-user
+            # failures (min_users_ok).
+            from src.player_selection import load_selection
+
             template = config["chess_com"]["raw_filename_template"]
-            prefix, suffix = template.split("{username}")
+            usernames = load_selection(config["player_selection"]["selection_path"])
             paths = {
-                f.name[len(prefix) : len(f.name) - len(suffix)]: f
-                for f in sorted(RAW_DIR.glob(f"{prefix}*{suffix}"))
+                u: RAW_DIR / template.format(username=u)
+                for u in usernames
+                if (RAW_DIR / template.format(username=u)).exists()
             }
             if not paths:
                 raise FileNotFoundError(
-                    f"raw_paths vacío y no hay JSON crudos en {RAW_DIR}: "
-                    "correr descarga_usuario primero."
+                    f"raw_paths vacío y no hay JSON crudos de la selección congelada en "
+                    f"{RAW_DIR}: correr descarga_usuario primero."
                 )
             log.warning(
-                "raw_paths vacío; reconstruidas %d rutas desde disco: %s",
+                "raw_paths vacío; reconstruidas %d rutas desde la selección congelada: %s",
                 len(paths), sorted(paths),
             )
 

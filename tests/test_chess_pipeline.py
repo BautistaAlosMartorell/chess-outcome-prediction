@@ -58,20 +58,20 @@ class ChessPipelineTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = copy.deepcopy(self.config)
-            cfg["chess_com"]["usernames"] = ["good1", "good2", "bad"]
+            usernames = ["good1", "good2", "bad"]
             cfg["paths"]["raw_dir"] = tmp
             cfg["download"]["min_users_ok"] = 2
             cfg["download"]["min_total_games"] = 4
 
             with mock.patch.object(DataDownloader, "download_user_games", fake_download_user_games):
                 # 'bad' se saltea, los otros dos quedan y se superan los mínimos
-                results = DataDownloader(cfg).download_all()
+                results = DataDownloader(cfg).download_all(usernames)
                 self.assertEqual(set(results), {"good1", "good2"})
 
                 # mínimo de partidas inalcanzable -> corta con RuntimeError
                 cfg["download"]["min_total_games"] = 999
                 with self.assertRaises(RuntimeError):
-                    DataDownloader(cfg).download_all()
+                    DataDownloader(cfg).download_all(usernames)
 
     def test_parser_handles_chess_com_move_numbers_and_opening(self) -> None:
         game = {

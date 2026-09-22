@@ -3,17 +3,8 @@
 
 chess_com:
   base_url: "https://api.chess.com/pub/player"
-  # Cuentas públicas verificadas con historial suficiente y niveles variados.
-  # La descarga recorre sus archivos mensuales desde el más reciente hacia atrás.
-  usernames:
-    - RebeccaHarris      # nivel club (~1400)
-    - erik               # nivel club/intermedio (~1700)
-    - AnnaCramling       # jugadora titulada/streamer (~2400)
-    - AlexandraBotez     # jugadora titulada/streamer (~2500)
-    - GothamChess        # maestro internacional/streamer (~2900)
-    - IMRosen            # maestro internacional (~2900)
-    - chessbrah          # gran maestro/streamer (~3200)
-    - hikaru             # élite mundial (~3400)
+  # La lista de jugadores NO vive acá: la arma listar_jugadores en la primera corrida
+  # (ver player_selection) y queda congelada en player_selection.selection_path.
   max_games_per_user: 1000
   time_classes:
     - bullet
@@ -61,35 +52,34 @@ download:
   until_month: "2026-08"
   # Umbrales mínimos de la descarga cruda tras tolerar fallos por usuario
   # (cuenta borrada, sin partidas, red). Por debajo de esto la descarga corta con error.
-  min_users_ok: 8
+  # Con ~100 jugadores seleccionados se tolera que falle hasta ~20 %.
+  min_users_ok: 80
   min_total_games: 1500
 
-# Política de selección automática de jugadores ejecutada por listar_jugadores en el DAG.
-# El selector extrae candidatos de los oponentes observados en el parquet, los valida
-# contra la PubAPI y selecciona por banda de ELO hasta cubrir los objetivos.
-# Si no hay parquet previo (primera corrida bootstrap), descubre por la PubAPI los oponentes
-# recientes de los seed_usernames y aplica la misma selección por banda.
+# Política de selección de jugadores ejecutada por listar_jugadores en el DAG.
+# Primera corrida (no existe selection_path): arma el universo de candidatos con las listas
+# públicas de jugadores por país y de titulados de la PubAPI, lo baraja con random_state,
+# estima la banda de cada candidato con /stats, lo valida contra sus partidas hasta cutoff
+# y llena target_per_band. El resultado se escribe en selection_path y queda CONGELADO:
+# las corridas siguientes descargan exactamente la misma lista. Para volver a seleccionar,
+# borrar ese archivo a mano.
 player_selection:
-  source: "oponentes de los seeds en el parquet procesado + PubAPI"
-  seed_usernames:
-    - RebeccaHarris
-    - erik
-    - AnnaCramling
-    - AlexandraBotez
-    - GothamChess
-    - IMRosen
-    - chessbrah
-    - hikaru
+  source: "listas públicas de jugadores por país y titulados de la PubAPI de Chess.com"
+  countries: [AR, ES, MX, US, IN, BR, DE, RU]
+  # Las listas por país casi no tienen jugadores de 2600+: los titulados cubren top_mundial.
+  titles: [GM, IM, WGM, FM]
   cutoff: "2026-08"
   random_state: 42
   min_eligible_games: 15
   max_games_per_candidate: 1000
-  # ~100 jugadores total, distribuidos en las 5 bandas de ELO.
-  # Si una banda no alcanza el target, se loguea un warning y se sigue.
+  # 100 jugadores, 20 por banda de ELO. Si una banda no alcanza el target, se loguea un
+  # warning y se sigue con lo conseguido.
   target_per_band:
     principiante: 20
     intermedio: 20
     avanzado: 20
     experto: 20
     top_mundial: 20
-  manifest_path: "data/processed/player_selection_manifest.yaml"
+  # Lista congelada + manifiesto (candidatos evaluados y motivos de rechazo). Junto a él
+  # quedan los snapshots crudos de las listas por país/título (bronce de la selección).
+  selection_path: "data/raw/seleccion/jugadores_seleccionados.yaml"

@@ -1,26 +1,30 @@
-"""Selección reproducible de jugadores para ampliar la muestra del proyecto.
+"""Selección de jugadores por banda de ELO, congelada después de la primera corrida.
 
-Ejecutable desde la tarea ``listar_jugadores`` del DAG o desde la línea de comandos.
-Parte de los oponentes ya observados en el parquet procesado, valida su actividad en
-la PubAPI y produce una selección reproducible por banda de ELO.
+Punto de entrada: ``load_or_create_selection``, usado por la tarea ``listar_jugadores``
+del DAG y por el CLI (``python -m src.pipeline``).
 
-Si no existe un parquet procesado de una corrida anterior (primera corrida bootstrap),
-``PlayerSelector.discover_opponents_from_api`` descubre los oponentes recientes de los
-seeds consultando la PubAPI y la selección por banda sigue igual.
+- Si ya existe el archivo de selección (``player_selection.selection_path``), se lee y se
+  devuelve la misma lista: todas las corridas siguientes descargan los mismos jugadores.
+- Si no existe (primera corrida), se arma el universo de candidatos con las listas
+  públicas de jugadores por país y de titulados de la PubAPI, se baraja con una semilla
+  fija, se valida cada candidato y se completan los cupos por banda de ELO. El resultado
+  se escribe una sola vez y queda congelado.
+
+No depende de ninguna cuenta inicial ni del parquet de una corrida anterior.
 """
 
 from __future__ import annotations
 
 import copy
+import json
 import random
-import re
 import statistics
 import time
-from dataclasses import asdict, dataclass
+from collections import Counter
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-import pandas as pd
 import requests
 import yaml
 
@@ -29,15 +33,18 @@ from src.utils import setup_logger
 
 logger = setup_logger(__name__)
 
+PUBAPI_ROOT = "https://api.chess.com/pub"
+STATS_TIME_CLASSES = ("chess_bullet", "chess_blitz", "chess_rapid")
+
 
 @dataclass(frozen=True)
 class Candidate:
-    """Jugador candidato derivado del dataset procesado."""
+    """Jugador candidato con la banda estimada por sus estadísticas actuales."""
 
     username: str
     band: str
-    historical_median_elo: float
-    observed_games: int
+    estimated_elo: float
+    source: str
 
 
 @dataclass(frozen=True)
@@ -48,7 +55,8 @@ class CandidateValidation:
     band: str
     accepted: bool
     reason: str
-    historical_median_elo: float
+    estimated_elo: float
+    source: str = ""
     eligible_games: int = 0
     validated_median_elo: float | None = None
     archives_checked: int = 0
@@ -56,40 +64,47 @@ class CandidateValidation:
 
 @dataclass
 class SelectionResult:
-    """Propuesta completa, incluidos candidatos rechazados y seleccionados."""
+    """Selección completa: política, pool, candidatos evaluados y seleccionados."""
 
     policy: dict[str, Any]
-    candidate_counts: dict[str, int]
+    pool_size: int
     evaluated: list[CandidateValidation]
     selected: dict[str, list[str]]
+    skipped: dict[str, int] = field(default_factory=dict)
 
-    def to_manifest(self) -> dict[str, Any]:
-        """Convierte el resultado a tipos serializables por YAML."""
-        return {
-            "status": "complete" if self.is_complete else "incomplete",
-            "policy": self.policy,
-            "candidate_counts": self.candidate_counts,
-            "selected": self.selected,
-            "evaluated": [asdict(item) for item in self.evaluated],
-        }
+    @property
+    def usernames(self) -> list[str]:
+        """Lista plana en el orden de las bandas, sin duplicados."""
+        seen: set[str] = set()
+        combined: list[str] = []
+        for usernames in self.selected.values():
+            for username in usernames:
+                key = _normalise_username(username)
+                if key not in seen:
+                    combined.append(username)
+                    seen.add(key)
+        return combined
 
     @property
     def is_complete(self) -> bool:
         targets = self.policy["target_per_band"]
         return all(len(self.selected.get(band, [])) == target for band, target in targets.items())
 
-
-class InsufficientCandidatesError(RuntimeError):
-    """Indica que al menos una banda no reunió la cantidad requerida."""
-
-    def __init__(self, result: SelectionResult) -> None:
-        self.result = result
-        missing = {
-            band: target - len(result.selected.get(band, []))
-            for band, target in result.policy["target_per_band"].items()
-            if len(result.selected.get(band, [])) < target
+    def to_manifest(self) -> dict[str, Any]:
+        """Convierte el resultado a tipos serializables por YAML."""
+        return {
+            "status": "complete" if self.is_complete else "incomplete",
+            "policy": self.policy,
+            "pool_size": self.pool_size,
+            "selected": self.selected,
+            "usernames": self.usernames,
+            "skipped_before_validation": self.skipped,
+            "evaluated": [asdict(item) for item in self.evaluated],
         }
-        super().__init__(f"No alcanzan los candidatos válidos por banda. Faltantes: {missing}")
+
+
+class InsufficientSelectionError(RuntimeError):
+    """La selección quedó por debajo del mínimo de cuentas de la descarga."""
 
 
 def _normalise_username(value: Any) -> str:
@@ -107,56 +122,15 @@ def _band_for_elo(elo: float, bands: dict[str, list[int]], target_bands: set[str
     return None
 
 
-def extract_candidate_pools(
-    df: pd.DataFrame,
-    seed_usernames: list[str],
-    bands: dict[str, list[int]],
-    target_per_band: dict[str, int],
-) -> dict[str, list[Candidate]]:
-    """Extrae oponentes y calcula su ELO mediano observado en ambos colores."""
-    required = {"White", "Black", "WhiteElo", "BlackElo"}
-    missing = required.difference(df.columns)
-    if missing:
-        raise ValueError(f"El parquet no contiene las columnas requeridas: {sorted(missing)}")
-
-    white = df[["White", "WhiteElo"]].rename(columns={"White": "username", "WhiteElo": "elo"})
-    black = df[["Black", "BlackElo"]].rename(columns={"Black": "username", "BlackElo": "elo"})
-    observations = pd.concat([white, black], ignore_index=True)
-    observations["username"] = observations["username"].astype("string").str.strip()
-    observations["normalised_username"] = observations["username"].map(_normalise_username)
-    observations["elo"] = pd.to_numeric(observations["elo"], errors="coerce")
-
-    seeds = {_normalise_username(username) for username in seed_usernames}
-    observations = observations.loc[
-        observations["username"].notna()
-        & observations["elo"].notna()
-        & observations["normalised_username"].ne("")
-        & ~observations["normalised_username"].isin(seeds)
-    ]
-
-    pools = {band: [] for band in target_per_band}
-    for _, group in observations.groupby("normalised_username", sort=True):
-        median_elo = float(group["elo"].median())
-        band = _band_for_elo(median_elo, bands, set(target_per_band))
-        if band is None:
-            continue
-        spellings = sorted(group["username"].dropna().astype(str).unique(), key=lambda x: (x.casefold(), x))
-        pools[band].append(
-            Candidate(
-                username=spellings[0],
-                band=band,
-                historical_median_elo=median_elo,
-                observed_games=int(len(group)),
-            )
-        )
-
-    for candidates in pools.values():
-        candidates.sort(key=lambda candidate: (candidate.username.casefold(), candidate.username))
-    return pools
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".part")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
 
 
 class PlayerSelector:
-    """Valida y selecciona candidatos con un orden aleatorio reproducible."""
+    """Arma el pool de candidatos, lo baraja con semilla fija y llena cada banda."""
 
     def __init__(
         self,
@@ -167,13 +141,16 @@ class PlayerSelector:
     ) -> None:
         self.config = config
         self.policy = config["player_selection"]
-        self.seed_usernames: list[str] = self.policy["seed_usernames"]
+        self.countries: list[str] = self.policy["countries"]
+        self.titles: list[str] = self.policy["titles"]
         self.target_per_band: dict[str, int] = self.policy["target_per_band"]
         self.bands: dict[str, list[int]] = config["elo"]["bandas"]
         self.min_games: int = self.policy["min_eligible_games"]
         self.max_games: int = self.policy["max_games_per_candidate"]
         self.random_state: int = self.policy["random_state"]
         self.request_delay: float = config["download"]["request_delay_seconds"]
+        self.selection_path = Path(self.policy["selection_path"])
+        self.snapshot_dir = self.selection_path.parent
 
         downloader_config = copy.deepcopy(config)
         downloader_config["download"]["until_month"] = self.policy["cutoff"]
@@ -183,85 +160,72 @@ class PlayerSelector:
         self._api_get = api_get or self.downloader._get_json
         self._sleep = sleep
 
-    def discover_opponents_from_api(self) -> pd.DataFrame:
-        """Fetch recent games of seed users from the PubAPI to discover opponents.
-
-        Used on the first run when no processed parquet exists yet. For each seed,
-        fetches the most recent monthly archives (within the cutoff window) and
-        collects opponent usernames and ratings from eligible games.
-
-        Returns a DataFrame with ``White``, ``Black``, ``WhiteElo``, ``BlackElo``
-        columns — the same schema that ``extract_candidate_pools`` expects.
-        """
-        rows: list[dict[str, Any]] = []
-        # Limit how many games we sample per seed to keep discovery fast.
-        # 300 recent games per seed × 8 seeds = up to 2400 observations, which
-        # is plenty to build diverse candidate pools across ELO bands.
-        discovery_limit = 300
-
-        for seed in self.seed_usernames:
-            try:
-                username_path = seed.lower()
-                logger.info("Descubriendo oponentes del seed %s...", seed)
-                archives_payload = self._get_json(
-                    f"{self.base_url}/{username_path}/games/archives"
-                )
-                archives = [
-                    url
-                    for url in archives_payload.get("archives", [])
-                    if self.downloader._archive_in_window(url)
-                ]
-                if not archives:
-                    logger.warning("Seed %s: sin archivos en la ventana temporal", seed)
-                    continue
-
-                games_seen = 0
-                for archive_url in reversed(archives):
-                    monthly = self._get_json(archive_url).get("games", [])
-                    for game in reversed(monthly):
-                        if not self.downloader._is_eligible(game):
-                            continue
-                        white = game.get("white") or {}
-                        black = game.get("black") or {}
-                        rows.append(
-                            {
-                                "White": white.get("username", ""),
-                                "Black": black.get("username", ""),
-                                "WhiteElo": white.get("rating", 0),
-                                "BlackElo": black.get("rating", 0),
-                            }
-                        )
-                        games_seen += 1
-                        if games_seen >= discovery_limit:
-                            break
-                    if games_seen >= discovery_limit:
-                        break
-
-                logger.info(
-                    "Seed %s: %d partidas elegibles recolectadas para descubrimiento",
-                    seed, games_seen,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "Error descubriendo oponentes del seed %s, se sigue: %s: %s",
-                    seed, type(exc).__name__, exc,
-                )
-
-        if not rows:
-            logger.warning("No se encontraron partidas de ningún seed para descubrimiento")
-            return pd.DataFrame(columns=["White", "Black", "WhiteElo", "BlackElo"])
-
-        df = pd.DataFrame(rows)
-        logger.info(
-            "Descubrimiento completo: %d observaciones de %d seeds",
-            len(df), len(self.seed_usernames),
-        )
-        return df
-
     def _get_json(self, url: str) -> dict[str, Any]:
         payload = self._api_get(url)
         self._sleep(self.request_delay)
         return payload
+
+    # -- Pool de candidatos -------------------------------------------------
+
+    def _snapshot(self, name: str, url: str) -> list[str]:
+        """Return the ``players`` list of ``url``, cached as a raw JSON snapshot.
+
+        The snapshot is written once and reused afterwards, so a retry in the middle
+        of a selection works over exactly the same pool.
+        """
+        path = self.snapshot_dir / f"{name}.json"
+        if path.exists():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            payload = self._get_json(url)
+            _atomic_write_text(path, json.dumps(payload, ensure_ascii=False))
+        return [str(username) for username in payload.get("players", [])]
+
+    def fetch_candidate_pool(self) -> dict[str, str]:
+        """Build ``{normalised_username: source}`` from country and titled lists."""
+        sources: dict[str, set[str]] = {}
+        spellings: dict[str, str] = {}
+        lists = [(f"country_{iso}", f"{PUBAPI_ROOT}/country/{iso}/players", f"pais:{iso}")
+                 for iso in self.countries]
+        lists += [(f"titled_{title}", f"{PUBAPI_ROOT}/titled/{title}", f"titulo:{title}")
+                  for title in self.titles]
+        for name, url, source in lists:
+            try:
+                players = self._snapshot(name, url)
+            except (requests.RequestException, ValueError) as exc:
+                logger.warning("No se pudo obtener %s, se sigue sin esa lista: %s", url, exc)
+                continue
+            logger.info("Lista %s: %d jugadores", source, len(players))
+            for username in players:
+                key = _normalise_username(username)
+                if not key:
+                    continue
+                sources.setdefault(key, set()).add(source)
+                spellings.setdefault(key, username)
+        return {spellings[key]: ",".join(sorted(src)) for key, src in sources.items()}
+
+    def shuffled_pool(self, pool: dict[str, str]) -> list[tuple[str, str]]:
+        """Sort alphabetically and shuffle with the fixed seed (reproducible order)."""
+        ordered = sorted(pool.items(), key=lambda item: (_normalise_username(item[0]), item[0]))
+        random.Random(self.random_state).shuffle(ordered)
+        return ordered
+
+    # -- Pre-filtro y validación --------------------------------------------
+
+    def estimate_elo(self, username: str) -> float | None:
+        """Rating of the bullet/blitz/rapid class with the most games, from ``/stats``."""
+        stats = self._get_json(f"{self.base_url}/{username.lower()}/stats")
+        best: tuple[int, float] | None = None
+        for time_class in STATS_TIME_CLASSES:
+            entry = stats.get(time_class) or {}
+            record = entry.get("record") or {}
+            games = sum(int(record.get(key, 0)) for key in ("win", "loss", "draw"))
+            rating = (entry.get("last") or {}).get("rating")
+            if games == 0 or not isinstance(rating, (int, float)) or isinstance(rating, bool):
+                continue
+            if best is None or games > best[0]:
+                best = (games, float(rating))
+        return None if best is None else best[1]
 
     @staticmethod
     def _rating_for(game: dict[str, Any], username: str) -> int | None:
@@ -339,7 +303,8 @@ class PlayerSelector:
                 band=candidate.band,
                 accepted=True,
                 reason="aceptado",
-                historical_median_elo=candidate.historical_median_elo,
+                estimated_elo=candidate.estimated_elo,
+                source=candidate.source,
                 eligible_games=len(ratings),
                 validated_median_elo=validated_median,
                 archives_checked=checked,
@@ -361,204 +326,139 @@ class PlayerSelector:
             band=candidate.band,
             accepted=False,
             reason=reason,
-            historical_median_elo=candidate.historical_median_elo,
+            estimated_elo=candidate.estimated_elo,
+            source=candidate.source,
             eligible_games=eligible_games,
             validated_median_elo=validated_median_elo,
             archives_checked=archives_checked,
         )
 
-    def _run_selection(self, df: pd.DataFrame) -> tuple[
-        dict[str, list[str]], list[CandidateValidation], dict[str, int],
-    ]:
-        """Core loop: build pools, shuffle, validate until targets are met."""
-        pools = extract_candidate_pools(
-            df,
-            self.seed_usernames,
-            self.bands,
-            self.target_per_band,
-        )
-        rng = random.Random(self.random_state)
+    # -- Selección ----------------------------------------------------------
+
+    def _policy_snapshot(self) -> dict[str, Any]:
+        return {
+            "source": self.policy["source"],
+            "countries": self.countries,
+            "titles": self.titles,
+            "cutoff": self.policy["cutoff"],
+            "random_state": self.random_state,
+            "min_eligible_games": self.min_games,
+            "max_games_per_candidate": self.max_games,
+            "target_per_band": self.target_per_band,
+            "bands": {band: self.bands[band] for band in self.target_per_band},
+        }
+
+    def select(self, pool: dict[str, str]) -> SelectionResult:
+        """Recorre el pool barajado y valida candidatos hasta llenar cada banda.
+
+        Tolerante: si el pool se agota con alguna banda incompleta, se loguea un
+        warning por banda y se devuelve lo conseguido.
+        """
+        target_bands = set(self.target_per_band)
+        selected: dict[str, list[str]] = {band: [] for band in self.target_per_band}
         evaluated: list[CandidateValidation] = []
-        selected = {band: [] for band in self.target_per_band}
+        skipped: Counter[str] = Counter()
 
-        for band, target in self.target_per_band.items():
-            candidates = list(pools[band])
-            rng.shuffle(candidates)
-            logger.info(
-                "Banda %s: %d candidatos disponibles, objetivo %d",
-                band, len(candidates), target,
-            )
-            for candidate in candidates:
+        def full() -> bool:
+            return all(len(selected[b]) >= t for b, t in self.target_per_band.items())
+
+        for username, source in self.shuffled_pool(pool):
+            if full():
+                break
+            try:
+                estimated = self.estimate_elo(username)
+            except (requests.RequestException, ValueError, KeyError, TypeError):
+                skipped["stats_no_disponibles"] += 1
+                continue
+            if estimated is None:
+                skipped["sin_partidas_bullet_blitz_rapid"] += 1
+                continue
+            band = _band_for_elo(estimated, self.bands, target_bands)
+            if band is None:
+                skipped["fuera_de_bandas"] += 1
+                continue
+            if len(selected[band]) >= self.target_per_band[band]:
+                skipped[f"banda_llena:{band}"] += 1
+                continue
+
+            validation = self.validate_candidate(Candidate(username, band, estimated, source))
+            evaluated.append(validation)
+            if validation.accepted:
+                selected[band].append(validation.username)
                 logger.info(
-                    "Validando %s para %s (%d/%d seleccionados)",
-                    candidate.username,
-                    band,
-                    len(selected[band]),
-                    target,
+                    "%s aceptado para %s (%d/%d)",
+                    username, band, len(selected[band]), self.target_per_band[band],
                 )
-                validation = self.validate_candidate(candidate)
-                evaluated.append(validation)
-                if validation.accepted:
-                    selected[band].append(validation.username)
-                    logger.info("%s aceptado para %s", validation.username, band)
-                else:
-                    logger.info("%s rechazado: %s", validation.username, validation.reason)
-                if len(selected[band]) == target:
-                    break
+            else:
+                logger.info("%s rechazado para %s: %s", username, band, validation.reason)
 
-        candidate_counts = {band: len(pool) for band, pool in pools.items()}
-        return selected, evaluated, candidate_counts
-
-    def _build_result(self, selected, evaluated, candidate_counts) -> SelectionResult:
-        """Wrap raw selection data into a SelectionResult."""
-        return SelectionResult(
-            policy={
-                "source": self.policy["source"],
-                "seed_usernames": self.seed_usernames,
-                "cutoff": self.policy["cutoff"],
-                "random_state": self.random_state,
-                "min_eligible_games": self.min_games,
-                "max_games_per_candidate": self.max_games,
-                "target_per_band": self.target_per_band,
-                "bands": {band: self.bands[band] for band in self.target_per_band},
-            },
-            candidate_counts=candidate_counts,
+        result = SelectionResult(
+            policy=self._policy_snapshot(),
+            pool_size=len(pool),
             evaluated=evaluated,
             selected=selected,
+            skipped=dict(sorted(skipped.items())),
         )
-
-    def select_from_dataframe(self, df: pd.DataFrame) -> SelectionResult:
-        """Construye pools, los baraja y valida hasta cubrir cada objetivo.
-
-        Raises ``InsufficientCandidatesError`` if any band falls short.
-        """
-        selected, evaluated, counts = self._run_selection(df)
-        result = self._build_result(selected, evaluated, counts)
-        if not result.is_complete:
-            raise InsufficientCandidatesError(result)
+        for band, target in self.target_per_band.items():
+            if len(selected[band]) < target:
+                logger.warning(
+                    "Banda %s: solo %d/%d jugadores seleccionados (pool agotado)",
+                    band, len(selected[band]), target,
+                )
         return result
 
-    def select_lenient_from_dataframe(self, df: pd.DataFrame) -> SelectionResult:
-        """Like ``select_from_dataframe`` but tolerates incomplete bands.
 
-        Logs a warning for each band that didn't reach its target instead of
-        raising. Intended for the DAG where a partial selection is still useful.
-        """
-        selected, evaluated, counts = self._run_selection(df)
-        result = self._build_result(selected, evaluated, counts)
-        if not result.is_complete:
-            for band, target in self.target_per_band.items():
-                got = len(result.selected.get(band, []))
-                if got < target:
-                    logger.warning(
-                        "Banda %s: solo %d/%d jugadores seleccionados (pool: %d candidatos)",
-                        band, got, target, counts.get(band, 0),
-                    )
-        return result
-
-    def build_username_list(self, df: pd.DataFrame) -> tuple[list[str], SelectionResult]:
-        """Run lenient selection and return a flat, deduplicated username list.
-
-        The list starts with ``seed_usernames`` followed by the selected players,
-        ready to feed the ``.expand()`` in the DAG's download task.
-
-        Returns
-        -------
-        tuple[list[str], SelectionResult]
-            The combined username list and the full selection result (for the manifest).
-        """
-        result = self.select_lenient_from_dataframe(df)
-        seen: set[str] = set()
-        combined: list[str] = []
-        for username in self.seed_usernames:
-            key = _normalise_username(username)
-            if key not in seen:
-                combined.append(username)
-                seen.add(key)
-        for usernames in result.selected.values():
-            for username in usernames:
-                key = _normalise_username(username)
-                if key not in seen:
-                    combined.append(username)
-                    seen.add(key)
-        logger.info(
-            "Lista final: %d jugadores (seeds: %d, seleccionados: %d)",
-            len(combined), len(self.seed_usernames),
-            len(combined) - len(self.seed_usernames),
-        )
-        return combined, result
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".part")
-    temporary.write_text(text, encoding="utf-8")
-    temporary.replace(path)
-
-
-def write_manifest(result: SelectionResult, path: str | Path) -> Path:
-    """Guarda el manifiesto de selección de forma atómica."""
+def write_selection(result: SelectionResult, path: str | Path) -> Path:
+    """Guarda la selección (lista congelada + manifiesto) de forma atómica."""
     destination = Path(path)
     payload = yaml.safe_dump(result.to_manifest(), allow_unicode=True, sort_keys=False)
     _atomic_write_text(destination, payload)
     return destination
 
 
-def apply_selection_to_config(
-    config_path: str | Path,
-    seed_usernames: list[str],
-    selected: dict[str, list[str]],
+def load_selection(path: str | Path) -> list[str]:
+    """Lee la lista congelada de un archivo de selección existente."""
+    payload = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    usernames = payload.get("usernames") or []
+    if not usernames:
+        raise ValueError(f"El archivo de selección {path} no tiene usernames")
+    return [str(username) for username in usernames]
+
+
+def load_or_create_selection(
+    config: dict[str, Any],
+    *,
+    selector: PlayerSelector | None = None,
 ) -> list[str]:
-    """Actualiza sólo ``chess_com.usernames`` y preserva el resto del YAML y sus comentarios."""
-    path = Path(config_path)
-    original = path.read_text(encoding="utf-8")
-    lines = original.splitlines(keepends=True)
-    start = next(
-        (index for index, line in enumerate(lines) if re.fullmatch(r"  usernames:\s*\n?", line)),
-        None,
+    """Devuelve la lista de jugadores a descargar, creándola sólo si no existe.
+
+    La primera corrida selecciona y escribe ``player_selection.selection_path``; las
+    siguientes leen ese archivo, así que descargan exactamente los mismos jugadores.
+    Para volver a seleccionar hay que borrar el archivo a mano.
+    """
+    path = Path(config["player_selection"]["selection_path"])
+    if path.exists():
+        usernames = load_selection(path)
+        logger.info("Selección congelada reutilizada (%s): %d jugadores", path, len(usernames))
+        return usernames
+
+    logger.info("No existe %s: primera corrida, se seleccionan jugadores por banda.", path)
+    selector = selector or PlayerSelector(config)
+    result = selector.select(selector.fetch_candidate_pool())
+
+    # An outage during selection must not freeze a useless list: below the download
+    # minimum nothing is written, so the next run selects again.
+    min_users = config["download"].get("min_users_ok", 1)
+    if len(result.usernames) < min_users:
+        raise InsufficientSelectionError(
+            f"Solo {len(result.usernames)} jugadores seleccionados (mínimo {min_users}); "
+            "no se congela la selección."
+        )
+
+    write_selection(result, path)
+    logger.info(
+        "Selección congelada en %s: %d jugadores %s",
+        path, len(result.usernames),
+        {band: len(users) for band, users in result.selected.items()},
     )
-    if start is None:
-        raise ValueError("No se encontró chess_com.usernames en la configuración")
-
-    end = start + 1
-    while end < len(lines):
-        stripped = lines[end].strip()
-        indentation = len(lines[end]) - len(lines[end].lstrip(" "))
-        if stripped and not stripped.startswith("#") and indentation <= 2:
-            break
-        end += 1
-
-    existing_lines: dict[str, str] = {}
-    for line in lines[start + 1 : end]:
-        match = re.match(r"\s*-\s*([^\s#]+)", line)
-        if match:
-            existing_lines[_normalise_username(match.group(1))] = line
-
-    combined: list[str] = []
-    seen: set[str] = set()
-    for username in seed_usernames:
-        key = _normalise_username(username)
-        if key not in seen:
-            combined.append(username)
-            seen.add(key)
-    for usernames in selected.values():
-        for username in usernames:
-            key = _normalise_username(username)
-            if key not in seen:
-                combined.append(username)
-                seen.add(key)
-
-    replacement = [lines[start]]
-    for index, username in enumerate(combined):
-        key = _normalise_username(username)
-        if index == len(seed_usernames):
-            replacement.append("    # Selección reproducible generada por scripts/seleccionar_jugadores.py.\n")
-        replacement.append(existing_lines.get(key, f"    - {username}\n"))
-    replacement.append("\n")
-
-    updated = "".join(lines[:start] + replacement + lines[end:])
-    parsed = yaml.safe_load(updated)
-    if parsed["chess_com"]["usernames"] != combined:
-        raise ValueError("La actualización de usernames no superó la validación")
-    _atomic_write_text(path, updated)
-    return combined
+    return result.usernames
