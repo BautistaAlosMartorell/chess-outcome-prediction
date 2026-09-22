@@ -28,7 +28,6 @@ class DataDownloader:
         self.config = config
         chess_cfg = config["chess_com"]
         self.base_url: str = chess_cfg["base_url"].rstrip("/")
-        self.usernames: list[str] = chess_cfg["usernames"]
         self.max_games_per_user: int = chess_cfg["max_games_per_user"]
         self.time_classes: set[str] = set(chess_cfg["time_classes"])
         self.rules: str = chess_cfg["rules"]
@@ -177,8 +176,11 @@ class DataDownloader:
                 f"Solo {total_games} partidas crudas (mínimo {min_total}). Fallaron: {failed}"
             )
 
-    def download_all(self) -> dict[str, Path]:
-        """Descarga las partidas de cada usuario configurado, tolerando fallos aislados.
+    def download_all(self, usernames: list[str]) -> dict[str, Path]:
+        """Descarga las partidas de cada usuario de ``usernames``, tolerando fallos aislados.
+
+        La lista la arma ``src.player_selection.load_or_create_selection`` (congelada tras
+        la primera corrida); no vive en el config.
 
         Si un usuario falla (cuenta borrada -> 404, sin archivos, sin partidas
         elegibles, error de red), se registra un ``warning`` y se sigue con el
@@ -191,7 +193,7 @@ class DataDownloader:
         """
         results: dict[str, Path] = {}
         failed: dict[str, str] = {}
-        for username in self.usernames:
+        for username in usernames:
             dest = self.dest_for(username)
             try:
                 results[username] = self.download_user_games(username, dest)
@@ -204,7 +206,7 @@ class DataDownloader:
         logger.info(
             "Descarga terminada: %d/%d usuarios OK, %d partidas crudas. Fallaron: %s",
             len(results),
-            len(self.usernames),
+            len(usernames),
             total_games,
             list(failed) or "ninguno",
         )
@@ -215,5 +217,7 @@ class DataDownloader:
 if __name__ == "__main__":
     from src.utils import load_config
 
+    from src.player_selection import load_or_create_selection
+
     cfg = load_config("config/config.yaml")
-    DataDownloader(cfg).download_all()
+    DataDownloader(cfg).download_all(load_or_create_selection(cfg))

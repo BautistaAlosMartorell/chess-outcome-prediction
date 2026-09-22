@@ -1,97 +1,185 @@
-# Criterio para ampliar la muestra de jugadores
+# Criterio de selección de jugadores
 
 ## Estado actual
 
-El selector está implementado y **corre dentro del DAG** como su primera tarea
-(`listar_jugadores`, en `dags/pipeline_ajedrez_dag.py`). Ya no es un script ocasional que
-se ejecuta a mano ni modifica `chess_com.usernames`: en cada corrida arma dinámicamente la
-lista de cuentas a descargar, la usa como fuente del `.expand()` y guarda un manifiesto
-auditable. La lógica vive en `src/player_selection.py`.
+La selección corre **dentro del DAG**, en la primera tarea (`listar_jugadores`, en
+`dags/pipeline_ajedrez_dag.py`). La lógica vive en `src/player_selection.py`
+(`load_or_create_selection`). No depende de ninguna cuenta inicial ni del Parquet de
+una corrida anterior, y **se hace una sola vez**: el resultado queda congelado y todas las
+corridas siguientes descargan exactamente los mismos jugadores.
 
 ## Problema que resuelve
 
-La muestra de la Entrega 1 está concentrada en cuentas expertas y de élite. Para el EDA y
-el modelado conviene sumar información de las bandas menos representadas sin elegir usuarios
-conocidos de manera arbitraria. El universo de candidatos se forma con los oponentes que ya
-aparecen en el Parquet procesado: todos tienen una relación trazable con la muestra
-original.
+Las versiones anteriores tenían dos problemas:
 
-El selector apunta a cubrir **cinco bandas de ELO** con un objetivo de **20 jugadores por
-banda** (~100 en total), configurable en `player_selection.target_per_band`:
+1. **Dependían de 8 cuentas elegidas a mano** (streamers y maestros). La muestra quedaba
+   concentrada en niveles altos y, cuando se amplió con los oponentes de esas 8, arrastraba
+   un sesgo de red: los candidatos eran gente que había jugado contra ellas.
+2. **La selección no era estable.** Desde la segunda corrida los candidatos salían del
+   Parquet de la corrida anterior, que ya incluía las partidas de los jugadores elegidos.
+   El pool crecía en cada corrida (de ~3.600 a ~54.000 candidatos) y la semilla fija
+   barajaba un mazo distinto, así que salían otros jugadores. Se perdía la reproducibilidad
+   y el bronce descargado antes quedaba huérfano.
 
-- `principiante`, `intermedio`, `avanzado`, `experto` y `top_mundial`.
-
-Los intervalos de cada banda se definen en `elo.bandas` y son cerrados a izquierda y
-abiertos a derecha para que un rating ubicado exactamente en un límite no pertenezca a dos
-bandas.
-
-## Procedimiento reproducible
-
-`listar_jugadores` funciona en dos modos según exista o no un Parquet procesado de una
-corrida anterior:
+## Procedimiento
 
 ```text
-¿Existe data/processed/partidas_ajedrez_clean.parquet?
+¿Existe data/raw/seleccion/jugadores_seleccionados.yaml?
         │
-        ├── No  →  BOOTSTRAP: descubre oponentes de los seeds consultando la PubAPI
-        │          (discover_opponents_from_api) y sigue el flujo normal de selección.
+        ├── Sí  →  Se lee y se devuelve la misma lista (sin selección, sin red).
         │
-        └── Sí  →  Lee el Parquet y extrae los oponentes ya observados (rápido, sin red).
+        └── No  →  PRIMERA CORRIDA:
                         │
                         ↓
-        ELO mediano observado y separación por banda
+        Tres pools de candidatos, cada uno con las bandas que alimenta
+          · titulados_avanzado  FM, CM, NM                  → avanzado
+          · titulados_alto      GM, IM                      → experto, top_mundial
+          · paises              AR, ES, MX, US, IN, BR, DE, RU → principiante, intermedio
+          (/pub/titled/{título} y /pub/country/{iso}/players; cada lista se guarda cruda
+           en data/raw/seleccion/ → bronce de la selección)
                         ↓
-        orden aleatorio reproducible (semilla 42)
+        Cada pool: sin duplicados, orden alfabético y barajado con semilla 42
                         ↓
-        validación serial en la PubAPI hasta completar cada cupo
+        Recorrido en ronda (un candidato de cada pool activo por turno):
+          · pre-filtro con /pub/player/{u}/stats → banda estimada
+            (rating de la modalidad bullet/blitz/rapid con más partidas)
+          · si esa banda ya está llena → se saltea sin validar
+          · si no → validación completa contra sus partidas hasta el cutoff
+            (la banda final la fija la mediana validada, no la estimación)
+          · un pool con todas sus bandas llenas se deja de recorrer
+          · checkpoint después de cada validación
                         ↓
-        lista combinada (seeds + seleccionados, sin duplicados)
+        Se detiene al llenar 20 por banda (o al agotar los pools)
                         ↓
-        manifiesto de aceptados y rechazados
+        Escritura atómica de jugadores_seleccionados.yaml → queda CONGELADO
                         ↓
-        fuente del .expand() de descarga_usuario
+        Fuente del .expand() de descarga_usuario
 ```
 
-Para cada candidato se exige una cuenta activa y sin cierre por fair play, archivos de
-partidas anteriores o iguales al `cutoff` (agosto de 2026) y al menos
-`player_selection.min_eligible_games` partidas utilizables (hoy **15**) entre las
-`max_games_per_candidate` (1.000) más recientes revisadas. Se aplican los mismos filtros
-del pipeline: partidas *rated*, ajedrez estándar y modalidad bullet, blitz o rapid. La
-mediana se vuelve a calcular con esas partidas y debe continuar dentro de la banda inicial.
+### Por qué tres pools y no uno
 
-Los candidatos de cada banda se barajan con la semilla configurada (`random_state: 42`) y
-se validan en ese orden hasta completar el cupo. Esto evita consultar innecesariamente a
-todos los oponentes y sigue siendo reproducible: con el mismo Parquet, configuración y
-respuestas históricas de la API, el orden y la selección son iguales.
+La primera versión mezclaba todas las listas en una sola cola. Se cortó a mano después de
+una hora con 94/100: faltaban 6 `avanzado` (1800–2200). Con muestras de `/stats` del
+22/09/2026 se midió qué niveles aporta cada lista:
+
+| Lista | Tamaño | Muestra en `avanzado` | Resto de la muestra |
+|---|---|---|---|
+| Países (AR, US) | ~10.000 c/u, ~80.000 en total | **0/80** | casi todo principiante |
+| FM | 4.859 | 3/20 | experto y top_mundial |
+| NM | 2.593 | 2/20 | experto y top_mundial |
+| CM | 2.760 | 1/20 | experto y top_mundial |
+
+El 90 % de la cola única eran jugadores por país, y ahí no hay nadie de 1800+. Con las
+otras bandas llenas, el selector gastaba una consulta a `/stats` por candidato solo para
+descartarlo, y menos del 1 % de esas consultas caía en `avanzado`.
+
+El problema de fondo es que **la PubAPI no publica ninguna lista de jugadores por rating**.
+Solo hay listas por país (usuarios comunes, casi todos principiantes) y por título
+(maestros, casi todos de 2200 para arriba). Un jugador de 1800–2200 suele ser un amateur
+fuerte sin título, así que no figura en ninguna. FM, CM y NM son la fuente abierta más
+cercana: aciertan poco (alrededor de 1 de cada 10), pero en un pool propio alcanzan.
+
+> **Una opción que se descartó.** Los títulos femeninos WFM y WCM tienen umbrales más bajos
+> (2000–2100 FIDE) y por eso caen mucho más seguido en `avanzado` (12/20 y 9/20 en la
+> muestra). Se probaron y se sacaron: llenar una banda con listas exclusivas de un género
+> habría hecho que los 20 jugadores de `avanzado` fueran casi todas mujeres y el resto de
+> las bandas no, un sesgo metido por la herramienta de muestreo. Hoy los pools usan solo
+> títulos abiertos, que puede obtener cualquiera.
+
+Por eso ahora:
+
+- **Cada pool declara las bandas que alimenta** (`player_selection.pools`). Cuando todas
+  están llenas, el pool no se sigue recorriendo: una vez completos `principiante` e
+  `intermedio`, los ~80.000 jugadores por país ya no se consultan. Si un candidato cae en
+  otra banda que sigue abierta, se acepta igual (por ejemplo, un FM de 1900).
+- **Los pools se recorren en ronda**, así todas las bandas avanzan en paralelo y ninguna
+  espera a que otra termine.
+- **Un jugador que figura en dos pools queda solo en el primero**, según el orden del config.
+  Nunca se evalúa dos veces.
+- **La banda la decide la mediana validada, no la estimación.** Un candidato que se validó
+  en otra banda todavía abierta entra ahí igual, en vez de descartarse. La validación es la
+  parte cara (recorre los archivos mensuales hasta juntar 1.000 partidas), así que no se
+  tira a la basura: en una prueba real eso bajó el tiempo de 547 a 409 segundos para el
+  mismo objetivo. Si la banda validada ya está llena, se registra
+  `banda_llena_tras_validar:<banda>`.
+
+### Checkpoint: si se corta, retoma
+
+Después de cada validación (y cada 100 candidatos salteados), el avance se guarda en
+`data/raw/seleccion/jugadores_seleccionados.parcial.yaml`: candidatos consumidos por pool,
+seleccionados, evaluados y conteos de salteados. Si la tarea se corta (reintento de Airflow,
+worker caído, corte manual), la próxima corrida sigue desde ahí. Como el orden de cada pool
+es determinístico (snapshots + semilla), retomar da el mismo resultado que no haberse
+cortado. El checkpoint solo se usa si fue hecho con la **misma política**; si cambió el
+config, se ignora y se empieza de cero. Cuando la selección se congela, el checkpoint se
+borra.
+
+### Validación de cada candidato
+
+Se exige:
+
+- cuenta activa y sin cierre por fair play;
+- archivos mensuales anteriores o iguales al `cutoff` (agosto de 2026);
+- al menos `player_selection.min_eligible_games` partidas utilizables (hoy **15**) entre las
+  `max_games_per_candidate` (1.000) más recientes revisadas.
+
+Se aplican los mismos filtros de alcance que usa el pipeline: partidas *rated*, ajedrez
+estándar y modalidad bullet, blitz o rapid. Con esas partidas se calcula la mediana de ELO,
+y **esa mediana define la banda del jugador**. El pre-filtro con `/stats` solo sirve para
+decidir a quién vale la pena validar: como el rating actual es posterior al cutoff, un
+jugador puede terminar en una banda distinta de la estimada, y ahí entra. Si esa banda ya
+está llena, se descarta.
+
+Las bandas vienen de `elo.bandas` y son intervalos cerrados a izquierda y abiertos a
+derecha, para que un rating justo en el límite no pertenezca a dos bandas.
+
+## Por qué queda congelada
+
+La selección se hace **una vez** y se reusa. Es la misma idea que la ventana temporal
+congelada (`download.until_month`):
+
+- **Reproducibilidad:** todas las corridas en la misma instalación descargan los mismos
+  jugadores, y como la descarga es idempotente, reusan el bronce ya bajado. Sale el mismo
+  dataset.
+- **Bronce append-only:** nunca queda un JSON crudo huérfano de una selección vieja. Además,
+  si `limpieza_y_parseo` tiene que reconstruir rutas, lo hace desde la lista congelada y no
+  con un glob de `data/raw/`.
+- **Sin intervención humana:** nadie tiene que escribir la lista a mano. La primera corrida
+  la arma sola.
+
+Para **volver a seleccionar** hay que borrar a propósito
+`data/raw/seleccion/jugadores_seleccionados.yaml`, y también el `.parcial.yaml` si
+existiera. Si además se borran los snapshots `country_*.json` / `titled_*.json`, se vuelven
+a pedir las listas a la API.
+
+**Límite conocido:** las listas por país y los `/stats` son datos vivos de Chess.com. Otra
+instalación que corra la selección desde cero otro día puede obtener otros jugadores. Lo que
+se garantiza es que, una vez creada, la selección no cambia entre corridas. Para
+reproducir exactamente la muestra en otra máquina alcanza con copiar `data/raw/seleccion/`.
 
 ## Tolerancia a bandas incompletas
 
-A diferencia del script original (que abortaba si una banda no llegaba a su cupo), el DAG
-usa una **selección tolerante**: si una banda no alcanza su objetivo, se registra un
-*warning* en los logs (`Banda X: solo N/target jugadores seleccionados`) y la corrida sigue
-con lo que consiguió. Una selección parcial sigue siendo útil para ampliar la muestra, y los
-seeds siempre están incluidos, así que nunca queda vacía.
+Si el pool se agota antes de que una banda llegue a su objetivo, se registra un *warning*
+(`Banda X: solo N/target jugadores seleccionados`) y la corrida sigue con lo que consiguió.
+Hay una excepción: si el total queda por debajo de `download.min_users_ok` (por ejemplo, por
+una caída de la API durante la selección), **no se congela nada** y la tarea falla. El
+checkpoint queda, así que la próxima corrida retoma desde ahí y no queda fija una lista
+inservible.
 
 ## Manifiesto
 
-Cada corrida escribe `data/processed/player_selection_manifest.yaml`
-(`player_selection.manifest_path`) con la política utilizada, los candidatos evaluados, los
-motivos de rechazo y la selección final por banda. Es la evidencia auditable de cómo se
-armó la muestra en esa corrida.
+`jugadores_seleccionados.yaml` es a la vez la lista congelada y el manifiesto auditable.
+Incluye:
 
-## Ejecución manual (opcional)
-
-El módulo sigue pudiendo usarse desde la línea de comandos como vista previa, sin depender
-de una corrida del DAG:
-
-```bash
-python scripts/seleccionar_jugadores.py
-```
+- la política usada (pools con sus listas y bandas, semilla, cutoff, cupos y bandas de ELO);
+- el tamaño de cada pool y cuántos candidatos se consumieron de cada uno;
+- los seleccionados por banda y la lista plana `usernames`;
+- los conteos de candidatos salteados en el pre-filtro, por motivo;
+- cada candidato validado, con su banda estimada, su mediana validada y el motivo de rechazo.
 
 ## Qué debe validarse después
 
-Con la selección corriendo dentro del DAG conviene, tras cada ampliación real de la muestra,
-investigar duplicados y fallos por cuenta y medir la distribución final por ELO. Los
-umbrales de ingesta (`download.min_users_ok`, `download.min_total_games`) y de calidad
-(`quality.min_final_games`) deben acompañar el tamaño real esperado de la muestra ampliada,
-no quedar fijos en los números de la muestra original.
+Después de la primera corrida hay que medir la distribución final por ELO en el Parquet
+(`nivel_promedio`) y revisar duplicados y fallos por cuenta. Los umbrales de ingesta
+(`download.min_users_ok: 80`, `download.min_total_games`) y de calidad
+(`quality.min_final_games`) tienen que acompañar el tamaño real de la muestra.

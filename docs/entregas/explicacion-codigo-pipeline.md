@@ -47,8 +47,8 @@ los controles de calidad.
 | Parte | Responsabilidad | Archivo principal |
 |---|---|---|
 | Orquestación | Define tareas, dependencias, reintentos y estado en Airflow | `dags/pipeline_ajedrez_dag.py` |
-| Configuración | Centraliza seeds, filtros, rutas, umbrales y política de selección | `config/config.yaml` |
-| Selección | Arma la lista de jugadores por banda de ELO (seeds + oponentes validados) | `src/player_selection.py` |
+| Configuración | Centraliza filtros, rutas, umbrales y política de selección | `config/config.yaml` |
+| Selección | Arma una vez la lista de jugadores por banda de ELO y la congela | `src/player_selection.py` |
 | Descarga | Consulta la PubAPI y guarda los JSON crudos | `src/download_data.py` |
 | Limpieza | Parsea PGN, deduplica, tipa y filtra partidas | `src/clean_data.py` |
 | Features | Crea variables derivadas de ELO, ritmo y apertura | `src/feature_engineering.py` |
@@ -179,37 +179,33 @@ no se generan corridas automáticas: la ventana de datos de Chess.com la define
 ```python
 @task(task_id="listar_jugadores")
 def listar_jugadores() -> list[str]:
-    import pandas as pd
-    from src.player_selection import PlayerSelector, write_manifest
+    from src.player_selection import load_or_create_selection
     from src.utils import load_config
 
     _enter_project_root()
     config = load_config(CONFIG_PATH)
-    parquet_path = Path(config["paths"]["clean_parquet"])
-    selector = PlayerSelector(config)
-
-    if parquet_path.exists():
-        df = pd.read_parquet(parquet_path)          # extrae oponentes ya observados
-    else:
-        df = selector.discover_opponents_from_api() # bootstrap: descubre por la PubAPI
-
-    jugadores, result = selector.build_username_list(df)
-    write_manifest(result, Path(config["player_selection"]["manifest_path"]))
+    jugadores = load_or_create_selection(config)
     log.info("Jugadores a descargar (%d): %s", len(jugadores), jugadores)
     return jugadores
 ```
 
-Esta tarea ya no lee una lista fija del YAML: **selecciona los jugadores automáticamente por
-banda de ELO** (ver [`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)).
-Funciona en dos modos:
+Esta tarea **selecciona los jugadores una sola vez y deja la lista congelada** (ver
+[`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)):
 
-- **Selección completa:** si existe el Parquet de una corrida anterior, extrae los oponentes
-  observados en el dataset, los valida contra la PubAPI y elige hasta 20 por banda.
-- **Bootstrap (primera corrida):** si no hay Parquet previo, descubre oponentes de los seeds
-  consultando la PubAPI (`discover_opponents_from_api`).
+- **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
+  arma tres pools con listas públicas de la PubAPI (`player_selection.pools`): FM/CM/NM para
+  `avanzado`, GM/IM para `experto` y `top_mundial`, y jugadores por país para
+  `principiante` e `intermedio`. Baraja cada pool con semilla fija y los recorre en ronda.
+  Estima la banda de cada candidato con `/stats`, lo valida contra sus partidas hasta el
+  cutoff y junta 20 por banda de ELO. Un pool con todas sus bandas llenas deja de
+  consultarse. El avance se guarda en un checkpoint (`.parcial.yaml`), así que un reintento
+  retoma. Al terminar, escribe el archivo de forma atómica.
+- **Corridas siguientes:** lee ese archivo y devuelve la misma lista. No selecciona de
+  nuevo y no usa la red para esto.
 
-En ambos casos la lista final es `seeds + seleccionados` (sin duplicados) y se guarda un
-manifiesto auditable en `data/processed/player_selection_manifest.yaml`. Los imports de
+No hay cuentas iniciales elegidas a mano y no se lee el Parquet de una corrida anterior
+(antes eso hacía que cada corrida eligiera jugadores distintos). El archivo es también el
+manifiesto auditable: política, candidatos evaluados y motivos de rechazo. Los imports de
 módulos del proyecto se hacen dentro de la tarea para que ocurran en el worker cuando la
 tarea se ejecuta, no cuando Airflow analiza el archivo para dibujar el DAG.
 
@@ -353,11 +349,11 @@ Recibe una lista de resultados, uno por cuenta. Separa las cuentas exitosas de l
 fallidas, suma partidas crudas y aplica los umbrales de `config.yaml`:
 
 ```yaml
-min_users_ok: 8
+min_users_ok: 80
 min_total_games: 1500
 ```
 
-Si hay menos de ocho cuentas exitosas o menos de 1.500 partidas crudas, lanza un error y
+Si hay menos de 80 cuentas exitosas (de ~100 seleccionadas) o menos de 1.500 partidas crudas, lanza un error y
 el DAG queda en rojo. Si aprueba, devuelve solo las rutas Bronze exitosas.
 
 La decisión ocurre **después** del fan-out porque antes no se conoce el estado global. Es
@@ -598,7 +594,7 @@ Airflow crea una instancia por username sin duplicar código.
 de Chess.com y evitar rate limiting.
 
 **¿Qué ocurre si falla una cuenta?** Se registra el fallo y se continúa; el DAG falla solo
-si no se cumplen los mínimos globales de ocho usuarios y 1.500 partidas crudas.
+si no se cumplen los mínimos globales de 80 usuarios y 1.500 partidas crudas.
 
 **¿Cómo se sabe que el dato final es válido?** `verificar_calidad` corre antes de exportar
 y detiene el DAG si falla cualquiera de los siete criterios.

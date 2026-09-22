@@ -22,6 +22,7 @@ from rich.table import Table
 from src.clean_data import DataCleaner
 from src.download_data import DataDownloader
 from src.feature_engineering import FeatureEngineer
+from src.player_selection import load_or_create_selection, load_selection
 from src.utils import load_config, setup_logger
 
 logger = setup_logger(__name__)
@@ -111,14 +112,18 @@ def run_pipeline(config_path: str = "config/config.yaml", skip_download: bool = 
     processed_dir = Path(config["paths"]["processed_dir"])
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    usernames = config["chess_com"]["usernames"]
+    # Same frozen player list as the DAG: created on the first run, reused afterwards.
+    if skip_download:
+        usernames = load_selection(config["player_selection"]["selection_path"])
+    else:
+        usernames = load_or_create_selection(config)
     template = config["chess_com"]["raw_filename_template"]
     raw_paths = {u: raw_dir / template.format(username=u) for u in usernames}
 
     if not skip_download:
         downloader = DataDownloader(config)
         try:
-            raw_paths = downloader.download_all()
+            raw_paths = downloader.download_all(usernames)
         except Exception:
             logger.exception("La descarga de partidas falló.")
             raise

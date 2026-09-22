@@ -40,33 +40,36 @@ entregas siguientes basta con mover el mes o ponerlo en `null`.
 
 ### Selección automática de jugadores
 
-La primera tarea del DAG (`listar_jugadores`) selecciona automáticamente los jugadores
-a descargar. Funciona en dos modos:
+La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a descargar
+**una sola vez** y la deja congelada:
 
-1. **Bootstrap (primera corrida):** si no existe un parquet procesado de una corrida
-   anterior, usa los 8 *seed_usernames* del config — cuentas públicas verificadas que
-   cubren desde nivel club (~1400) hasta élite mundial (~3400).
-2. **Selección completa (corridas siguientes):** lee el parquet de la corrida anterior,
-   extrae los oponentes observados, los valida contra la PubAPI de Chess.com (perfil
-   activo, al menos 15 partidas rated elegibles) y selecciona hasta 20 jugadores por
-   cada una de las 5 bandas de ELO (principiante, intermedio, avanzado, experto,
-   top_mundial), con una semilla aleatoria fija (`random_state: 42`) para
-   reproducibilidad.
+1. **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
+   arma tres pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
+   ciertas bandas:
+   - FM, CM y NM (`/pub/titled/{título}`) para `avanzado`;
+   - GM e IM para `experto` y `top_mundial`;
+   - jugadores de AR, ES, MX, US, IN, BR, DE y RU (`/pub/country/{iso}/players`) para
+     `principiante` e `intermedio`.
 
-Los 8 seeds siempre están incluidos en la lista final. La selección se guarda en un
-manifiesto auditable (`data/processed/player_selection_manifest.yaml`). La configuración
-viva está en `config/config.yaml` bajo `player_selection`.
+   Baraja cada pool con semilla fija (`random_state: 42`) y los recorre en ronda. Estima la
+   banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus partidas
+   hasta el cutoff (perfil activo, al menos 15 partidas rated elegibles, mediana de ELO
+   dentro de la banda). La banda final la decide la mediana validada, no la estimación, así
+   que un jugador validado en otra banda abierta entra ahí igual. Cuando todas las bandas de
+   un pool se llenan, ese pool deja de consultarse. Se usan solo títulos abiertos: llenar
+   una banda con listas exclusivas de un género (WFM, WCM) habría sesgado la muestra. Se detiene al juntar 20 jugadores en cada una de las 5 bandas. El avance se
+   guarda en un checkpoint, así que si la tarea se corta, retoma desde ahí.
+2. **Corridas siguientes:** lee ese archivo y devuelve exactamente la misma lista, sin
+   volver a seleccionar. Como la descarga es idempotente, se reusa el bronce ya bajado y
+   sale el mismo dataset.
 
-**Seeds iniciales:**
-
-- `RebeccaHarris` — nivel club, alrededor de 1400.
-- `erik` — nivel club/intermedio, alrededor de 1700.
-- `AnnaCramling` — jugadora titulada y streamer, alrededor de 2400.
-- `AlexandraBotez` — jugadora titulada y streamer, alrededor de 2500.
-- `GothamChess` — maestro internacional y streamer, alrededor de 2900.
-- `IMRosen` — maestro internacional, alrededor de 2900.
-- `chessbrah` — cuenta de gran maestro/streaming, alrededor de 3200.
-- `hikaru` — élite mundial, alrededor de 3400.
+No hay cuentas iniciales elegidas a mano ni dependencia del Parquet de una corrida
+anterior. El archivo de selección también es el manifiesto auditable: incluye la política,
+los candidatos evaluados y los motivos de rechazo. Junto a él quedan los snapshots crudos
+de las listas por país y por título. Por qué hay tres pools y qué se midió para definirlos
+está en el doc del criterio de selección. Para volver a seleccionar hay que borrarlo a propósito.
+El detalle está en [`docs/entregas/criterio-seleccion-jugadores.md`](docs/entregas/criterio-seleccion-jugadores.md);
+la configuración, en `config/config.yaml` bajo `player_selection`.
 
 ### Limitación del rating (fuga de información hacia el resultado)
 
@@ -85,12 +88,15 @@ la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado
 ### Limitación de la muestra
 
 La muestra no es una selección aleatoria de la población general de Chess.com. Los
-jugadores se seleccionan a partir de los oponentes observados de los 8 seeds, lo que
-introduce un sesgo de red: los candidatos tienden a estar en los mismos pools de
-emparejamiento que los seeds. La selección por banda de ELO mitiga parcialmente la
-concentración en niveles altos, pero no garantiza representatividad. Las conclusiones
-de las próximas entregas se formulan sobre el universo de jugadores alcanzados por
-este método, no sobre "ajedrez online" en general.
+candidatos salen de las listas públicas por país (ocho países) y de titulados, y se
+estratifican por banda de ELO con cupos iguales. `avanzado`, `experto` y `top_mundial` salen
+de listas de titulados, porque en las listas por país casi no hay jugadores de 1800 o más y
+la API no publica ninguna lista por rating. Eso deja afuera al amateur fuerte sin título,
+que es el perfil típico de 1800–2200. Por eso la distribución de niveles refleja
+el diseño (20 jugadores por banda) y no la de la población. Además, las listas por país
+solo incluyen a quienes declararon ese país en su perfil. Las conclusiones de las
+próximas entregas se formulan sobre el universo de jugadores alcanzados por este método,
+no sobre "ajedrez online" en general.
 
 ## Por qué la fuente cumple los siete criterios
 
@@ -100,15 +106,16 @@ este método, no sobre "ajedrez online" en general.
 | 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
 | 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida ampliada validada produjo 93.669 partidas limpias. |
+| 5 | Volumen | La corrida validada produjo 80.145 partidas limpias. |
 | 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
 ## Estructura
 
 ```text
-config/config.yaml                         parámetros y cuentas de Chess.com
+config/config.yaml                         parámetros del pipeline y política de selección de jugadores
 data/raw/                                  JSON regenerables, ignorados por Git
+data/raw/seleccion/                        lista congelada de jugadores + snapshots de las listas públicas
 data/processed/                            Parquet, sample y resumen, ignorados por Git
 dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
@@ -119,7 +126,7 @@ notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selecció
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas
-src/player_selection.py                    selección automática y reproducible de jugadores por banda de ELO
+src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 tests/test_player_selection.py             pruebas del selector de jugadores
@@ -200,8 +207,8 @@ volúmenes) o `docker compose down -v` (reset total).
 
 ### Sin Docker (CLI / notebook)
 
-El CLI reutiliza los mismos módulos de `src/`, pero conserva el modo piloto de 8 cuentas
-fijas y no reproduce la muestra ampliada de la Entrega 2. Requiere Python 3.11 o superior.
+El CLI reutiliza los mismos módulos de `src/` y la misma lista congelada que el DAG (si
+no existe, la crea igual que `listar_jugadores`). Requiere Python 3.11 o superior.
 
 ```bash
 python3 -m venv .venv
@@ -209,10 +216,10 @@ python3 -m venv .venv
 .venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen
 ```
 
-También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` para verificar la
-ingesta piloto. El análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` requiere el
-Parquet ampliado generado por el **DAG de Airflow** (93.669 partidas finales); no debe
-ejecutarse sobre la salida reducida del CLI. Ambos notebooks deben ejecutarse con
+También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
+pipeline completo con la misma lista congelada que el DAG y verifica el dataset. El
+análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` consume el Parquet que produce
+ese pipeline (80.145 partidas finales). Ambos notebooks deben ejecutarse con
 **Restart & Run All**.
 
 ### Tests
@@ -227,41 +234,38 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
 
-Corrida ampliada validada el 18/09/2026 (DAG completo en Airflow, ventana congelada
-hasta agosto de 2026):
+Corrida validada el 22/09/2026 (DAG completo en Airflow, ventana congelada hasta agosto
+de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
 
-- 94.247 registros descargados.
-- 93.669 partidas finales.
-- 99,39% de retención.
-- 578 registros descartados por las reglas de deduplicación, alcance y calidad del
+- 80.521 registros descargados.
+- 80.145 partidas finales.
+- 99,53% de retención.
+- 376 registros descartados por las reglas de deduplicación, alcance y calidad del
   pipeline.
 - 0 nulos en el dataset final.
+- Las cinco bandas de ELO quedan entre 18,2 % y 21,8 % del dataset.
 
 Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
-de Airflow. Con la selección por bandas y la ventana temporal congelada, esa corrida
-produce la muestra ampliada usada en la Entrega 2: 94.247 registros crudos y 93.669
-partidas finales. El CLI de 8 cuentas es sólo una corrida piloto y no reemplaza este
-artefacto.
+de Airflow. Con la lista de jugadores congelada y la ventana temporal congelada, volver a
+correrlo reproduce ese mismo dataset. La carpeta `data/raw/seleccion/` es la que fija la
+muestra: copiarla a otra máquina reproduce la selección exacta.
 
 ### Casos límite observados en la corrida validada
 
 Casos encontrados inspeccionando el Parquet final directamente —no sólo el resumen— y
 documentados para que no se confundan con errores del pipeline durante el EDA:
 
-- **286 partidas con `Date` = 2026-09-01** (0,31% del dataset), un día después del tope
+- **56 partidas con `Date` = 2026-09-01** (0,07% del dataset), un día después del tope
   `download.until_month: "2026-08"`. No es un bug del filtro: la ventana congelada decide
   qué archivo mensual bajar por su URL (`.../games/2026/08`), no por la fecha individual.
-  En la muestra ampliada el patrón aparece en varias cuentas y confirma un límite horario
-  del archivo mensual de Chess.com. La ventana es exacta a nivel de archivo descargado,
-  no a nivel de fecha PGN.
-- **Una partida con `tiempo_base_seg` = 181** (`TimeControl` crudo `"181"`, sin
-  incremento). No es un error de parseo: Chess.com permite controles de tiempo
-  personalizados, y esa fila corresponde a una partida real con ese ritmo puntual, fuera
-  de los controles estándar (10/30/60/180/300/600/900 s).
+  El patrón aparece en varias cuentas y confirma un límite horario del archivo mensual de
+  Chess.com. La ventana es exacta a nivel de archivo descargado, no a nivel de fecha PGN.
+- **Controles de tiempo fuera de los estándar**, como `tiempo_base_seg` = 240 o 660. No son
+  errores de parseo: Chess.com permite controles personalizados y esas filas corresponden a
+  partidas reales con ese ritmo puntual.
 
-Además, algunos usernames seleccionados aparecen en más filas del dataset final que
-`max_games_per_user` (1000) —por ejemplo `hikaru`, en 1.018—. No es un error: el tope se
-aplica a la descarga *de esa cuenta*, pero una partida también puede entrar a través de la
-descarga de su oponente si ambos fueron seleccionados. La deduplicación por `GameUrl`
-evita contarla dos veces, aunque permite que un username supere su propio tope en
-apariciones totales.
+Además, tres usernames seleccionados aparecen en 1.001 filas del dataset final, una más que
+`max_games_per_user` (1000). No es un error: el tope se aplica a la descarga *de esa
+cuenta*, pero una partida también puede entrar a través de la descarga de su oponente si
+ambos fueron seleccionados. La deduplicación por `GameUrl` evita contarla dos veces, aunque
+permite que un username supere su propio tope en apariciones totales.

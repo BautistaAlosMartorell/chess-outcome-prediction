@@ -108,10 +108,10 @@ averiguar por qué y dejarlo escrito en el notebook.
 
 Precedente a imitar (Secciones 6 y 8 del notebook): el rating que informa Chess.com es
 posterior al cierre de la partida (fuga de información hacia `resultado`), y la muestra
-está concentrada en 8 cuentas de nivel alto (mediana de ELO ~2780). Ninguna de las dos se
-silenció: se cuantificaron con datos y se dejaron escritas como limitación de la fuente
-para el modelado de Entrega 3. Eso es exactamente lo
-que el docente pregunta en la entrega.
+se arma con cupos iguales por banda de ELO, así que su distribución de niveles es una
+decisión de muestreo y no la de la población. Ninguna de las dos se silenció: se
+cuantificaron con datos y se dejaron escritas como limitación de la fuente para el
+modelado de Entrega 3. Eso es exactamente lo que el docente pregunta en la entrega.
 
 Escribí la explicación en una celda markdown **antes** del código que la demuestra.
 

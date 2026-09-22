@@ -1,5 +1,70 @@
 # Changelog
 
+## Selección de jugadores sin seeds y congelada (2026-09-22)
+
+Branch `fix/restos-lista-fija-jugadores`.
+
+### Qué
+
+- `listar_jugadores` ya no parte de 8 seeds ni lee el Parquet de la corrida anterior. En la
+  primera corrida toma como candidatos las listas públicas de la PubAPI por país
+  (`AR, ES, MX, US, IN, BR, DE, RU`) y de titulados. Las baraja con
+  `random_state: 42`, estima la banda con `/stats`, valida cada candidato contra sus
+  partidas hasta el cutoff y junta 20 por banda.
+- La selección se escribe una vez en `data/raw/seleccion/jugadores_seleccionados.yaml`
+  (lista congelada + manifiesto) y las corridas siguientes la reusan tal cual. Las listas
+  crudas por país y por título quedan como snapshot en la misma carpeta.
+- Si la selección junta menos de `download.min_users_ok` jugadores, no se congela y la
+  tarea falla.
+- El fallback de `limpieza_y_parseo` reconstruye las rutas desde la lista congelada, no con
+  un glob de `data/raw/`.
+- El CLI (`python -m src.pipeline`) usa la misma lista que el DAG. Se elimina el modo
+  piloto de 8 cuentas y `scripts/seleccionar_jugadores.py`.
+- Config: se quitan `chess_com.usernames`, `player_selection.seed_usernames` y
+  `manifest_path`; se agregan `pools` y `selection_path`.
+  `download.min_users_ok`: **8 → 80**.
+- **Tres pools con bandas propias.** La primera versión usaba una sola cola que mezclaba
+  ~80.000 jugadores por país con titulados. Se cortó a mano después de una hora con 94/100
+  porque faltaban 6 `avanzado`: las listas por país no tienen jugadores de 1800+ (0/80 en
+  la muestra), así que casi cada consulta a `/stats` terminaba en un descarte. Ahora hay
+  tres pools, `titulados_avanzado` (FM, CM, NM), `titulados_alto` (GM, IM) y `paises`, que
+  se recorren en ronda; cada uno se abandona cuando sus bandas están llenas.
+- **Solo títulos abiertos.** Una versión intermedia usaba WFM y WCM para `avanzado`, porque
+  sus umbrales más bajos (2000–2100 FIDE) los hacen acertar mucho más (12/20 y 9/20). Se
+  descartó: habría llenado esa banda casi solo con mujeres y ninguna otra, un sesgo metido
+  por la herramienta de muestreo. Queda documentado como limitación que la API no publica
+  listas por rating, así que `avanzado` no alcanza al amateur fuerte sin título.
+- **La banda la fija la mediana validada**, no la estimación de `/stats`: un candidato
+  validado en otra banda abierta entra ahí en vez de descartarse (la validación es la parte
+  cara). Si esa banda está llena, se registra `banda_llena_tras_validar:<banda>`.
+- **Checkpoint** en `jugadores_seleccionados.parcial.yaml` después de cada validación: si la
+  selección se corta, el reintento retoma desde ahí, siempre que la política no haya
+  cambiado.
+
+### Por qué
+
+Con el diseño anterior, el pool de candidatos de cada corrida salía del Parquet de la
+corrida previa, que ya incluía las partidas de los jugadores elegidos. El pool pasaba de
+~3.600 a ~54.000 candidatos y la semilla fija barajaba un mazo distinto: cada corrida
+elegía otros ~100 jugadores, el bronce anterior quedaba huérfano y el dataset no se podía
+reproducir. Además, la primera corrida dependía de 8 cuentas elegidas a mano y de sus
+oponentes (sesgo de red).
+
+### Corrida resultante (2026-09-22)
+
+- 100 jugadores seleccionados, 20 en cada banda (manifiesto en estado `complete`).
+- 80.521 registros descargados → **80.145 partidas finales** (99,53 % de retención, 0 nulos,
+  376 descartados por deduplicación, alcance y calidad).
+- Las cinco bandas de `nivel_promedio` quedan entre 18,2 % y 21,8 % del dataset; antes más
+  de la mitad era `top_mundial`.
+- Los dos notebooks se reejecutaron con Restart & Run All sobre ese Parquet, y se
+  actualizaron los números del README, las guías de defensa, la guía de columnas y esta
+  skill de entregas.
+- Evidencia de las hipótesis sobre la muestra nueva: H1 V de Cramér = 0,234 (confirmada con
+  matiz), H2 Pearson −0,025 y Spearman 0,031 (refutada; ni coinciden en el signo), H3
+  η² = 0,065 (confirmada), H4 η² = 0,007 (refutada). Ninguna cambió de decisión respecto de
+  la muestra anterior.
+
 ## Entrega 2: análisis exploratorio e hipótesis (2026-09-19)
 
 ### Qué
