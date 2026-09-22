@@ -25,7 +25,7 @@ import random
 import statistics
 import time
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -335,18 +335,21 @@ class PlayerSelector:
                 self.bands,
                 set(self.target_per_band),
             )
-            if validated_band != candidate.band:
+            if validated_band is None:
                 return self._rejected(
                     candidate,
-                    f"elo_validado_fuera_de_banda:{validated_band or 'ninguna'}",
+                    "elo_validado_fuera_de_bandas",
                     eligible_games=len(ratings),
                     validated_median_elo=validated_median,
                     archives_checked=checked,
                 )
 
+            # The band comes from the validated median, not from the /stats estimate: a
+            # candidate whose history lands one band off still counts, as long as that
+            # band is open (the caller checks). Validations are the expensive part.
             return CandidateValidation(
                 username=candidate.username,
-                band=candidate.band,
+                band=validated_band,
                 accepted=True,
                 reason="aceptado",
                 estimated_elo=candidate.estimated_elo,
@@ -432,6 +435,8 @@ class PlayerSelector:
         - Un pool se deja de recorrer cuando todas las bandas que declara están llenas:
           sus candidatos restantes ya no se consultan.
         - Un candidato cuya banda estimada ya está llena se saltea sin validar.
+        - La banda final la fija la mediana validada, no la estimación: si cae en otra
+          banda que sigue abierta, el candidato entra ahí igual.
         - El avance se guarda en un checkpoint; si la tarea se corta, el reintento sigue
           desde ahí.
 
@@ -492,8 +497,16 @@ class PlayerSelector:
                     continue
 
                 validation = self.validate_candidate(Candidate(username, band, estimated, source))
+                if validation.accepted and not open_band(validation.band):
+                    # Validated into a different band that is already full.
+                    validation = replace(
+                        validation,
+                        accepted=False,
+                        reason=f"banda_llena_tras_validar:{validation.band}",
+                    )
                 result.evaluated.append(validation)
                 if validation.accepted:
+                    band = validation.band
                     selected[band].append(validation.username)
                     logger.info(
                         "%s (%s) aceptado para %s (%d/%d)",

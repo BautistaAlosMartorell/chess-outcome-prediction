@@ -46,16 +46,18 @@ La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a desca
 1. **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
    arma tres pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
    ciertas bandas:
-   - WFM y WCM (`/pub/titled/{título}`) para `avanzado`;
-   - GM, IM, WGM y FM para `experto` y `top_mundial`;
+   - FM, CM y NM (`/pub/titled/{título}`) para `avanzado`;
+   - GM e IM para `experto` y `top_mundial`;
    - jugadores de AR, ES, MX, US, IN, BR, DE y RU (`/pub/country/{iso}/players`) para
      `principiante` e `intermedio`.
 
    Baraja cada pool con semilla fija (`random_state: 42`) y los recorre en ronda. Estima la
    banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus partidas
    hasta el cutoff (perfil activo, al menos 15 partidas rated elegibles, mediana de ELO
-   dentro de la banda). Cuando todas las bandas de un pool se llenan, ese pool deja de
-   consultarse. Se detiene al juntar 20 jugadores en cada una de las 5 bandas. El avance se
+   dentro de la banda). La banda final la decide la mediana validada, no la estimación, así
+   que un jugador validado en otra banda abierta entra ahí igual. Cuando todas las bandas de
+   un pool se llenan, ese pool deja de consultarse. Se usan solo títulos abiertos: llenar
+   una banda con listas exclusivas de un género (WFM, WCM) habría sesgado la muestra. Se detiene al juntar 20 jugadores en cada una de las 5 bandas. El avance se
    guarda en un checkpoint, así que si la tarea se corta, retoma desde ahí.
 2. **Corridas siguientes:** lee ese archivo y devuelve exactamente la misma lista, sin
    volver a seleccionar. Como la descarga es idempotente, se reusa el bronce ya bajado y
@@ -87,9 +89,10 @@ la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado
 
 La muestra no es una selección aleatoria de la población general de Chess.com. Los
 candidatos salen de las listas públicas por país (ocho países) y de titulados, y se
-estratifican por banda de ELO con cupos iguales. `avanzado` sale sobre todo de jugadoras
-WFM/WCM, y `experto`/`top_mundial` de titulados, porque en las listas por país casi no hay
-jugadores de 1800 o más. Por eso la distribución de niveles refleja
+estratifican por banda de ELO con cupos iguales. `avanzado`, `experto` y `top_mundial` salen
+de listas de titulados, porque en las listas por país casi no hay jugadores de 1800 o más y
+la API no publica ninguna lista por rating. Eso deja afuera al amateur fuerte sin título,
+que es el perfil típico de 1800–2200. Por eso la distribución de niveles refleja
 el diseño (20 jugadores por banda) y no la de la población. Además, las listas por país
 solo incluyen a quienes declararon ese país en su perfil. Las conclusiones de las
 próximas entregas se formulan sobre el universo de jugadores alcanzados por este método,

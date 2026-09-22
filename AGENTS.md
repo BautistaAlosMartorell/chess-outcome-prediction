@@ -64,7 +64,7 @@ jupyter lab notebooks/01_data_ingestion_verification.ipynb   # o Restart & Run A
 ```
 
 La primera corrida selecciona ~100 jugadores (20 por banda de ELO) desde tres pools de
-listas públicas de la PubAPI (titulados WFM/WCM, titulados GM/IM/WGM/FM y jugadores por
+listas públicas de la PubAPI (titulados FM/CM/NM, titulados GM/IM y jugadores por
 país; ver `player_selection.pools`), congela esa lista en
 `data/raw/seleccion/jugadores_seleccionados.yaml` y descarga hasta 1.000 partidas rated
 por jugador, recorriendo archivos mensuales en serie hasta `download.until_month`. Las

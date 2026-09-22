@@ -8,7 +8,7 @@ Branch `fix/restos-lista-fija-jugadores`.
 
 - `listar_jugadores` ya no parte de 8 seeds ni lee el Parquet de la corrida anterior. En la
   primera corrida toma como candidatos las listas públicas de la PubAPI por país
-  (`AR, ES, MX, US, IN, BR, DE, RU`) y de titulados (`GM, IM, WGM, FM`). Las baraja con
+  (`AR, ES, MX, US, IN, BR, DE, RU`) y de titulados. Las baraja con
   `random_state: 42`, estima la banda con `/stats`, valida cada candidato contra sus
   partidas hasta el cutoff y junta 20 por banda.
 - La selección se escribe una vez en `data/raw/seleccion/jugadores_seleccionados.yaml`
@@ -24,13 +24,19 @@ Branch `fix/restos-lista-fija-jugadores`.
   `manifest_path`; se agregan `pools` y `selection_path`.
   `download.min_users_ok`: **8 → 80**.
 - **Tres pools con bandas propias.** La primera versión usaba una sola cola que mezclaba
-  países y titulados, sin WFM/WCM. Se cortó a mano después de una hora con 94/100 porque
-  faltaban 6 `avanzado`. Las muestras de `/stats` mostraron que las listas por país no
-  tienen jugadores de 1800+ (0/80), y que WFM (12/20) y WCM (9/20) caen mayormente en
-  `avanzado`. Ahora hay tres pools, `titulados_avanzado` (WFM, WCM), `titulados_alto`
-  (GM, IM, WGM, FM) y `paises`, que se recorren en ronda; cada uno se abandona cuando sus
-  bandas están llenas. En la prueba real, `avanzado` pasó de varios cientos de candidatos
-  por jugador a 2.
+  ~80.000 jugadores por país con titulados. Se cortó a mano después de una hora con 94/100
+  porque faltaban 6 `avanzado`: las listas por país no tienen jugadores de 1800+ (0/80 en
+  la muestra), así que casi cada consulta a `/stats` terminaba en un descarte. Ahora hay
+  tres pools, `titulados_avanzado` (FM, CM, NM), `titulados_alto` (GM, IM) y `paises`, que
+  se recorren en ronda; cada uno se abandona cuando sus bandas están llenas.
+- **Solo títulos abiertos.** Una versión intermedia usaba WFM y WCM para `avanzado`, porque
+  sus umbrales más bajos (2000–2100 FIDE) los hacen acertar mucho más (12/20 y 9/20). Se
+  descartó: habría llenado esa banda casi solo con mujeres y ninguna otra, un sesgo metido
+  por la herramienta de muestreo. Queda documentado como limitación que la API no publica
+  listas por rating, así que `avanzado` no alcanza al amateur fuerte sin título.
+- **La banda la fija la mediana validada**, no la estimación de `/stats`: un candidato
+  validado en otra banda abierta entra ahí en vez de descartarse (la validación es la parte
+  cara). Si esa banda está llena, se registra `banda_llena_tras_validar:<banda>`.
 - **Checkpoint** en `jugadores_seleccionados.parcial.yaml` después de cada validación: si la
   selección se corta, el reintento retoma desde ahí, siempre que la política no haya
   cambiado.

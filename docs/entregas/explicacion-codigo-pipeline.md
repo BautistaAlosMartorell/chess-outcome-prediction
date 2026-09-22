@@ -193,8 +193,8 @@ Esta tarea **selecciona los jugadores una sola vez y deja la lista congelada** (
 [`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)):
 
 - **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
-  arma tres pools con listas públicas de la PubAPI (`player_selection.pools`): WFM/WCM para
-  `avanzado`, GM/IM/WGM/FM para `experto` y `top_mundial`, y jugadores por país para
+  arma tres pools con listas públicas de la PubAPI (`player_selection.pools`): FM/CM/NM para
+  `avanzado`, GM/IM para `experto` y `top_mundial`, y jugadores por país para
   `principiante` e `intermedio`. Baraja cada pool con semilla fija y los recorre en ronda.
   Estima la banda de cada candidato con `/stats`, lo valida contra sus partidas hasta el
   cutoff y junta 20 por banda de ELO. Un pool con todas sus bandas llenas deja de

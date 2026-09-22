@@ -70,15 +70,18 @@ player_selection:
   # Cada pool declara las `bands` que alimenta: cuando todas están llenas, el pool se deja
   # de recorrer. Un candidato que cae en otra banda todavía abierta igual se acepta.
   # El orden importa: un jugador que figura en dos pools queda sólo en el primero.
+  # Solo títulos abiertos (los obtiene cualquiera): no se usan listas exclusivas de un
+  # género (WGM, WIM, WFM, WCM) para no sesgar ninguna banda por género.
   # Las bandas salen de medir qué niveles aporta cada lista (muestras de /stats del
-  # 22/09/2026): países → 0/80 en 1800+ (casi todo principiante); WFM → 12/20 y
-  # WCM → 9/20 en avanzado; FM → 3/20 en avanzado y el resto 2200+; GM/IM/WGM → 2200+.
+  # 22/09/2026): países → 0/80 en 1800+ (casi todo principiante); FM → 3/20, NM → 2/20 y
+  # CM → 1/20 en avanzado (el resto 2200+); GM/IM → 2200+. La API no publica ninguna
+  # lista de jugadores de 1800-2200 sin título: FM/CM/NM es la fuente abierta más cercana.
   pools:
     titulados_avanzado:
-      titles: [WFM, WCM]
+      titles: [FM, CM, NM]
       bands: [avanzado]
     titulados_alto:
-      titles: [GM, IM, WGM, FM]
+      titles: [GM, IM]
       bands: [experto, top_mundial]
     paises:
       countries: [AR, ES, MX, US, IN, BR, DE, RU]

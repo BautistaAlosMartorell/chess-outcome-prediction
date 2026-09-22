@@ -32,8 +32,8 @@ Las versiones anteriores tenían dos problemas:
                         │
                         ↓
         Tres pools de candidatos, cada uno con las bandas que alimenta
-          · titulados_avanzado  WFM, WCM                    → avanzado
-          · titulados_alto      GM, IM, WGM, FM             → experto, top_mundial
+          · titulados_avanzado  FM, CM, NM                  → avanzado
+          · titulados_alto      GM, IM                      → experto, top_mundial
           · paises              AR, ES, MX, US, IN, BR, DE, RU → principiante, intermedio
           (/pub/titled/{título} y /pub/country/{iso}/players; cada lista se guarda cruda
            en data/raw/seleccion/ → bronce de la selección)
@@ -45,6 +45,7 @@ Las versiones anteriores tenían dos problemas:
             (rating de la modalidad bullet/blitz/rapid con más partidas)
           · si esa banda ya está llena → se saltea sin validar
           · si no → validación completa contra sus partidas hasta el cutoff
+            (la banda final la fija la mediana validada, no la estimación)
           · un pool con todas sus bandas llenas se deja de recorrer
           · checkpoint después de cada validación
                         ↓
@@ -65,19 +66,28 @@ una hora con 94/100: faltaban 6 `avanzado` (1800–2200). Con muestras de `/stat
 |---|---|---|---|
 | Países (AR, US) | ~10.000 c/u, ~80.000 en total | **0/80** | casi todo principiante |
 | FM | 4.859 | 3/20 | experto y top_mundial |
-| CM / NM | ~2.600 c/u | 1/20 y 2/20 | experto y top_mundial |
-| **WFM** | 966 | **12/20** | experto e intermedio |
-| **WCM** | 658 | **9/20** | intermedio, experto |
+| NM | 2.593 | 2/20 | experto y top_mundial |
+| CM | 2.760 | 1/20 | experto y top_mundial |
 
-El 90 % de la cola única eran jugadores por país, sin nadie de 1800+, y los títulos de ese
-nivel (WFM y WCM) no estaban. Con las otras bandas llenas, el selector gastaba una consulta
-a `/stats` por candidato solo para descartarlo, y menos del 1 % de esas consultas caía en
-`avanzado`.
+El 90 % de la cola única eran jugadores por país, y ahí no hay nadie de 1800+. Con las
+otras bandas llenas, el selector gastaba una consulta a `/stats` por candidato solo para
+descartarlo, y menos del 1 % de esas consultas caía en `avanzado`.
+
+El problema de fondo es que **la PubAPI no publica ninguna lista de jugadores por rating**.
+Solo hay listas por país (usuarios comunes, casi todos principiantes) y por título
+(maestros, casi todos de 2200 para arriba). Un jugador de 1800–2200 suele ser un amateur
+fuerte sin título, así que no figura en ninguna. FM, CM y NM son la fuente abierta más
+cercana: aciertan poco (alrededor de 1 de cada 10), pero en un pool propio alcanzan.
+
+> **Una opción que se descartó.** Los títulos femeninos WFM y WCM tienen umbrales más bajos
+> (2000–2100 FIDE) y por eso caen mucho más seguido en `avanzado` (12/20 y 9/20 en la
+> muestra). Se probaron y se sacaron: llenar una banda con listas exclusivas de un género
+> habría hecho que los 20 jugadores de `avanzado` fueran casi todas mujeres y el resto de
+> las bandas no, un sesgo metido por la herramienta de muestreo. Hoy los pools usan solo
+> títulos abiertos, que puede obtener cualquiera.
 
 Por eso ahora:
 
-- **Se agregaron WFM y WCM**, que caen mayormente en `avanzado`. CM y NM se descartaron
-  porque en la muestra aportaron casi solo 2200+.
 - **Cada pool declara las bandas que alimenta** (`player_selection.pools`). Cuando todas
   están llenas, el pool no se sigue recorriendo: una vez completos `principiante` e
   `intermedio`, los ~80.000 jugadores por país ya no se consultan. Si un candidato cae en
@@ -86,10 +96,12 @@ Por eso ahora:
   espera a que otra termine.
 - **Un jugador que figura en dos pools queda solo en el primero**, según el orden del config.
   Nunca se evalúa dos veces.
-
-En una prueba real con la versión final, `avanzado` juntó 6 jugadores con 12 candidatos
-(antes eran varios cientos por jugador). Ahora el costo lo domina la validación de cada
-aceptado, que recorre sus archivos mensuales hasta juntar 1.000 partidas.
+- **La banda la decide la mediana validada, no la estimación.** Un candidato que se validó
+  en otra banda todavía abierta entra ahí igual, en vez de descartarse. La validación es la
+  parte cara (recorre los archivos mensuales hasta juntar 1.000 partidas), así que no se
+  tira a la basura: en una prueba real eso bajó el tiempo de 547 a 409 segundos para el
+  mismo objetivo. Si la banda validada ya está llena, se registra
+  `banda_llena_tras_validar:<banda>`.
 
 ### Checkpoint: si se corta, retoma
 
@@ -113,9 +125,10 @@ Se exige:
 
 Se aplican los mismos filtros de alcance que usa el pipeline: partidas *rated*, ajedrez
 estándar y modalidad bullet, blitz o rapid. Con esas partidas se calcula la mediana de ELO,
-y esa mediana tiene que caer dentro de la banda que estimó el pre-filtro. Así, un jugador
-cuyo rating actual cambió mucho respecto de su historial hasta el cutoff no entra en la
-banda equivocada.
+y **esa mediana define la banda del jugador**. El pre-filtro con `/stats` solo sirve para
+decidir a quién vale la pena validar: como el rating actual es posterior al cutoff, un
+jugador puede terminar en una banda distinta de la estimada, y ahí entra. Si esa banda ya
+está llena, se descarta.
 
 Las bandas vienen de `elo.bandas` y son intervalos cerrados a izquierda y abiertos a
 derecha, para que un rating justo en el límite no pertenezca a dos bandas.

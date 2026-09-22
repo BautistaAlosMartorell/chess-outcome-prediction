@@ -6,6 +6,7 @@ import copy
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -125,18 +126,48 @@ class PlayerSelectionTest(unittest.TestCase):
                 self.assertFalse(result.accepted)
                 self.assertTrue(result.reason.startswith("cuenta_no_activa:"))
 
-    def test_validate_candidate_rejects_low_activity_and_changed_band(self) -> None:
+    def test_validate_candidate_rejects_low_activity(self) -> None:
         candidate = Candidate("Candidate", "intermedio", 1500.0, "pais:AR")
-        cases = [
-            ((1500,), "partidas_elegibles_insuficientes"),
-            ((1850, 1900), "elo_validado_fuera_de_banda:avanzado"),
-        ]
-        for ratings, reason in cases:
-            with self.subTest(reason=reason):
-                payloads = self.player_payloads(candidate.username, ratings=ratings)
-                result = self.selector(self.config_for_test(), payloads.__getitem__).validate_candidate(candidate)
-                self.assertFalse(result.accepted)
-                self.assertEqual(result.reason, reason)
+        payloads = self.player_payloads(candidate.username, ratings=(1500,))
+        result = self.selector(self.config_for_test(), payloads.__getitem__).validate_candidate(candidate)
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.reason, "partidas_elegibles_insuficientes")
+
+    def test_validated_median_decides_the_band(self) -> None:
+        """The estimate only routes the candidate; the validated median sets the band."""
+        candidate = Candidate("Candidate", "intermedio", 1500.0, "pais:AR")
+        payloads = self.player_payloads(candidate.username, ratings=(1850, 1900))
+        result = self.selector(self.config_for_test(), payloads.__getitem__).validate_candidate(candidate)
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.band, "avanzado")
+
+    def test_candidate_validated_into_a_full_band_is_rejected(self) -> None:
+        # "first" estimates intermedio; "drifted" estimates avanzado but validates into
+        # intermedio, which by then is full.
+        api_get, _ = self.fake_api({"first": (1300, 1300), "drifted": (1900, 1900)})
+        config = self.config_for_test({"intermedio": 1, "avanzado": 1})
+        config["player_selection"]["pools"] = {
+            "paises": {"countries": ["AR"], "bands": ["intermedio", "avanzado"]},
+        }
+        selector = self.selector(config, api_get)
+
+        def validate(candidate: Candidate) -> CandidateValidation:
+            return replace(self.accept(candidate), band="intermedio")
+
+        with mock.patch.object(selector, "validate_candidate", side_effect=validate):
+            with mock.patch.object(
+                selector,
+                "shuffled_pools",
+                return_value={"paises": [("first", "pais:AR"), ("drifted", "pais:AR")]},
+            ):
+                result = selector.select(selector.fetch_pools())
+
+        self.assertEqual(len(result.selected["intermedio"]), 1)
+        self.assertEqual(result.selected["avanzado"], [])
+        rejected = [item for item in result.evaluated if not item.accepted]
+        self.assertEqual(rejected[0].reason, "banda_llena_tras_validar:intermedio")
 
     def test_estimate_elo_uses_time_class_with_most_games(self) -> None:
         base = self.base_config["chess_com"]["base_url"]
