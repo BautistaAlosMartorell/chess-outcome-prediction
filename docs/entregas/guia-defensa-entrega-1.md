@@ -100,9 +100,10 @@ corre **antes** de exportar: si el dataset no cumple, ni siquiera se escriben lo
 
 ## 3. El dataset contra los 7 criterios (min 7–12) — con números
 
-Corrida real validada el **07/09/2026** (DAG completo en **Airflow 3.3**, disparada por el
-scheduler con CeleryExecutor, ventana congelada hasta agosto de 2026): **7.215 registros
-descargados → 7.204 partidas finales** (99,85 % de retención). Comandos para verificar **en
+Corrida real validada el **22/09/2026** (DAG completo en **Airflow 3.3**, disparada por el
+scheduler con CeleryExecutor, ventana congelada hasta agosto de 2026, 100 jugadores
+seleccionados —20 por banda de ELO—): **80.521 registros descargados → 80.145 partidas
+finales** (99,53 % de retención). Comandos para verificar **en
 vivo** sobre `df`:
 
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
@@ -180,7 +181,7 @@ pero queda visible, no escondida.
 `verificar_calidad` guarda el volumen de la última corrida exitosa en una **Airflow Variable**
 (`pipeline_ajedrez_volumen_baseline`) y **avisa** (no rompe) si la corrida actual se desvía > 5 %
 del baseline. Como `until_month` está congelado, el volumen debería ser estable entre corridas
-(≈ 7.204); un desvío grande señala que cambió la config o la fuente. Es observabilidad, no un
+(≈ 80.145); un desvío grande señala que cambió la config, la selección o la fuente. Es observabilidad, no un
 criterio de rechazo.
 
 ### Qué pasa si lo corrés de nuevo — ¿sale el mismo archivo?

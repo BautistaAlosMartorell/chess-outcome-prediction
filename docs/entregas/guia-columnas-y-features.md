@@ -216,8 +216,8 @@ separación cronológica entre entrenamiento y prueba.
 **Modelado.** No entra automáticamente como fecha cruda. Primero debe existir una hipótesis
 temporal. Aunque no sea predictor, debe conservarse para hacer una validación temporal.
 
-**Anomalía conocida.** La corrida ampliada contiene 286 partidas con
-`Date = 2026-09-01` (0,31% del dataset) dentro de archivos mensuales de agosto. El patrón
+**Anomalía conocida.** La corrida validada contiene 56 partidas con
+`Date = 2026-09-01` (0,07% del dataset) dentro de archivos mensuales de agosto. El patrón
 aparece en varias cuentas y corresponde al límite horario UTC de Chess.com.
 `download.until_month: "2026-08"` limita qué archivo mensual se consulta, pero no
 garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de septiembre.
@@ -231,8 +231,8 @@ garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de septiemb
 **Para qué sirve.** Perfiles por jugador, auditoría de la muestra y análisis de color.
 
 **Modelado.** En un modelo general puede hacer que el algoritmo memorice identidades y
-patrones de la red de jugadores muestreada. La corrida ampliada contiene 53.655 usuarios
-distintos, no sólo las cuentas seleccionadas, porque cada partida también incorpora al
+patrones de la red de jugadores muestreada. La corrida validada contiene 53.761 usuarios
+distintos, no sólo las 100 cuentas seleccionadas, porque cada partida también incorpora al
 oponente real. Sólo debe usarse en un producto explícitamente personalizado y con una
 partición que impida que el mismo jugador contamine entrenamiento y evaluación.
 
@@ -338,7 +338,7 @@ https://www.chess.com/openings/Sicilian-Defense-Delayed-Alapin-Variation-3...Nf6
 **Para qué sirve.** Es mucho más comprensible para el usuario que `B50` y permite explicar
 resultados por apertura concreta.
 
-**Limitación.** Tiene 6.536 valores distintos en 93.669 filas. Muchas etiquetas incluyen
+**Limitación.** Tiene 6.796 valores distintos en 80.145 filas. Muchas etiquetas incluyen
 variaciones y números de movimiento, por lo que los grupos pueden ser muy pequeños.
 
 **Modelado.** No se recomienda en un baseline. Una asociación aparente alta puede surgir
@@ -405,8 +405,8 @@ ejemplo predicción en vivo después de los primeros movimientos.
 **Para qué sirve.** Target principal de clasificación, balance de clases y presentación
 comprensible.
 
-**Modelado.** Va en `y`, nunca en `X`. En la corrida actual: 49,04 % gana blancas, 44,60 %
-gana negras y 6,36 % empata. La clase empate necesita métricas que no queden dominadas por
+**Modelado.** Va en `y`, nunca en `X`. En la corrida actual: 48,95 % gana blancas, 44,94 %
+gana negras y 6,11 % empata. La clase empate necesita métricas que no queden dominadas por
 las victorias, por ejemplo evaluación por clase además de accuracy global.
 
 ### `tiempo_base_seg`
@@ -498,8 +498,10 @@ top_mundial    2600–4000
 técnica.
 
 **Limitaciones.** Los cortes son una decisión del proyecto, no un estándar oficial de
-Chess.com. La muestra está muy desbalanceada: 55,82 % cae en `top_mundial`, mientras que
-`principiante` tiene sólo 10 partidas y `avanzado`, 120.
+Chess.com. La muestra está balanceada entre bandas (17.503 `intermedio`, 17.023
+`principiante`, 15.913 `top_mundial`, 15.093 `experto`, 14.613 `avanzado`), pero ese
+equilibrio es una decisión de muestreo —20 jugadores por banda— y no la distribución real
+de ratings en Chess.com.
 
 **Modelado.** Generalmente se prefiere `elo_promedio`, porque no pierde precisión. La banda
 puede probarse como alternativa interpretable, no sumarse automáticamente al continuo.
@@ -533,11 +535,11 @@ E → India
 otro o ausente → Desconocida
 ```
 
-**Para qué sirve.** Reducir 454 códigos ECO a cinco grupos principales, obtener tamaños de
+**Para qué sirve.** Reducir 457 códigos ECO a cinco grupos principales, obtener tamaños de
 grupo razonables y comunicar patrones generales.
 
-**Modelado.** Sólo post-apertura. En la corrida ampliada su asociación con
-`cantidad_jugadas` fue débil (`eta² = 0,004`). Sale del baseline pre-partida y queda como
+**Modelado.** Sólo post-apertura. En la corrida validada su asociación con
+`cantidad_jugadas` fue débil (`eta² = 0,007`). Sale del baseline pre-partida y queda como
 experimento separado: comparar modelos con y sin apertura fuera de muestra.
 
 ### Columnas derivadas descartadas
@@ -712,27 +714,27 @@ predictores pre-partida.
 
 ---
 
-## 9. Diagnóstico cuantitativo de las 93.669 partidas
+## 9. Diagnóstico cuantitativo de las 80.145 partidas
 
 Estos números son un **screening inicial**, no la selección definitiva de features. Siguen
 la idea de que el número sostiene una decisión y el gráfico explica su forma.
 
 | Relación explorada | Medida | Resultado inicial | Lectura prudente |
 |---|---:|---:|---|
-| `diferencia_elo` y `resultado` | V de Cramér sobre bandas de diferencia | 0,217 | Zona amarilla: señal relevante, no suficiente por sí sola. |
-| `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,256 / 0,254 | Asociación positiva modesta y consistente. |
-| `TimeClass` y `cantidad_jugadas` | η² | 0,020 | Rojo según el semáforo de la materia. |
-| `TimeControl` y `cantidad_jugadas` | η² | 0,038 | Rojo; el control exacto explica poca variación global. |
-| `familia_apertura` y `cantidad_jugadas` | η² | 0,004 | Rojo; las familias explican muy poca variación global. |
-| `Termination` y `cantidad_jugadas` | η² | 0,206 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
+| `diferencia_elo` y `resultado` | V de Cramér sobre bandas de diferencia | 0,234 | Zona amarilla: señal relevante, no suficiente por sí sola. |
+| `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,230 / 0,225 | Asociación positiva modesta y consistente. |
+| `TimeClass` y `cantidad_jugadas` | η² | 0,009 | Rojo según el semáforo de la materia. |
+| `TimeControl` y `cantidad_jugadas` | η² | 0,029 | Rojo; el control exacto explica poca variación global. |
+| `familia_apertura` y `cantidad_jugadas` | η² | 0,007 | Rojo; las familias explican muy poca variación global. |
+| `Termination` y `cantidad_jugadas` | η² | 0,193 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
 
 Promedios de longitud observados:
 
 | Modalidad | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Bullet | 42.075 | 74,36 | 70 |
-| Blitz | 37.670 | 82,60 | 77 |
-| Rapid | 13.924 | 70,36 | 65 |
+| Bullet | 21.387 | 74,90 | 71 |
+| Blitz | 45.403 | 77,34 | 73 |
+| Rapid | 13.355 | 68,58 | 64 |
 
 Que Blitz tenga una media mayor no significa que la modalidad cause partidas más largas.
 Las categorías están mezcladas con diferencias de jugador, rating, fecha y selección de
@@ -742,11 +744,11 @@ Promedios de longitud por familia:
 
 | Familia | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Flanco | 27.445 | 79,05 | 75 |
-| Semiabierta | 29.619 | 76,01 | 71 |
-| Abierta | 18.659 | 73,86 | 68 |
-| Cerrada | 14.104 | 78,44 | 74 |
-| India | 3.842 | 81,85 | 76 |
+| Flanco | 21.506 | 77,40 | 74 |
+| Semiabierta | 25.359 | 75,19 | 71 |
+| Abierta | 19.119 | 70,80 | 66 |
+| Cerrada | 10.624 | 76,83 | 72 |
+| India | 3.537 | 81,45 | 76 |
 
 Las diferencias visuales o de medias deben acompañarse con tamaño de efecto y control de
 posibles terceras variables antes de transformarse en una conclusión.

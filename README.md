@@ -106,7 +106,7 @@ no sobre "ajedrez online" en general.
 | 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
 | 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida ampliada validada produjo 93.669 partidas limpias. |
+| 5 | Volumen | La corrida validada produjo 80.145 partidas limpias. |
 | 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -215,10 +215,10 @@ python3 -m venv .venv
 .venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen
 ```
 
-También puede abrirse `notebooks/01_data_ingestion_verification.ipynb` para verificar la
-ingesta piloto. El análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` requiere el
-Parquet ampliado generado por el **DAG de Airflow** (93.669 partidas finales); no debe
-ejecutarse sobre la salida reducida del CLI. Ambos notebooks deben ejecutarse con
+También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
+pipeline completo con la misma lista congelada que el DAG y verifica el dataset. El
+análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` consume el Parquet que produce
+ese pipeline (80.145 partidas finales). Ambos notebooks deben ejecutarse con
 **Restart & Run All**.
 
 ### Tests
@@ -233,41 +233,38 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
 
-Corrida ampliada validada el 18/09/2026 (DAG completo en Airflow, ventana congelada
-hasta agosto de 2026):
+Corrida validada el 22/09/2026 (DAG completo en Airflow, ventana congelada hasta agosto
+de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
 
-- 94.247 registros descargados.
-- 93.669 partidas finales.
-- 99,39% de retención.
-- 578 registros descartados por las reglas de deduplicación, alcance y calidad del
+- 80.521 registros descargados.
+- 80.145 partidas finales.
+- 99,53% de retención.
+- 376 registros descartados por las reglas de deduplicación, alcance y calidad del
   pipeline.
 - 0 nulos en el dataset final.
+- Las cinco bandas de ELO quedan entre 18,2 % y 21,8 % del dataset.
 
 Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
-de Airflow. Con la selección por bandas y la ventana temporal congelada, esa corrida
-produce la muestra ampliada usada en la Entrega 2: 94.247 registros crudos y 93.669
-partidas finales. El CLI de 8 cuentas es sólo una corrida piloto y no reemplaza este
-artefacto.
+de Airflow. Con la lista de jugadores congelada y la ventana temporal congelada, volver a
+correrlo reproduce ese mismo dataset. La carpeta `data/raw/seleccion/` es la que fija la
+muestra: copiarla a otra máquina reproduce la selección exacta.
 
 ### Casos límite observados en la corrida validada
 
 Casos encontrados inspeccionando el Parquet final directamente —no sólo el resumen— y
 documentados para que no se confundan con errores del pipeline durante el EDA:
 
-- **286 partidas con `Date` = 2026-09-01** (0,31% del dataset), un día después del tope
+- **56 partidas con `Date` = 2026-09-01** (0,07% del dataset), un día después del tope
   `download.until_month: "2026-08"`. No es un bug del filtro: la ventana congelada decide
   qué archivo mensual bajar por su URL (`.../games/2026/08`), no por la fecha individual.
-  En la muestra ampliada el patrón aparece en varias cuentas y confirma un límite horario
-  del archivo mensual de Chess.com. La ventana es exacta a nivel de archivo descargado,
-  no a nivel de fecha PGN.
-- **Una partida con `tiempo_base_seg` = 181** (`TimeControl` crudo `"181"`, sin
-  incremento). No es un error de parseo: Chess.com permite controles de tiempo
-  personalizados, y esa fila corresponde a una partida real con ese ritmo puntual, fuera
-  de los controles estándar (10/30/60/180/300/600/900 s).
+  El patrón aparece en varias cuentas y confirma un límite horario del archivo mensual de
+  Chess.com. La ventana es exacta a nivel de archivo descargado, no a nivel de fecha PGN.
+- **Controles de tiempo fuera de los estándar**, como `tiempo_base_seg` = 240 o 660. No son
+  errores de parseo: Chess.com permite controles personalizados y esas filas corresponden a
+  partidas reales con ese ritmo puntual.
 
-Además, algunos usernames seleccionados aparecen en más filas del dataset final que
-`max_games_per_user` (1000) —por ejemplo `hikaru`, en 1.018—. No es un error: el tope se
-aplica a la descarga *de esa cuenta*, pero una partida también puede entrar a través de la
-descarga de su oponente si ambos fueron seleccionados. La deduplicación por `GameUrl`
-evita contarla dos veces, aunque permite que un username supere su propio tope en
-apariciones totales.
+Además, tres usernames seleccionados aparecen en 1.001 filas del dataset final, una más que
+`max_games_per_user` (1000). No es un error: el tope se aplica a la descarga *de esa
+cuenta*, pero una partida también puede entrar a través de la descarga de su oponente si
+ambos fueron seleccionados. La deduplicación por `GameUrl` evita contarla dos veces, aunque
+permite que un username supere su propio tope en apariciones totales.

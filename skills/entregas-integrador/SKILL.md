@@ -16,9 +16,11 @@ empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online
 Unidad de análisis: una partida individual.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
-autenticación. Partidas reales de ~100 jugadores repartidos en 5 bandas de ELO,
-seleccionados automáticamente por la tarea `listar_jugadores` del DAG a partir de 8 seeds
-(nivel club a élite mundial). La API se consulta en serie mediante sus archivos mensuales.
+autenticación. Partidas reales de 100 jugadores, 20 por cada banda de ELO, seleccionados
+automáticamente por la tarea `listar_jugadores` del DAG desde las listas públicas de
+titulados y de jugadores por país. La lista queda congelada en
+`data/raw/seleccion/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
+sus archivos mensuales.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
 el doble que los dos parciales. Se aprueba con 60 %.
@@ -39,7 +41,10 @@ el doble que los dos parciales. Se aprueba con 60 %.
 
 <!-- Actualizar esta sección al cerrar cada entrega. -->
 
-**Al 06/09/2026 (Entrega 1 lista):** Pipeline de ajedrez online sobre Chess.com,
+> Las entradas de abajo son el registro de cada entrega y quedan tal como se cerraron. Lo
+> vigente es siempre la **última**.
+
+**Al 06/09/2026 (Entrega 1 lista, superada por la del 22/09):** Pipeline de ajedrez online sobre Chess.com,
 orquestado con **Airflow en Docker** (`docker-compose.yml` + `Dockerfile`, DAG
 `pipeline_ajedrez_chesscom` en `dags/`, cinco tareas 1:1 con los módulos de `src/` y una
 tarea final de verificación de los 7 criterios). Validado de punta a punta con la
@@ -54,16 +59,22 @@ concentrada en 8 jugadores de nivel club a élite mundial, no es representativa 
 "ajedrez online" en general.
 
 **Al 22/09/2026 (Entrega 2 lista):** La lista fija de 8 cuentas se reemplazó por la tarea
-`listar_jugadores` del DAG (`src/player_selection.py`): parte de 8 seeds, toma oponentes
-del Parquet previo (o los descubre por la PubAPI en la primera corrida), los valida y
-selecciona hasta 20 por banda de ELO, dejando un manifiesto auditable. Corrida ampliada
-del 18/09/2026: 93 jugadores seleccionados (`principiante` quedó en 13/20) más los 8
-seeds, 94.247 registros descargados y 93.669 partidas finales (99,39% de retención, cero
-nulos). `notebooks/02_eda_hipotesis.ipynb` contrasta cuatro hipótesis sobre ese Parquet y
-cierra con la tabla de columnas candidatas para la Entrega 3; la guía de defensa está en
-`docs/entregas/guia-defensa-entrega-2.md`. La fuga del rating posterior sigue vigente; la
-representatividad mejoró por bandas pero conserva un sesgo de red (candidatos = oponentes
-de los seeds). El CLI sin Docker sigue siendo la corrida piloto de 8 cuentas.
+`listar_jugadores` del DAG (`src/player_selection.py`), que ya no depende de ninguna cuenta
+inicial ni del Parquet previo: sortea candidatos de las listas públicas de la PubAPI
+(titulados FM/CM/NM para `avanzado`, GM/IM para `experto` y `top_mundial`, jugadores de
+ocho países para `principiante` e `intermedio`), los valida y llena 20 por banda. Después
+**congela** la lista en `data/raw/seleccion/jugadores_seleccionados.yaml`, así que todas
+las corridas descargan los mismos jugadores y el dataset se reproduce. Corrida del
+22/09/2026: 100 jugadores (20 por banda), 80.521 registros descargados y 80.145 partidas
+finales (99,53% de retención, cero nulos), con las cinco bandas entre 18,2% y 21,8% del
+dataset. `notebooks/02_eda_hipotesis.ipynb` contrasta cuatro hipótesis sobre ese Parquet
+(H1 V = 0,234 confirmada con matiz; H2 refutada; H3 η² = 0,065 confirmada; H4 η² = 0,007
+refutada) y cierra con la tabla de columnas candidatas para la Entrega 3; la guía de
+defensa está en `docs/entregas/guia-defensa-entrega-2.md`. Limitaciones vigentes: la fuga
+del rating posterior, que el equilibrio entre bandas es una decisión de muestreo y no la
+distribución real de Chess.com, y que la banda `avanzado` se arma con titulados de nivel
+bajo porque la API no publica listas por rating. El CLI sin Docker usa la misma lista
+congelada que el DAG.
 
 ## Qué pide cada entrega
 

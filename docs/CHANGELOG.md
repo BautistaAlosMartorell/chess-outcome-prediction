@@ -50,6 +50,21 @@ elegía otros ~100 jugadores, el bronce anterior quedaba huérfano y el dataset 
 reproducir. Además, la primera corrida dependía de 8 cuentas elegidas a mano y de sus
 oponentes (sesgo de red).
 
+### Corrida resultante (2026-09-22)
+
+- 100 jugadores seleccionados, 20 en cada banda (manifiesto en estado `complete`).
+- 80.521 registros descargados → **80.145 partidas finales** (99,53 % de retención, 0 nulos,
+  376 descartados por deduplicación, alcance y calidad).
+- Las cinco bandas de `nivel_promedio` quedan entre 18,2 % y 21,8 % del dataset; antes más
+  de la mitad era `top_mundial`.
+- Los dos notebooks se reejecutaron con Restart & Run All sobre ese Parquet, y se
+  actualizaron los números del README, las guías de defensa, la guía de columnas y esta
+  skill de entregas.
+- Evidencia de las hipótesis sobre la muestra nueva: H1 V de Cramér = 0,234 (confirmada con
+  matiz), H2 Pearson −0,025 y Spearman 0,031 (refutada; ni coinciden en el signo), H3
+  η² = 0,065 (confirmada), H4 η² = 0,007 (refutada). Ninguna cambió de decisión respecto de
+  la muestra anterior.
+
 ## Entrega 2: análisis exploratorio e hipótesis (2026-09-19)
 
 ### Qué
