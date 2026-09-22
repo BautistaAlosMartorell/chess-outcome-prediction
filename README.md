@@ -40,35 +40,27 @@ entregas siguientes basta con mover el mes o ponerlo en `null`.
 
 ### Selección automática de jugadores
 
-La primera tarea del DAG (`listar_jugadores`) selecciona automáticamente los jugadores
-a descargar. Funciona en dos modos:
+La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a descargar
+**una sola vez** y la deja congelada:
 
-1. **Bootstrap (primera corrida):** si no existe un parquet procesado de una corrida
-   anterior, descubre por la PubAPI los oponentes recientes de los 8 *seed_usernames*
-   del config — cuentas públicas verificadas que cubren desde nivel club (~1400) hasta
-   élite mundial (~3400) — y los usa como candidatos.
-2. **Selección completa (corridas siguientes):** lee el parquet de la corrida anterior y
-   extrae los oponentes observados, sin consultar la red.
+1. **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
+   toma como universo de candidatos las listas públicas de jugadores por país
+   (`/pub/country/{iso}/players`: AR, ES, MX, US, IN, BR, DE, RU) y de titulados
+   (`/pub/titled/{GM,IM,WGM,FM}`). Las baraja con semilla fija (`random_state: 42`),
+   estima la banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus
+   partidas hasta el cutoff (perfil activo, al menos 15 partidas rated elegibles, mediana
+   de ELO dentro de la banda). Se detiene cuando junta 20 jugadores en cada una de las 5
+   bandas (principiante, intermedio, avanzado, experto, top_mundial).
+2. **Corridas siguientes:** lee ese archivo y devuelve exactamente la misma lista, sin
+   volver a seleccionar. Como la descarga es idempotente, se reusa el bronce ya bajado y
+   sale el mismo dataset.
 
-En ambos modos los candidatos se validan contra la PubAPI de Chess.com (perfil activo,
-al menos 15 partidas rated elegibles) y se seleccionan hasta 20 jugadores por cada una de
-las 5 bandas de ELO (principiante, intermedio, avanzado, experto, top_mundial), con una
-semilla aleatoria fija (`random_state: 42`) para reproducibilidad.
-
-Los 8 seeds siempre están incluidos en la lista final. La selección se guarda en un
-manifiesto auditable (`data/processed/player_selection_manifest.yaml`). La configuración
-viva está en `config/config.yaml` bajo `player_selection`.
-
-**Seeds iniciales:**
-
-- `RebeccaHarris` — nivel club, alrededor de 1400.
-- `erik` — nivel club/intermedio, alrededor de 1700.
-- `AnnaCramling` — jugadora titulada y streamer, alrededor de 2400.
-- `AlexandraBotez` — jugadora titulada y streamer, alrededor de 2500.
-- `GothamChess` — maestro internacional y streamer, alrededor de 2900.
-- `IMRosen` — maestro internacional, alrededor de 2900.
-- `chessbrah` — cuenta de gran maestro/streaming, alrededor de 3200.
-- `hikaru` — élite mundial, alrededor de 3400.
+No hay cuentas iniciales elegidas a mano ni dependencia del Parquet de una corrida
+anterior. El archivo de selección también es el manifiesto auditable: incluye la política,
+los candidatos evaluados y los motivos de rechazo. Junto a él quedan los snapshots crudos
+de las listas por país y por título. Para volver a seleccionar hay que borrarlo a propósito.
+El detalle está en [`docs/entregas/criterio-seleccion-jugadores.md`](docs/entregas/criterio-seleccion-jugadores.md);
+la configuración, en `config/config.yaml` bajo `player_selection`.
 
 ### Limitación del rating (fuga de información hacia el resultado)
 
@@ -87,12 +79,12 @@ la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado
 ### Limitación de la muestra
 
 La muestra no es una selección aleatoria de la población general de Chess.com. Los
-jugadores se seleccionan a partir de los oponentes observados de los 8 seeds, lo que
-introduce un sesgo de red: los candidatos tienden a estar en los mismos pools de
-emparejamiento que los seeds. La selección por banda de ELO mitiga parcialmente la
-concentración en niveles altos, pero no garantiza representatividad. Las conclusiones
-de las próximas entregas se formulan sobre el universo de jugadores alcanzados por
-este método, no sobre "ajedrez online" en general.
+candidatos salen de las listas públicas por país (ocho países) y de titulados, y se
+estratifican por banda de ELO con cupos iguales. Por eso la distribución de niveles refleja
+el diseño (20 jugadores por banda) y no la de la población. Además, las listas por país
+solo incluyen a quienes declararon ese país en su perfil. Las conclusiones de las
+próximas entregas se formulan sobre el universo de jugadores alcanzados por este método,
+no sobre "ajedrez online" en general.
 
 ## Por qué la fuente cumple los siete criterios
 
@@ -202,8 +194,8 @@ volúmenes) o `docker compose down -v` (reset total).
 
 ### Sin Docker (CLI / notebook)
 
-El CLI reutiliza los mismos módulos de `src/`, pero conserva el modo piloto de 8 cuentas
-fijas y no reproduce la muestra ampliada de la Entrega 2. Requiere Python 3.11 o superior.
+El CLI reutiliza los mismos módulos de `src/` y la misma lista congelada que el DAG (si
+no existe, la crea igual que `listar_jugadores`). Requiere Python 3.11 o superior.
 
 ```bash
 python3 -m venv .venv

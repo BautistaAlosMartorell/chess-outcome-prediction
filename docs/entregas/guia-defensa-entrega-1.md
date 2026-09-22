@@ -49,10 +49,10 @@ Los 20 minutos son para mostrar y explicar, **no** para instalar ni esperar desc
    online y cuán larga es?
 2. **La fuente.** La **PubAPI pública de Chess.com** (solo lectura, sin cuenta ni API key),
    consultada de forma automatizada. La primera tarea del DAG (`listar_jugadores`)
-   **selecciona sola** las cuentas a descargar por banda de ELO, partiendo de 8 seeds de
-   niveles distintos y ampliando con sus oponentes validados.
+   **selecciona sola**, en la primera corrida, ~100 cuentas repartidas en 5 bandas de ELO,
+   tomadas de las listas públicas por país y de titulados, y deja esa lista congelada.
 3. **Qué es una fila.** *Una fila es una **partida** individual de ajedrez rated
-   (bullet/blitz/rapid) jugada por alguna de las cuentas configuradas.*
+   (bullet/blitz/rapid) jugada por alguna de las cuentas seleccionadas.*
 
 > **"Una fila es un ___" → una partida.** Coincide con la unidad de la pregunta: la
 > pregunta es sobre partidas, y la fila es una partida. Si alguien pregunta "¿y no es un
@@ -74,7 +74,7 @@ listar_jugadores → descarga_usuario (×N, .expand) → consolidar_descarga →
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
 |---|---|---|---|---|
-| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona automáticamente** los jugadores a descargar por banda de ELO. Si hay Parquet de una corrida previa, extrae los oponentes observados; si no (bootstrap), los descubre por la PubAPI. Valida cada candidato y arma la lista `seeds + seleccionados` (sin duplicados), guardando un manifiesto en `data/processed/player_selection_manifest.yaml`. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace **reproducible y auditable** la ampliación de la muestra. |
+| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona una sola vez** los jugadores a descargar: en la primera corrida baraja con semilla fija las listas públicas por país y de titulados, valida cada candidato y junta 20 por banda de ELO. Congela el resultado en `data/raw/seleccion/jugadores_seleccionados.yaml`, que también es el manifiesto. En las corridas siguientes solo lee ese archivo. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace que la muestra sea **reproducible y auditable**: no cambia entre corridas. |
 | 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
 | 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 8` o `min_total_games: 1500`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
 | 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
@@ -184,18 +184,25 @@ del baseline. Como `until_month` está congelado, el volumen debería ser establ
 criterio de rechazo.
 
 ### Qué pasa si lo corrés de nuevo — ¿sale el mismo archivo?
-**Sí, sale el mismo dataset**, por dos motivos que se refuerzan:
+**Sí, sale el mismo dataset**, por tres motivos que se refuerzan:
+- **Lista de jugadores congelada:** `listar_jugadores` selecciona los ~100 jugadores en la
+  primera corrida y los guarda en `data/raw/seleccion/jugadores_seleccionados.yaml`. Las
+  corridas siguientes leen ese archivo y no vuelven a seleccionar, así que siempre se
+  descargan las mismas cuentas.
 - **Ventana temporal congelada:** `config.yaml` fija `download.until_month: "2026-08"`, así que
   se ignoran los archivos mensuales posteriores a agosto de 2026. Aunque Chess.com es una
   **fuente viva** (cada mes entran partidas nuevas arriba de la pila), el tope neutraliza eso:
-  incluso **borrando `data/raw/` y descargando de cero** se obtiene el mismo conjunto de
-  partidas que la corrida validada.
+  con la misma lista de jugadores, **borrar los JSON de partidas y descargar de cero** da el
+  mismo conjunto de partidas.
 - **Idempotencia + determinismo:** si el JSON ya existe en `data/raw/`, la descarga se saltea;
   y limpieza + features son deterministas (la muestra CSV usa `random_state=42`).
 
-El único caso en que cambiaría es si alguien **mueve `until_month` o lo pone en `null`**: ahí
-tomaría hasta el mes actual e incorporaría partidas nuevas. Es el mecanismo previsto para
-retomar la ingesta en las próximas entregas, no un bug.
+Cambiaría solo en dos casos, y los dos son a propósito:
+- si alguien **borra el archivo de selección**: se vuelve a sortear desde listas vivas y
+  pueden salir otros jugadores;
+- si alguien **mueve `until_month` o lo pone en `null`**: ahí se tomaría hasta el mes actual
+  y entrarían partidas nuevas. Es el mecanismo previsto para retomar la ingesta en las
+  próximas entregas.
 
 ### Dónde guardás el dato crudo (bronce vs. plata)
 - **Bronce:** los JSON en `data/raw/` (`chesscom_<cuenta>_raw.json`), guardados **tal como
@@ -231,13 +238,12 @@ mesa antes de que las encuentren:
    se documenta como limitación conocida para tenerla en cuenta en el modelado de la
    Entrega 3.
 
-3. **La muestra no es aleatoria (limitación de representatividad).** Los jugadores se
-   seleccionan a partir de los oponentes observados de los 8 seeds, que van de nivel club a
-   élite mundial (varias streamers). Eso introduce un **sesgo de red**: los candidatos
-   tienden a caer en los mismos pools de emparejamiento que los seeds. La selección por
-   banda de ELO reparte el muestreo entre niveles, pero no garantiza representatividad. Las
-   conclusiones valen para el universo de jugadores alcanzado por este método, no para "el
-   ajedrez online" en general.
+3. **La muestra no es aleatoria (limitación de representatividad).** Los jugadores se sortean
+   de las listas públicas de ocho países y de titulados, con **cupos iguales por banda de
+   ELO**. Entonces la distribución de niveles la fija el diseño (20 por banda) y no la
+   población de Chess.com, y solo entran quienes declararon país o título. No hay cuentas
+   elegidas a mano ni sesgo de red por oponentes. Las conclusiones valen para el universo de
+   jugadores alcanzado por este método, no para "el ajedrez online" en general.
 
 ---
 
@@ -269,12 +275,14 @@ deberían poder contestar esto:
 - **"¿Y si una cuenta falla al descargar?"** El pipeline **tolera fallos por
   usuario**: cada cuenta es una tarea mapeada aparte, así que si una da 404, no tiene partidas o
   hay error de red, esa instancia devuelve un estado "falló" y **no rompe el fan-out**. Recién
-  `consolidar_descarga` corta con error si quedan menos de `min_users_ok: 8` cuentas o menos de
+  `consolidar_descarga` corta con error si quedan menos de `min_users_ok: 80` cuentas o menos de
   `min_total_games: 1500` partidas crudas. Una cuenta caída no tira abajo la corrida, pero un
   dataset demasiado chico sí se rechaza.
-- **"¿Sale el mismo dataset si lo corrés de nuevo?"** Sí: la **ventana congelada**
-  (`until_month: "2026-08"`) hace que incluso una descarga desde cero reproduzca el mismo
-  conjunto; y con el crudo presente la descarga se saltea (idempotente). Ver §4.
+- **"¿Sale el mismo dataset si lo corrés de nuevo?"** Sí, por dos cosas congeladas. La
+  **lista de jugadores** se selecciona una vez y queda en
+  `data/raw/seleccion/jugadores_seleccionados.yaml`, y la **ventana temporal**
+  (`until_month: "2026-08"`) fija qué meses se bajan. Con el crudo presente, la descarga se
+  saltea (idempotente). Ver §4.
 - **"¿Dónde está el rate-limiting / cómo respetás a Chess.com?"** Sesión identificada con
   `User-Agent`, requests en serie por cuenta con `request_delay` y reintentos con backoff ante
   429/5xx (`src/download_data.py`). El fan-out corre **como mucho 3 cuentas en paralelo**

@@ -63,6 +63,9 @@ python -m src.pipeline                                       # --skip-download s
 jupyter lab notebooks/01_data_ingestion_verification.ipynb   # o Restart & Run All
 ```
 
-La primera corrida descarga hasta 1.000 partidas rated por usuario (8 cuentas de
-Chess.com), recorriendo archivos mensuales en serie hasta `download.until_month`. Las
-siguientes saltean los JSON ya descargados (idempotente).
+La primera corrida selecciona ~100 jugadores (20 por banda de ELO) desde las listas
+públicas por país y de titulados de la PubAPI, congela esa lista en
+`data/raw/seleccion/jugadores_seleccionados.yaml` y descarga hasta 1.000 partidas rated
+por jugador, recorriendo archivos mensuales en serie hasta `download.until_month`. Las
+siguientes reusan la misma lista y saltean los JSON ya descargados (idempotente). No
+borres ese archivo salvo que se quiera volver a seleccionar a propósito: cambia la muestra.

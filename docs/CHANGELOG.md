@@ -1,5 +1,38 @@
 # Changelog
 
+## Selección de jugadores sin seeds y congelada (2026-09-22)
+
+Branch `fix/restos-lista-fija-jugadores`.
+
+### Qué
+
+- `listar_jugadores` ya no parte de 8 seeds ni lee el Parquet de la corrida anterior. En la
+  primera corrida toma como candidatos las listas públicas de la PubAPI por país
+  (`AR, ES, MX, US, IN, BR, DE, RU`) y de titulados (`GM, IM, WGM, FM`). Las baraja con
+  `random_state: 42`, estima la banda con `/stats`, valida cada candidato contra sus
+  partidas hasta el cutoff y junta 20 por banda.
+- La selección se escribe una vez en `data/raw/seleccion/jugadores_seleccionados.yaml`
+  (lista congelada + manifiesto) y las corridas siguientes la reusan tal cual. Las listas
+  crudas por país y por título quedan como snapshot en la misma carpeta.
+- Si la selección junta menos de `download.min_users_ok` jugadores, no se congela y la
+  tarea falla.
+- El fallback de `limpieza_y_parseo` reconstruye las rutas desde la lista congelada, no con
+  un glob de `data/raw/`.
+- El CLI (`python -m src.pipeline`) usa la misma lista que el DAG. Se elimina el modo
+  piloto de 8 cuentas y `scripts/seleccionar_jugadores.py`.
+- Config: se quitan `chess_com.usernames`, `player_selection.seed_usernames` y
+  `manifest_path`; se agregan `countries`, `titles` y `selection_path`.
+  `download.min_users_ok`: **8 → 80**.
+
+### Por qué
+
+Con el diseño anterior, el pool de candidatos de cada corrida salía del Parquet de la
+corrida previa, que ya incluía las partidas de los jugadores elegidos. El pool pasaba de
+~3.600 a ~54.000 candidatos y la semilla fija barajaba un mazo distinto: cada corrida
+elegía otros ~100 jugadores, el bronce anterior quedaba huérfano y el dataset no se podía
+reproducir. Además, la primera corrida dependía de 8 cuentas elegidas a mano y de sus
+oponentes (sesgo de red).
+
 ## Entrega 2: análisis exploratorio e hipótesis (2026-09-19)
 
 ### Qué
