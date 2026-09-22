@@ -16,8 +16,9 @@ empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online
 Unidad de análisis: una partida individual.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
-autenticación. Partidas reales de 8 jugadores en distintos rangos de ELO (nivel club a
-élite mundial). La API se consulta en serie mediante sus archivos mensuales.
+autenticación. Partidas reales de ~100 jugadores repartidos en 5 bandas de ELO,
+seleccionados automáticamente por la tarea `listar_jugadores` del DAG a partir de 8 seeds
+(nivel club a élite mundial). La API se consulta en serie mediante sus archivos mensuales.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
 el doble que los dos parciales. Se aprueba con 60 %.
@@ -51,6 +52,18 @@ modelado de Entrega 3: el rating que informa Chess.com es posterior al cierre de
 partida (fuga de información hacia `resultado`, no sólo un matiz), y la muestra está
 concentrada en 8 jugadores de nivel club a élite mundial, no es representativa de
 "ajedrez online" en general.
+
+**Al 22/09/2026 (Entrega 2 lista):** La lista fija de 8 cuentas se reemplazó por la tarea
+`listar_jugadores` del DAG (`src/player_selection.py`): parte de 8 seeds, toma oponentes
+del Parquet previo (o los descubre por la PubAPI en la primera corrida), los valida y
+selecciona hasta 20 por banda de ELO, dejando un manifiesto auditable. Corrida ampliada
+del 18/09/2026: 93 jugadores seleccionados (`principiante` quedó en 13/20) más los 8
+seeds, 94.247 registros descargados y 93.669 partidas finales (99,39% de retención, cero
+nulos). `notebooks/02_eda_hipotesis.ipynb` contrasta cuatro hipótesis sobre ese Parquet y
+cierra con la tabla de columnas candidatas para la Entrega 3; la guía de defensa está en
+`docs/entregas/guia-defensa-entrega-2.md`. La fuga del rating posterior sigue vigente; la
+representatividad mejoró por bandas pero conserva un sesgo de red (candidatos = oponentes
+de los seeds). El CLI sin Docker sigue siendo la corrida piloto de 8 cuentas.
 
 ## Qué pide cada entrega
 

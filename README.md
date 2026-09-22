@@ -44,14 +44,16 @@ La primera tarea del DAG (`listar_jugadores`) selecciona automáticamente los ju
 a descargar. Funciona en dos modos:
 
 1. **Bootstrap (primera corrida):** si no existe un parquet procesado de una corrida
-   anterior, usa los 8 *seed_usernames* del config — cuentas públicas verificadas que
-   cubren desde nivel club (~1400) hasta élite mundial (~3400).
-2. **Selección completa (corridas siguientes):** lee el parquet de la corrida anterior,
-   extrae los oponentes observados, los valida contra la PubAPI de Chess.com (perfil
-   activo, al menos 15 partidas rated elegibles) y selecciona hasta 20 jugadores por
-   cada una de las 5 bandas de ELO (principiante, intermedio, avanzado, experto,
-   top_mundial), con una semilla aleatoria fija (`random_state: 42`) para
-   reproducibilidad.
+   anterior, descubre por la PubAPI los oponentes recientes de los 8 *seed_usernames*
+   del config — cuentas públicas verificadas que cubren desde nivel club (~1400) hasta
+   élite mundial (~3400) — y los usa como candidatos.
+2. **Selección completa (corridas siguientes):** lee el parquet de la corrida anterior y
+   extrae los oponentes observados, sin consultar la red.
+
+En ambos modos los candidatos se validan contra la PubAPI de Chess.com (perfil activo,
+al menos 15 partidas rated elegibles) y se seleccionan hasta 20 jugadores por cada una de
+las 5 bandas de ELO (principiante, intermedio, avanzado, experto, top_mundial), con una
+semilla aleatoria fija (`random_state: 42`) para reproducibilidad.
 
 Los 8 seeds siempre están incluidos en la lista final. La selección se guarda en un
 manifiesto auditable (`data/processed/player_selection_manifest.yaml`). La configuración
