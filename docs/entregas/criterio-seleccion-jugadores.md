@@ -31,30 +31,76 @@ Las versiones anteriores tenían dos problemas:
         └── No  →  PRIMERA CORRIDA:
                         │
                         ↓
-        Universo de candidatos: listas públicas de la PubAPI
-          · jugadores por país  (/pub/country/{iso}/players; AR, ES, MX, US, IN, BR, DE, RU)
-          · titulados           (/pub/titled/{GM, IM, WGM, FM})
-          (cada lista se guarda cruda en data/raw/seleccion/ → bronce de la selección)
+        Tres pools de candidatos, cada uno con las bandas que alimenta
+          · titulados_avanzado  WFM, WCM                    → avanzado
+          · titulados_alto      GM, IM, WGM, FM             → experto, top_mundial
+          · paises              AR, ES, MX, US, IN, BR, DE, RU → principiante, intermedio
+          (/pub/titled/{título} y /pub/country/{iso}/players; cada lista se guarda cruda
+           en data/raw/seleccion/ → bronce de la selección)
                         ↓
-        Unión sin duplicados, orden alfabético y barajado con semilla 42
+        Cada pool: sin duplicados, orden alfabético y barajado con semilla 42
                         ↓
-        Para cada candidato, en ese orden:
+        Recorrido en ronda (un candidato de cada pool activo por turno):
           · pre-filtro con /pub/player/{u}/stats → banda estimada
             (rating de la modalidad bullet/blitz/rapid con más partidas)
           · si esa banda ya está llena → se saltea sin validar
           · si no → validación completa contra sus partidas hasta el cutoff
+          · un pool con todas sus bandas llenas se deja de recorrer
+          · checkpoint después de cada validación
                         ↓
-        Se detiene al llenar 20 por banda (o al agotar el pool)
+        Se detiene al llenar 20 por banda (o al agotar los pools)
                         ↓
         Escritura atómica de jugadores_seleccionados.yaml → queda CONGELADO
                         ↓
         Fuente del .expand() de descarga_usuario
 ```
 
-Las **listas por país** aportan jugadores de todos los niveles, sobre todo de las bandas
-bajas y medias. Las **listas de titulados** existen porque entre los jugadores por país casi
-no aparecen ratings de 2600 o más, y sin ellas `top_mundial` no se llenaría. Mezclar ocho
-países reduce el sesgo de tomar uno solo.
+### Por qué tres pools y no uno
+
+La primera versión mezclaba todas las listas en una sola cola. Se cortó a mano después de
+una hora con 94/100: faltaban 6 `avanzado` (1800–2200). Con muestras de `/stats` del
+22/09/2026 se midió qué niveles aporta cada lista:
+
+| Lista | Tamaño | Muestra en `avanzado` | Resto de la muestra |
+|---|---|---|---|
+| Países (AR, US) | ~10.000 c/u, ~80.000 en total | **0/80** | casi todo principiante |
+| FM | 4.859 | 3/20 | experto y top_mundial |
+| CM / NM | ~2.600 c/u | 1/20 y 2/20 | experto y top_mundial |
+| **WFM** | 966 | **12/20** | experto e intermedio |
+| **WCM** | 658 | **9/20** | intermedio, experto |
+
+El 90 % de la cola única eran jugadores por país, sin nadie de 1800+, y los títulos de ese
+nivel (WFM y WCM) no estaban. Con las otras bandas llenas, el selector gastaba una consulta
+a `/stats` por candidato solo para descartarlo, y menos del 1 % de esas consultas caía en
+`avanzado`.
+
+Por eso ahora:
+
+- **Se agregaron WFM y WCM**, que caen mayormente en `avanzado`. CM y NM se descartaron
+  porque en la muestra aportaron casi solo 2200+.
+- **Cada pool declara las bandas que alimenta** (`player_selection.pools`). Cuando todas
+  están llenas, el pool no se sigue recorriendo: una vez completos `principiante` e
+  `intermedio`, los ~80.000 jugadores por país ya no se consultan. Si un candidato cae en
+  otra banda que sigue abierta, se acepta igual (por ejemplo, un FM de 1900).
+- **Los pools se recorren en ronda**, así todas las bandas avanzan en paralelo y ninguna
+  espera a que otra termine.
+- **Un jugador que figura en dos pools queda solo en el primero**, según el orden del config.
+  Nunca se evalúa dos veces.
+
+En una prueba real con la versión final, `avanzado` juntó 6 jugadores con 12 candidatos
+(antes eran varios cientos por jugador). Ahora el costo lo domina la validación de cada
+aceptado, que recorre sus archivos mensuales hasta juntar 1.000 partidas.
+
+### Checkpoint: si se corta, retoma
+
+Después de cada validación (y cada 100 candidatos salteados), el avance se guarda en
+`data/raw/seleccion/jugadores_seleccionados.parcial.yaml`: candidatos consumidos por pool,
+seleccionados, evaluados y conteos de salteados. Si la tarea se corta (reintento de Airflow,
+worker caído, corte manual), la próxima corrida sigue desde ahí. Como el orden de cada pool
+es determinístico (snapshots + semilla), retomar da el mismo resultado que no haberse
+cortado. El checkpoint solo se usa si fue hecho con la **misma política**; si cambió el
+config, se ignora y se empieza de cero. Cuando la selección se congela, el checkpoint se
+borra.
 
 ### Validación de cada candidato
 
@@ -89,8 +135,9 @@ congelada (`download.until_month`):
   la arma sola.
 
 Para **volver a seleccionar** hay que borrar a propósito
-`data/raw/seleccion/jugadores_seleccionados.yaml`. Si también se borran los snapshots
-`country_*.json` / `titled_*.json`, se vuelven a pedir las listas a la API.
+`data/raw/seleccion/jugadores_seleccionados.yaml`, y también el `.parcial.yaml` si
+existiera. Si además se borran los snapshots `country_*.json` / `titled_*.json`, se vuelven
+a pedir las listas a la API.
 
 **Límite conocido:** las listas por país y los `/stats` son datos vivos de Chess.com. Otra
 instalación que corra la selección desde cero otro día puede obtener otros jugadores. Lo que
@@ -102,16 +149,17 @@ reproducir exactamente la muestra en otra máquina alcanza con copiar `data/raw/
 Si el pool se agota antes de que una banda llegue a su objetivo, se registra un *warning*
 (`Banda X: solo N/target jugadores seleccionados`) y la corrida sigue con lo que consiguió.
 Hay una excepción: si el total queda por debajo de `download.min_users_ok` (por ejemplo, por
-una caída de la API durante la selección), **no se congela nada** y la tarea falla. Así la
-próxima corrida vuelve a intentar y no queda fija una lista inservible.
+una caída de la API durante la selección), **no se congela nada** y la tarea falla. El
+checkpoint queda, así que la próxima corrida retoma desde ahí y no queda fija una lista
+inservible.
 
 ## Manifiesto
 
 `jugadores_seleccionados.yaml` es a la vez la lista congelada y el manifiesto auditable.
 Incluye:
 
-- la política usada (países, títulos, semilla, cutoff, cupos y bandas);
-- el tamaño del pool;
+- la política usada (pools con sus listas y bandas, semilla, cutoff, cupos y bandas de ELO);
+- el tamaño de cada pool y cuántos candidatos se consumieron de cada uno;
 - los seleccionados por banda y la lista plana `usernames`;
 - los conteos de candidatos salteados en el pre-filtro, por motivo;
 - cada candidato validado, con su banda estimada, su mediana validada y el motivo de rechazo.

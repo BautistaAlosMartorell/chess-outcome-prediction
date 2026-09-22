@@ -21,8 +21,19 @@ Branch `fix/restos-lista-fija-jugadores`.
 - El CLI (`python -m src.pipeline`) usa la misma lista que el DAG. Se elimina el modo
   piloto de 8 cuentas y `scripts/seleccionar_jugadores.py`.
 - Config: se quitan `chess_com.usernames`, `player_selection.seed_usernames` y
-  `manifest_path`; se agregan `countries`, `titles` y `selection_path`.
+  `manifest_path`; se agregan `pools` y `selection_path`.
   `download.min_users_ok`: **8 → 80**.
+- **Tres pools con bandas propias.** La primera versión usaba una sola cola que mezclaba
+  países y titulados, sin WFM/WCM. Se cortó a mano después de una hora con 94/100 porque
+  faltaban 6 `avanzado`. Las muestras de `/stats` mostraron que las listas por país no
+  tienen jugadores de 1800+ (0/80), y que WFM (12/20) y WCM (9/20) caen mayormente en
+  `avanzado`. Ahora hay tres pools, `titulados_avanzado` (WFM, WCM), `titulados_alto`
+  (GM, IM, WGM, FM) y `paises`, que se recorren en ronda; cada uno se abandona cuando sus
+  bandas están llenas. En la prueba real, `avanzado` pasó de varios cientos de candidatos
+  por jugador a 2.
+- **Checkpoint** en `jugadores_seleccionados.parcial.yaml` después de cada validación: si la
+  selección se corta, el reintento retoma desde ahí, siempre que la política no haya
+  cambiado.
 
 ### Por qué
 

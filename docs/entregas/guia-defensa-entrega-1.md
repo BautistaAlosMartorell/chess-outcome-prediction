@@ -74,7 +74,7 @@ listar_jugadores → descarga_usuario (×N, .expand) → consolidar_descarga →
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
 |---|---|---|---|---|
-| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona una sola vez** los jugadores a descargar: en la primera corrida baraja con semilla fija las listas públicas por país y de titulados, valida cada candidato y junta 20 por banda de ELO. Congela el resultado en `data/raw/seleccion/jugadores_seleccionados.yaml`, que también es el manifiesto. En las corridas siguientes solo lee ese archivo. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace que la muestra sea **reproducible y auditable**: no cambia entre corridas. |
+| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona una sola vez** los jugadores a descargar: en la primera corrida arma tres pools de candidatos (WFM/WCM → avanzado; GM/IM/WGM/FM → experto y top_mundial; jugadores por país → principiante e intermedio). Los baraja con semilla fija, valida cada candidato y junta 20 por banda de ELO. Guarda el avance en un checkpoint por si se corta. Congela el resultado en `data/raw/seleccion/jugadores_seleccionados.yaml`, que también es el manifiesto. En las corridas siguientes solo lee ese archivo. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace que la muestra sea **reproducible y auditable**: no cambia entre corridas. |
 | 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
 | 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 8` o `min_total_games: 1500`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
 | 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas y **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos). | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
@@ -240,7 +240,8 @@ mesa antes de que las encuentren:
 
 3. **La muestra no es aleatoria (limitación de representatividad).** Los jugadores se sortean
    de las listas públicas de ocho países y de titulados, con **cupos iguales por banda de
-   ELO**. Entonces la distribución de niveles la fija el diseño (20 por banda) y no la
+   ELO**. `avanzado` sale sobre todo de jugadoras WFM/WCM, porque en las listas por país
+   casi no hay nadie de 1800 o más. Entonces la distribución de niveles la fija el diseño (20 por banda) y no la
    población de Chess.com, y solo entran quienes declararon país o título. No hay cuentas
    elegidas a mano ni sesgo de red por oponentes. Las conclusiones valen para el universo de
    jugadores alcanzado por este método, no para "el ajedrez online" en general.

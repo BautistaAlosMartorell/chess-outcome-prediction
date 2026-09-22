@@ -44,13 +44,19 @@ La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a desca
 **una sola vez** y la deja congelada:
 
 1. **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
-   toma como universo de candidatos las listas públicas de jugadores por país
-   (`/pub/country/{iso}/players`: AR, ES, MX, US, IN, BR, DE, RU) y de titulados
-   (`/pub/titled/{GM,IM,WGM,FM}`). Las baraja con semilla fija (`random_state: 42`),
-   estima la banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus
-   partidas hasta el cutoff (perfil activo, al menos 15 partidas rated elegibles, mediana
-   de ELO dentro de la banda). Se detiene cuando junta 20 jugadores en cada una de las 5
-   bandas (principiante, intermedio, avanzado, experto, top_mundial).
+   arma tres pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
+   ciertas bandas:
+   - WFM y WCM (`/pub/titled/{título}`) para `avanzado`;
+   - GM, IM, WGM y FM para `experto` y `top_mundial`;
+   - jugadores de AR, ES, MX, US, IN, BR, DE y RU (`/pub/country/{iso}/players`) para
+     `principiante` e `intermedio`.
+
+   Baraja cada pool con semilla fija (`random_state: 42`) y los recorre en ronda. Estima la
+   banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus partidas
+   hasta el cutoff (perfil activo, al menos 15 partidas rated elegibles, mediana de ELO
+   dentro de la banda). Cuando todas las bandas de un pool se llenan, ese pool deja de
+   consultarse. Se detiene al juntar 20 jugadores en cada una de las 5 bandas. El avance se
+   guarda en un checkpoint, así que si la tarea se corta, retoma desde ahí.
 2. **Corridas siguientes:** lee ese archivo y devuelve exactamente la misma lista, sin
    volver a seleccionar. Como la descarga es idempotente, se reusa el bronce ya bajado y
    sale el mismo dataset.
@@ -58,7 +64,8 @@ La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a desca
 No hay cuentas iniciales elegidas a mano ni dependencia del Parquet de una corrida
 anterior. El archivo de selección también es el manifiesto auditable: incluye la política,
 los candidatos evaluados y los motivos de rechazo. Junto a él quedan los snapshots crudos
-de las listas por país y por título. Para volver a seleccionar hay que borrarlo a propósito.
+de las listas por país y por título. Por qué hay tres pools y qué se midió para definirlos
+está en el doc del criterio de selección. Para volver a seleccionar hay que borrarlo a propósito.
 El detalle está en [`docs/entregas/criterio-seleccion-jugadores.md`](docs/entregas/criterio-seleccion-jugadores.md);
 la configuración, en `config/config.yaml` bajo `player_selection`.
 
@@ -80,7 +87,9 @@ la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado
 
 La muestra no es una selección aleatoria de la población general de Chess.com. Los
 candidatos salen de las listas públicas por país (ocho países) y de titulados, y se
-estratifican por banda de ELO con cupos iguales. Por eso la distribución de niveles refleja
+estratifican por banda de ELO con cupos iguales. `avanzado` sale sobre todo de jugadoras
+WFM/WCM, y `experto`/`top_mundial` de titulados, porque en las listas por país casi no hay
+jugadores de 1800 o más. Por eso la distribución de niveles refleja
 el diseño (20 jugadores por banda) y no la de la población. Además, las listas por país
 solo incluyen a quienes declararon ese país en su perfil. Las conclusiones de las
 próximas entregas se formulan sobre el universo de jugadores alcanzados por este método,
