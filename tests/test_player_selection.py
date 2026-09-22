@@ -42,8 +42,10 @@ class PlayerSelectionTest(unittest.TestCase):
         config["download"]["min_users_ok"] = 1
         config["player_selection"]["min_eligible_games"] = 2
         config["player_selection"]["max_games_per_candidate"] = 3
-        config["player_selection"]["countries"] = ["AR"]
-        config["player_selection"]["titles"] = ["GM"]
+        config["player_selection"]["pools"] = {
+            "titulados": {"titles": ["GM"], "bands": ["avanzado", "experto", "top_mundial"]},
+            "paises": {"countries": ["AR"], "bands": ["principiante", "intermedio"]},
+        }
         config["player_selection"]["selection_path"] = str(self.tmp / "seleccion" / "sel.yaml")
         if targets is not None:
             config["player_selection"]["target_per_band"] = targets
@@ -172,30 +174,59 @@ class PlayerSelectionTest(unittest.TestCase):
             api_get, _ = self.fake_api(players)
             selector = self.selector(config, api_get)
             with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
-                results.append(selector.select(selector.fetch_candidate_pool()))
-            # Drop cached snapshots so the second run fetches the pool again.
+                results.append(selector.select(selector.fetch_pools()))
+            # Start the second run from scratch: no cached snapshots, no checkpoint.
             for snapshot in (self.tmp / "seleccion").glob("*.json"):
                 snapshot.unlink()
+            selector.discard_checkpoint()
 
         self.assertEqual(results[0].selected, results[1].selected)
         self.assertEqual(len(results[0].selected["intermedio"]), 3)
 
-    def test_pool_merges_country_and_titled_sources_without_duplicates(self) -> None:
+    def test_player_in_two_pools_stays_only_in_the_first(self) -> None:
         api_get, _ = self.fake_api({"alice": (1500, 1500), "bob": (2700, 2700)}, titled=("Bob", "carl"))
-        pool = self.selector(self.config_for_test(), api_get).fetch_candidate_pool()
+        pools = self.selector(self.config_for_test(), api_get).fetch_pools()
 
-        self.assertEqual(len(pool), 3)
-        self.assertEqual(pool["bob"], "pais:AR,titulo:GM")
+        self.assertEqual(pools["titulados"], {"Bob": "titulo:GM", "carl": "titulo:GM"})
+        self.assertEqual(pools["paises"], {"alice": "pais:AR"})
         self.assertTrue((self.tmp / "seleccion" / "country_AR.json").exists())
+
+    def test_pool_with_all_bands_full_is_not_queried_anymore(self) -> None:
+        players = {f"low{index}": (1300, 1300) for index in range(30)}
+        players["high"] = (1900, 1900)
+        api_get, calls = self.fake_api(players, titled=("high",))
+        config = self.config_for_test({"intermedio": 1, "avanzado": 1})
+        selector = self.selector(config, api_get)
+
+        with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
+            result = selector.select(selector.fetch_pools())
+
+        self.assertTrue(result.is_complete)
+        # Once "intermedio" is full the country pool stops: one /stats call, not 30.
+        country_stats = [url for url in calls if url.endswith("/stats") and "/low" in url]
+        self.assertEqual(len(country_stats), 1)
+        self.assertEqual(result.consumed["paises"], 1)
+
+    def test_pools_without_coverage_for_a_band_are_rejected(self) -> None:
+        config = self.config_for_test()
+        config["player_selection"]["pools"]["titulados"]["bands"] = ["experto"]
+        with self.assertRaises(ValueError):
+            self.selector(config, lambda _: {})
 
     def test_full_band_is_skipped_before_validation(self) -> None:
         players = {f"low{index}": (1300, 1300) for index in range(5)}
         players["high"] = (1900, 1900)
         api_get, _ = self.fake_api(players)
-        selector = self.selector(self.config_for_test({"intermedio": 1, "avanzado": 1}), api_get)
+        config = self.config_for_test({"intermedio": 1, "avanzado": 1})
+        # A single pool feeding both bands: "intermedio" fills first and the remaining
+        # "low" candidates are skipped by their estimated band, without validation.
+        config["player_selection"]["pools"] = {
+            "paises": {"countries": ["AR"], "bands": ["intermedio", "avanzado"]},
+        }
+        selector = self.selector(config, api_get)
 
         with mock.patch.object(selector, "validate_candidate", side_effect=self.accept) as validate:
-            result = selector.select(selector.fetch_candidate_pool())
+            result = selector.select(selector.fetch_pools())
 
         self.assertTrue(result.is_complete)
         self.assertEqual(result.selected["avanzado"], ["high"])
@@ -207,7 +238,7 @@ class PlayerSelectionTest(unittest.TestCase):
         selector = self.selector(self.config_for_test({"intermedio": 5}), api_get)
 
         with self.assertLogs("src.player_selection", level="WARNING"):
-            result = selector.select(selector.fetch_candidate_pool())
+            result = selector.select(selector.fetch_pools())
 
         self.assertFalse(result.is_complete)
         self.assertEqual(result.selected["intermedio"], ["only"])
@@ -245,11 +276,62 @@ class PlayerSelectionTest(unittest.TestCase):
         snapshot.write_text(json.dumps({"players": ["frozen"]}))
         api_get, calls = self.fake_api({"other": (1300, 1300)})
 
-        pool = self.selector(config, api_get).fetch_candidate_pool()
+        pools = self.selector(config, api_get).fetch_pools()
 
-        self.assertIn("frozen", pool)
-        self.assertNotIn("other", pool)
+        self.assertIn("frozen", pools["paises"])
+        self.assertNotIn("other", pools["paises"])
         self.assertNotIn(f"{PUBAPI_ROOT}/country/AR/players", calls)
+
+    def test_interrupted_selection_resumes_from_checkpoint(self) -> None:
+        players = {f"p{index}": (1300, 1310) for index in range(6)}
+        config = self.config_for_test({"intermedio": 3})
+        api_get, _ = self.fake_api(players)
+
+        first = self.selector(config, api_get)
+        validated: list[str] = []
+
+        def crash_on_third(candidate: Candidate) -> CandidateValidation:
+            if len(validated) == 2:
+                raise RuntimeError("worker killed")
+            validated.append(candidate.username)
+            return self.accept(candidate)
+
+        with mock.patch.object(first, "validate_candidate", side_effect=crash_on_third):
+            with self.assertRaises(RuntimeError):
+                first.select(first.fetch_pools())
+        self.assertTrue(first.checkpoint_path.exists())
+
+        second = self.selector(config, api_get)
+        with mock.patch.object(second, "validate_candidate", side_effect=self.accept) as validate:
+            result = second.select(second.fetch_pools())
+
+        self.assertEqual(result.selected["intermedio"][:2], validated)
+        self.assertEqual(len(result.selected["intermedio"]), 3)
+        self.assertEqual(validate.call_count, 1)
+
+    def test_checkpoint_from_another_policy_is_ignored(self) -> None:
+        config = self.config_for_test({"intermedio": 1})
+        api_get, _ = self.fake_api({"p0": (1300, 1310)})
+        selector = self.selector(config, api_get)
+        selector.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        selector.checkpoint_path.write_text(yaml.safe_dump({
+            "policy": {"random_state": 7},
+            "selected": {"intermedio": ["ghost"]},
+        }))
+
+        with mock.patch.object(selector, "validate_candidate", side_effect=self.accept):
+            result = selector.select(selector.fetch_pools())
+
+        self.assertEqual(result.selected["intermedio"], ["p0"])
+
+    def test_checkpoint_is_removed_once_selection_is_frozen(self) -> None:
+        config = self.config_for_test({"intermedio": 1})
+        api_get, _ = self.fake_api({"p0": (1300, 1310, 1320)})
+        selector = self.selector(config, api_get)
+
+        load_or_create_selection(config, selector=selector)
+
+        self.assertFalse(selector.checkpoint_path.exists())
 
     def test_load_selection_rejects_empty_file(self) -> None:
         path = self.tmp / "empty.yaml"

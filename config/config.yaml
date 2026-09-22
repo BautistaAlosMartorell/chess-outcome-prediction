@@ -57,17 +57,32 @@ download:
   min_total_games: 1500
 
 # Política de selección de jugadores ejecutada por listar_jugadores en el DAG.
-# Primera corrida (no existe selection_path): arma el universo de candidatos con las listas
-# públicas de jugadores por país y de titulados de la PubAPI, lo baraja con random_state,
-# estima la banda de cada candidato con /stats, lo valida contra sus partidas hasta cutoff
-# y llena target_per_band. El resultado se escribe en selection_path y queda CONGELADO:
-# las corridas siguientes descargan exactamente la misma lista. Para volver a seleccionar,
-# borrar ese archivo a mano.
+# Primera corrida (no existe selection_path): arma cada pool de candidatos con listas
+# públicas de la PubAPI, lo baraja con random_state, estima la banda de cada candidato con
+# /stats, lo valida contra sus partidas hasta cutoff y llena target_per_band. Los pools se
+# recorren en ronda (uno por turno) y cada uno se abandona cuando todas sus `bands` están
+# llenas, sin gastar más requests. El avance se guarda en un checkpoint
+# (<selection_path>.parcial.yaml) para que un reintento siga desde ahí.
+# El resultado se escribe en selection_path y queda CONGELADO: las corridas siguientes
+# descargan exactamente la misma lista. Para volver a seleccionar, borrar ese archivo.
 player_selection:
-  source: "listas públicas de jugadores por país y titulados de la PubAPI de Chess.com"
-  countries: [AR, ES, MX, US, IN, BR, DE, RU]
-  # Las listas por país casi no tienen jugadores de 2600+: los titulados cubren top_mundial.
-  titles: [GM, IM, WGM, FM]
+  source: "listas públicas de titulados y de jugadores por país de la PubAPI de Chess.com"
+  # Cada pool declara las `bands` que alimenta: cuando todas están llenas, el pool se deja
+  # de recorrer. Un candidato que cae en otra banda todavía abierta igual se acepta.
+  # El orden importa: un jugador que figura en dos pools queda sólo en el primero.
+  # Las bandas salen de medir qué niveles aporta cada lista (muestras de /stats del
+  # 22/09/2026): países → 0/80 en 1800+ (casi todo principiante); WFM → 12/20 y
+  # WCM → 9/20 en avanzado; FM → 3/20 en avanzado y el resto 2200+; GM/IM/WGM → 2200+.
+  pools:
+    titulados_avanzado:
+      titles: [WFM, WCM]
+      bands: [avanzado]
+    titulados_alto:
+      titles: [GM, IM, WGM, FM]
+      bands: [experto, top_mundial]
+    paises:
+      countries: [AR, ES, MX, US, IN, BR, DE, RU]
+      bands: [principiante, intermedio]
   cutoff: "2026-08"
   random_state: 42
   min_eligible_games: 15

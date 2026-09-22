@@ -92,10 +92,11 @@ def pipeline_ajedrez_chesscom():
 
         Si ya existe ``player_selection.selection_path``, la lee tal cual: todas las
         corridas descargan los mismos jugadores y el bronce previo se reusa. Si no existe
-        (primera corrida), selecciona ~20 jugadores por banda de ELO a partir de las listas
-        públicas por país y de titulados de la PubAPI, con orden aleatorio de semilla fija,
-        y escribe el archivo, que desde ahí queda congelado. No depende de ninguna cuenta
-        inicial ni del parquet de una corrida anterior.
+        (primera corrida), selecciona ~20 jugadores por banda de ELO a partir de tres pools
+        de listas públicas de la PubAPI (``player_selection.pools``), con orden aleatorio de
+        semilla fija, y escribe el archivo, que desde ahí queda congelado. Guarda el avance
+        en un checkpoint, así que un reintento retoma donde quedó. No depende de ninguna
+        cuenta inicial ni del parquet de una corrida anterior.
         """
         from src.player_selection import load_or_create_selection
         from src.utils import load_config
