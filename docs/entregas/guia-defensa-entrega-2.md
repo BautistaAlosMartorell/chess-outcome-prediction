@@ -53,8 +53,11 @@ notebook — no hay ningún valor puesto a mano.
 2. **Del EDA:** esta entrega reemplazó el semáforo propio (cortes de `|r|`/`V`/`η²`
    inventados) por el de la cátedra (`CORTES` + `semaforo()`) y recalculó las cuatro
    hipótesis con la medida de la plantilla que les corresponde (comparación, asociación
-   o composición), no con la que "daba mejor". Dos hipótesis cambiaron de decisión frente
-   a la versión anterior — se detalla en la sección 5.
+   o composición), no con la que "daba mejor". Con la regla real de la cátedra (amarillo
+   habilita un movimiento, no confirma nada), **H1 pasa de "confirmada con matiz" a
+   inconclusa** y **H3 se precisa como heterogénea por nivel** (confirmada en bandas
+   bajas, refutada en las altas); H2 y H4 se mantienen refutadas, como ya estaban — se
+   detalla en la sección 5.
 3. **De la pregunta:** no cambió. Sigue siendo qué combinación de ELO, apertura,
    modalidad de ritmo y color predice `resultado` (clasificación) y `cantidad_jugadas`
    (regresión). Lo que se precisó en esta entrega es **qué predictores sobreviven al
@@ -171,8 +174,9 @@ neutral entre cuentas.
 El docente elige dos de las cuatro y hay que recorrerlas enteras: afirmación → qué
 esperaba ver → medida y gráfico → resultado con zona → movimiento (si hizo falta) → qué
 se hace con eso. Se cubre una pregunta de **responder** (H1, H3 — dominio) y una de
-**predecir** (H2, H4 — decide sobre una columna del modelo), y quedan dos
-**refutadas** (H2, H4) para no caer en "cuatro confirmadas".
+**predecir** (H2, H4 — decide sobre una columna del modelo). De las cuatro, sólo H3 se
+confirma (y sólo en parte): H2 y H4 quedan **refutadas** y H1 queda **inconclusa** — lejos
+de "cuatro confirmadas".
 
 ### H1 — Diferencia de ELO y resultado (responder / dominio)
 
@@ -182,8 +186,8 @@ se hace con eso. Se cubre una pregunta de **responder** (H1, H3 — dominio) y u
 | **Qué esperaba ver** | Que el promedio de `diferencia_elo` fuera claramente distinto entre partidas ganadas por blancas y por negras. |
 | **Medida y gráfico** | Comparación (3 grupos): `eta2(diferencia_elo, resultado)`, con la tabla por bandas y barras apiladas como apoyo. |
 | **Resultado (zona)** | **η² = 0,094 — 🟡 amarilla.** La tabla por bandas muestra la transición esperada (9,6 % de victorias blancas con diferencia ≤ −301 hasta 88,5 % con diferencia ≥ 301), pero el número queda lejos del corte verde (0,25). |
-| **Movimiento (1 de 2)** | Partir por `TimeClass` casi no cambia nada (0,079 a 0,099 según modalidad) — se descarta. Partir por `nivel_promedio` sí separa el comportamiento: 0,084 (principiante) → 0,086 (intermedio) → 0,093 (avanzado) → **0,144 (experto, 🟢 verde)** → 0,122 (top_mundial, 🟡 alta). El efecto se fortalece con el nivel de juego. |
-| **Decisión** | **Confirmada con matiz.** Entra como predictor principal de `resultado`, más fuerte cuanto más alto el nivel, sujeto a la fuga temporal del rating (sección 6.1). No hizo falta un segundo movimiento. |
+| **Movimiento (1 de 2)** | Partir por `TimeClass` casi no cambia nada (0,079 a 0,099 según modalidad) — se descarta mirando esa tabla, no cuenta como movimiento. Controlar por `nivel_promedio`: las **cinco bandas** van de 0,084 (principiante) a 0,144 (experto) y **las cinco quedan en amarillo** — ninguna cruza a verde ni a roja. El número del movimiento no es la banda más alta (elegir la mejor banda es el recorte que la propia cátedra advierte): controlando con las sumas de cuadrados pooleadas por banda da **η² = 0,101, también amarilla**. |
+| **Decisión** | **Inconclusa.** El único movimiento con evidencia real en el gráfico no saca al efecto de zona amarilla — ni banda por banda ni en la versión controlada — y no hay una tercera variable ni un cambio de escala que la exploración sugiera para un segundo movimiento. "Confirmada con matiz" no es una decisión válida para un resultado amarillo sin movimiento que lo resuelva. Además, si se corrige la fuga del rating (sección 6.1), este mismo η² baja de 0,093 a 0,065: parte de la señal que hay es artefacto de la fuga. |
 
 ### H2 — Paridad de ELO y duración (predecir)
 
@@ -205,7 +209,7 @@ se hace con eso. Se cubre una pregunta de **responder** (H1, H3 — dominio) y u
 | **Medida y gráfico** | Composición: proporción de `Termination == "time"` por `TimeClass` contra la global (25,0 %), con `eta2` como medida de apoyo (la composición no tiene corte propio en `CORTES`). |
 | **Resultado (zona)** | Bullet 43,6 % (+18,6 pp), Blitz 24,0 % (−1,0 pp), Rapid 6,8 % (−18,1 pp). **η² = 0,090 — 🟡 amarilla.** |
 | **Movimiento (1 de 2)** | Partir por `nivel_promedio`: el orden se sostiene en las 5 bandas sin excepción, pero el efecto se desploma con el nivel: 0,265 (principiante, 🟢) → 0,136 (intermedio, 🟡) → 0,064 (avanzado, 🟡) → 0,020 (experto, 🔴) → 0,025 (top_mundial, 🔴). |
-| **Decisión** | **Confirmada con matiz, heterogénea por nivel.** El mecanismo es fuerte en principiantes y prácticamente desaparece en jugadores expertos/top mundial. `Termination` sigue sin poder usarse para predecir pre-partida (se completa cuando la partida ya terminó). |
+| **Decisión** | **Confirmada en niveles bajos, refutada en niveles altos.** No es una sola decisión para todo el dataset: en `principiante` cruza a verde (se confirma), en `intermedio`/`avanzado` queda en amarillo, y en `experto`/`top_mundial` cae a rojo (se refuta ahí). `Termination` sigue sin poder usarse para predecir pre-partida en ningún nivel (se completa cuando la partida ya terminó). |
 
 ### H4 — Familia de apertura y duración (predecir)
 
@@ -216,15 +220,15 @@ se hace con eso. Se cubre una pregunta de **responder** (H1, H3 — dominio) y u
 | **Medida y gráfico** | Comparación (2 grupos, tal como está escrita la afirmación): `separacion(Cerrada, Semiabierta)`. El `eta2` sobre las 5 familias se deja como dato complementario. Boxplot por familia. |
 | **Resultado (zona)** | **separación = 0,087 — 🔴 roja** (Cerrada 76,7 plies vs. Semiabierta 73,8 — la dirección se sostiene, la magnitud no). Complementario: η² sobre 5 familias = 0,008, también roja. La familia más larga es India (81,4 plies) y la más chica (3.676 partidas contra 23.451 de Semiabierta). |
 | **Movimiento** | No hace falta: rojo termina la hipótesis. |
-| **Decisión** | **Refutada.** Cambia la conclusión de la entrega anterior, que la había dado por confirmada con una V de Cramér que no correspondía a la afirmación (2 grupos, no 5). `familia_apertura` no entra al baseline — además de conocerse sólo después de jugarse la apertura (sección 6). |
+| **Decisión** | **Refutada.** Igual que en la entrega anterior, que ya la daba por refutada (con η² sobre las 5 familias); acá se llega a la misma conclusión con la medida que corresponde a la afirmación de 2 grupos (`separacion`), no con la de apoyo. `familia_apertura` no entra al baseline — además de conocerse sólo después de jugarse la apertura (sección 6). |
 
 ### Resumen
 
 | Hipótesis | Pregunta | Plantilla | Medida | Zona | Decisión |
 |---|---|---|---|---|---|
-| H1 | Responder | Comparación (3 grupos) | η² = 0,094 (0,084–0,144 por nivel) | 🟡 | Confirmada con matiz |
+| H1 | Responder | Comparación (3 grupos) | η² = 0,094; controlado por nivel = 0,101 (0,084–0,144 por banda) | 🟡 | Inconclusa |
 | H2 | Predecir | Asociación | Pearson −0,012 / Spearman 0,060 | 🔴 | Refutada |
-| H3 | Responder | Composición + comparación | η² = 0,090 (0,020–0,265 por nivel) | 🟡 | Confirmada con matiz, heterogénea |
+| H3 | Responder | Composición + comparación | η² = 0,090 (0,020–0,265 por nivel) | 🟡 | Confirmada en niveles bajos, refutada en niveles altos |
 | H4 | Predecir | Comparación (2 grupos) | separación = 0,087 | 🔴 | Refutada |
 
 ---
@@ -326,11 +330,15 @@ cortas). El mecanismo de faltante real existe en el pipeline y hay que poder exp
 aunque esta muestra no lo haya activado.
 
 **Qué hipótesis salió mal, y qué se hizo con eso.** H2 (partidas parejas duran más) se
-refutó de punta a punta: Pearson y Spearman ni coinciden en signo. H4 (Cerrada más larga
-que Semiabierta) **cambió de decisión respecto de la entrega anterior**: antes se había
-confirmado con un η² sobre 5 familias que no correspondía a una afirmación de 2 grupos;
-con la medida correcta (`separacion`) da roja y queda refutada. Es el ejemplo de "el
-número decide, no el gráfico ni la comodidad de la conclusión anterior".
+refutó de punta a punta: Pearson y Spearman ni coinciden en signo. H1 es el ejemplo de
+"el número decide, no la comodidad de la conclusión anterior": la versión previa de este
+notebook la daba por **confirmada con matiz** sin haber aplicado ningún movimiento sobre
+un η² amarillo — eso no es válido con la regla de la cátedra. Al controlar por
+`nivel_promedio` (el movimiento que sí corresponde), el efecto sigue amarillo en las
+cinco bandas y en la versión controlada (0,101): la hipótesis queda **inconclusa**, no
+confirmada. H4 (Cerrada más larga que Semiabierta) ya estaba refutada desde la entrega
+anterior; acá se llega a lo mismo con la medida que corresponde a la afirmación de 2
+grupos (`separacion`) en vez de con el η² de apoyo sobre las 5 familias.
 
 **Qué columna se descartó por fuga, y en qué momento se completa en la realidad.**
 `es_sorpresa` es el caso más limpio: coincide al 100,0000 % con una regla derivada de
@@ -377,7 +385,8 @@ Devolución del docente (grupo 5K10-11, Ajedrez online — ELO, apertura y ritmo
 - [x] La tabla de columnas candidatas cubre las 25 columnas del Parquet y tiene columna
       `Zona` (sección 7).
 - [x] Al menos una hipótesis de responder (H1, H3) y una de predecir (H2, H4); al menos
-      una refutada (H2 y H4, las dos); ninguna hipótesis usa más de dos movimientos.
+      una refutada o inconclusa (H2 y H4 refutadas, H1 inconclusa — tres de cuatro);
+      ninguna hipótesis usa más de dos movimientos (H1 y H3 usan uno cada una).
 - [x] La sección 9 (devolución de la Entrega 1) está completa: los dos puntos que marcó
       el docente están resueltos.
 - [ ] Las respuestas no vienen de una sola persona — el docente elige **2 de las 4**
@@ -393,9 +402,11 @@ Devolución del docente (grupo 5K10-11, Ajedrez online — ELO, apertura y ritmo
 
 1. **El EDA de checklist.** No mostrar veinte histogramas sin conclusión — cada gráfico
    de la sección 5 responde una ficha concreta, no es un catálogo.
-2. **Defender la conclusión de la entrega anterior en vez de la de hoy.** H4 cambió de
-   confirmada a refutada porque la medida vieja no correspondía a la afirmación. Decir
-   "antes daba distinto" está bien; insistir en el número viejo, no.
+2. **Defender la conclusión de la entrega anterior en vez de la de hoy.** H1 pasó de
+   "confirmada con matiz" a **inconclusa** porque la versión anterior no había aplicado
+   ningún movimiento sobre un resultado amarillo — eso no es válido con la regla de la
+   cátedra. Decir "antes la habíamos dado por confirmada y estaba mal" está bien;
+   insistir en el número viejo, no.
 3. **Que hable uno solo.** La pregunta sobre una ficha puede caerle a quien no la armó —
    repartir antes de entrar quién puede explicar cada sección de punta a punta, no sólo
    quién la escribió.
