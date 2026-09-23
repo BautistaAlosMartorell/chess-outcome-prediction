@@ -39,30 +39,18 @@ notebook — no hay ningún valor puesto a mano.
 
 ## 1. Qué cambió (min 0–2) — dos oraciones
 
-1. **Del pipeline:** sigue sin haber ninguna cuenta elegida a mano — `listar_jugadores`
-   sortea candidatos de las listas públicas de la PubAPI (titulados FM/CM/NM para
-   `avanzado`, GM/IM para `experto` y `top_mundial`, jugadores de ocho países para
-   `principiante` e `intermedio`), los valida y llena `target_per_band: 20` en cada una
-   de las 5 bandas, y **congela** la lista en
-   `data/raw/seleccion/jugadores_seleccionados.yaml`. La ventana temporal sigue
-   congelada (`until_month: "2026-08"`). En la corrida usada para esta entrega se
-   seleccionaron **100 jugadores, 20 en cada banda**, y salieron **76.803 partidas**
-   finales sobre **77.229** descargadas (99,45 % de retención, 0 nulos reales — ver
-   sección 2). El detalle y las mediciones que justifican cada lista están en
-   `criterio-seleccion-jugadores.md`.
-2. **Del EDA:** esta entrega reemplazó el semáforo propio (cortes de `|r|`/`V`/`η²`
-   inventados) por el de la cátedra (`CORTES` + `semaforo()`) y recalculó las cuatro
-   hipótesis con la medida de la plantilla que les corresponde (comparación, asociación
-   o composición), no con la que "daba mejor". Con la regla real de la cátedra (amarillo
-   habilita un movimiento, no confirma nada), **H1 pasa de "confirmada con matiz" a
-   inconclusa** y **H3 se precisa como heterogénea por nivel** (confirmada en bandas
-   bajas, refutada en las altas); H2 y H4 se mantienen refutadas, como ya estaban — se
-   detalla en la sección 5.
-3. **De la pregunta:** no cambió. Sigue siendo qué combinación de ELO, apertura,
-   modalidad de ritmo y color predice `resultado` (clasificación) y `cantidad_jugadas`
-   (regresión). Lo que se precisó en esta entrega es **qué predictores sobreviven al
-   chequeo de fuga**, cuantificando en vez de sólo declarando la fuga del rating
-   (sección 6).
+**Del pipeline:** la lista de jugadores dejó de ser manual. `listar_jugadores` sortea
+candidatos de las listas públicas de la PubAPI (titulados FM/CM/NM para `avanzado`,
+GM/IM para `experto` y `top_mundial`, jugadores de ocho países para `principiante` e
+`intermedio`), los valida y llena `target_per_band: 20` en cada una de las 5 bandas, y
+congela la lista en `data/raw/seleccion/jugadores_seleccionados.yaml`. Esta corrida
+seleccionó **100 jugadores, 20 por banda**, y produjo **76.803 partidas** finales sobre
+**77.229** descargadas (99,45 % de retención, 0 nulos reales — sección 2). El detalle
+está en `criterio-seleccion-jugadores.md`.
+
+**De la pregunta:** no cambió. Sigue siendo qué combinación de ELO, apertura, modalidad
+de ritmo y color predice `resultado` (clasificación) y `cantidad_jugadas` (regresión);
+esta entrega agrega qué predictores sobreviven al chequeo de fuga (sección 6).
 
 ---
 
@@ -186,8 +174,8 @@ de "cuatro confirmadas".
 | **Qué esperaba ver** | Que el promedio de `diferencia_elo` fuera claramente distinto entre partidas ganadas por blancas y por negras. |
 | **Medida y gráfico** | Comparación (3 grupos): `eta2(diferencia_elo, resultado)`, con la tabla por bandas y barras apiladas como apoyo. |
 | **Resultado (zona)** | **η² = 0,094 — 🟡 amarilla.** La tabla por bandas muestra la transición esperada (9,6 % de victorias blancas con diferencia ≤ −301 hasta 88,5 % con diferencia ≥ 301), pero el número queda lejos del corte verde (0,25). |
-| **Movimiento (1 de 2)** | Partir por `TimeClass` casi no cambia nada (0,079 a 0,099 según modalidad) — se descarta mirando esa tabla, no cuenta como movimiento. Controlar por `nivel_promedio`: las **cinco bandas** van de 0,084 (principiante) a 0,144 (experto) y **las cinco quedan en amarillo** — ninguna cruza a verde ni a roja. El número del movimiento no es la banda más alta (elegir la mejor banda es el recorte que la propia cátedra advierte): controlando con las sumas de cuadrados pooleadas por banda da **η² = 0,101, también amarilla**. |
-| **Decisión** | **Inconclusa.** El único movimiento con evidencia real en el gráfico no saca al efecto de zona amarilla — ni banda por banda ni en la versión controlada — y no hay una tercera variable ni un cambio de escala que la exploración sugiera para un segundo movimiento. "Confirmada con matiz" no es una decisión válida para un resultado amarillo sin movimiento que lo resuelva. Además, si se corrige la fuga del rating (sección 6.1), este mismo η² baja de 0,093 a 0,065: parte de la señal que hay es artefacto de la fuga. |
+| **Movimiento (1 de 2)** | Se compararon dos particiones: por `TimeClass` (0,079 a 0,099 según modalidad, sin diferenciar nada) y por `nivel_promedio` (0,084 en principiante a 0,144 en experto). Se elige `nivel_promedio`, que sí separa el comportamiento; las **cinco bandas** quedan en amarillo. El número que resume el movimiento no es la banda más alta sino el η² controlado por nivel (sumas de cuadrados pooleadas dentro de cada banda): **0,101, también amarilla**. |
+| **Decisión** | **Inconclusa.** El efecto sigue en zona amarilla banda por banda y en la versión controlada, y no hay una tercera variable ni un cambio de escala que el gráfico sugiera para un segundo movimiento. Corrigiendo la fuga del rating con el lado reconstruido (sección 6.1), este mismo η² baja a 0,065: parte de la señal observada es artefacto de esa fuga. |
 
 ### H2 — Paridad de ELO y duración (predecir)
 
@@ -220,7 +208,7 @@ de "cuatro confirmadas".
 | **Medida y gráfico** | Comparación (2 grupos, tal como está escrita la afirmación): `separacion(Cerrada, Semiabierta)`. El `eta2` sobre las 5 familias se deja como dato complementario. Boxplot por familia. |
 | **Resultado (zona)** | **separación = 0,087 — 🔴 roja** (Cerrada 76,7 plies vs. Semiabierta 73,8 — la dirección se sostiene, la magnitud no). Complementario: η² sobre 5 familias = 0,008, también roja. La familia más larga es India (81,4 plies) y la más chica (3.676 partidas contra 23.451 de Semiabierta). |
 | **Movimiento** | No hace falta: rojo termina la hipótesis. |
-| **Decisión** | **Refutada.** Igual que en la entrega anterior, que ya la daba por refutada (con η² sobre las 5 familias); acá se llega a la misma conclusión con la medida que corresponde a la afirmación de 2 grupos (`separacion`), no con la de apoyo. `familia_apertura` no entra al baseline — además de conocerse sólo después de jugarse la apertura (sección 6). |
+| **Decisión** | **Refutada.** `familia_apertura` no entra al baseline — además de conocerse sólo después de jugarse la apertura (sección 6). |
 
 ### Resumen
 
@@ -330,15 +318,13 @@ cortas). El mecanismo de faltante real existe en el pipeline y hay que poder exp
 aunque esta muestra no lo haya activado.
 
 **Qué hipótesis salió mal, y qué se hizo con eso.** H2 (partidas parejas duran más) se
-refutó de punta a punta: Pearson y Spearman ni coinciden en signo. H1 es el ejemplo de
-"el número decide, no la comodidad de la conclusión anterior": la versión previa de este
-notebook la daba por **confirmada con matiz** sin haber aplicado ningún movimiento sobre
-un η² amarillo — eso no es válido con la regla de la cátedra. Al controlar por
-`nivel_promedio` (el movimiento que sí corresponde), el efecto sigue amarillo en las
-cinco bandas y en la versión controlada (0,101): la hipótesis queda **inconclusa**, no
-confirmada. H4 (Cerrada más larga que Semiabierta) ya estaba refutada desde la entrega
-anterior; acá se llega a lo mismo con la medida que corresponde a la afirmación de 2
-grupos (`separacion`) en vez de con el η² de apoyo sobre las 5 familias.
+refutó de punta a punta: Pearson y Spearman ni coinciden en signo. H1 (diferencia de ELO
+explica el resultado) da amarillo y, al controlar por `nivel_promedio`, sigue amarillo en
+las cinco bandas y en la versión controlada (0,101): no hay un segundo movimiento que el
+gráfico justifique, así que queda **inconclusa** — un resultado amarillo sin movimiento
+que lo resuelva no se declara confirmado. H4 (Cerrada más larga que Semiabierta) se
+refuta con `separacion` (0,087, roja): la dirección de la afirmación se sostiene pero la
+magnitud es chica frente al desvío de cada grupo.
 
 **Qué columna se descartó por fuga, y en qué momento se completa en la realidad.**
 `es_sorpresa` es el caso más limpio: coincide al 100,0000 % con una regla derivada de
@@ -402,11 +388,9 @@ Devolución del docente (grupo 5K10-11, Ajedrez online — ELO, apertura y ritmo
 
 1. **El EDA de checklist.** No mostrar veinte histogramas sin conclusión — cada gráfico
    de la sección 5 responde una ficha concreta, no es un catálogo.
-2. **Defender la conclusión de la entrega anterior en vez de la de hoy.** H1 pasó de
-   "confirmada con matiz" a **inconclusa** porque la versión anterior no había aplicado
-   ningún movimiento sobre un resultado amarillo — eso no es válido con la regla de la
-   cátedra. Decir "antes la habíamos dado por confirmada y estaba mal" está bien;
-   insistir en el número viejo, no.
+2. **Forzar una confirmación sobre un número amarillo.** H1 se queda en amarillo incluso
+   después de controlar por nivel — no hay ningún movimiento adicional que la justifique
+   como confirmada, así que la respuesta correcta es "inconclusa", no estirar el dato.
 3. **Que hable uno solo.** La pregunta sobre una ficha puede caerle a quien no la armó —
    repartir antes de entrar quién puede explicar cada sección de punta a punta, no sólo
    quién la escribió.
