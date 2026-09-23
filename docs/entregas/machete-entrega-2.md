@@ -80,7 +80,8 @@ del archivo mensual, no error.
     top_mundial 0,122 — **las 5 quedan amarillas**
   - Controlado (SS pooleadas, no la banda más alta): **η² = 0,101** → sigue 🟡
   - (Candidato descartado: `TimeClass` → 0,079–0,099, no diferencia nada)
-- **Decisión: INCONCLUSA** (no "confirmada con matiz" — amarillo sin resolver no confirma)
+- **Decisión: INCONCLUSA** — amarillo en las 5 bandas y en la versión controlada, sin
+  un segundo movimiento que el gráfico justifique
 - Dato extra: con el rating reconstruido (sin fuga, sólo lado seguido) el η² baja a
   **0,065** (sección 9.1 del notebook)
 
@@ -110,7 +111,7 @@ del archivo mensual, no error.
   - Complementario: `eta2` sobre 5 familias = **0,008** → también 🔴
   - India es la más larga (81,4 plies) y la más chica (3.676 partidas)
 - Movimiento: no hace falta, rojo termina la hipótesis
-- **Decisión: REFUTADA** (ya lo estaba en la Entrega 1 con otra medida; no cambió)
+- **Decisión: REFUTADA**
 
 **Mezcla exigida por la consigna:** responder = H1, H3 · predecir = H2, H4 · refutada
 = H2, H4 · inconclusa = H1 · movimientos usados ≤ 2 en las cuatro. ✓ Todo se cumple.
