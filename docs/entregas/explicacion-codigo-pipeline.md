@@ -380,12 +380,13 @@ Esta tarea toma las rutas JSON Bronze y llama a `DataCleaner`. Ese módulo:
 
 | Método / regla | Resultado |
 |---|---|
-| `parse_game()` | Extrae metadatos y movimientos desde el PGN de cada partida. |
+| `parse_game()` | Extrae metadatos y movimientos desde el PGN de cada partida, más `tournament` y `end_time` del JSON y la hora de inicio UTC (`UTCDate` + `UTCTime`). |
 | `parse_all()` | Concatena cuentas y elimina partidas repetidas por `GameUrl`. |
 | `parse_result()` | Convierte `1-0`, `0-1` y `1/2-1/2` a `resultado`. |
 | `parse_numeric_fields()` | Convierte ELO y controles de tiempo a números. |
 | `count_moves()` | Crea `cantidad_jugadas` contando medio-movimientos (*plies*). |
 | `parse_date()` | Convierte `Date` a fecha; fechas inválidas pasan a `NaT`. |
+| `parse_timestamps()` | Convierte `StartTime`/`EndTime` a fecha y hora UTC y deriva `EsTorneo` de `TournamentUrl`. Un horario faltante queda `NaT` pero no descarta la partida. |
 | `filter_invalid_rows()` | Conserva solo partidas standard, rated, con resultados/ELO/fecha y al menos cinco plies. |
 | `normalize_termination()` | Elimina usernames del motivo de finalización y lo normaliza. |
 | `optimize_dtypes()` | Usa enteros compactos, categorías y fechas correctas. |

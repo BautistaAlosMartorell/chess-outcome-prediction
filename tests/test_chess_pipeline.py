@@ -123,6 +123,38 @@ class ChessPipelineTest(unittest.TestCase):
             "pgn": pgn if pgn is not None else headers + body,
         }
 
+    def test_parse_game_keeps_tournament_and_utc_times(self) -> None:
+        cleaner = DataCleaner(self.config)
+        game = self._minimal_game("https://www.chess.com/game/live/7")
+        game["pgn"] = game["pgn"].replace(
+            '[Event "Live Chess"]\n', '[Event "Live Chess"]\n[UTCDate "2026.08.24"]\n[UTCTime "23:58:30"]\n'
+        )
+        game["end_time"] = 1787616090  # 2026-08-25 00:01:30 UTC: cruza la medianoche
+        with_tournament = {**game, "tournament": "https://api.chess.com/pub/tournament/arena-123"}
+
+        row = cleaner.parse_game(game)
+        self.assertIsNone(row["TournamentUrl"])
+        self.assertEqual(row["StartTime"], "2026.08.24 23:58:30")
+        self.assertEqual(cleaner.parse_game(with_tournament)["TournamentUrl"], with_tournament["tournament"])
+
+        df = cleaner.parse_timestamps(pd.DataFrame([row, cleaner.parse_game(with_tournament)]))
+        self.assertEqual(df["StartTime"].iloc[0], pd.Timestamp("2026-08-24 23:58:30", tz="UTC"))
+        self.assertEqual(df["EndTime"].iloc[0], pd.Timestamp("2026-08-25 00:01:30", tz="UTC"))
+        self.assertEqual(df["EsTorneo"].tolist(), [False, True])
+
+    def test_clean_keeps_games_without_utc_times(self) -> None:
+        # _minimal_game has no UTCDate/UTCTime/end_time: the game stays, with NaT.
+        cleaner = DataCleaner(self.config)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.json"
+            path.write_text(json.dumps({"games": [self._minimal_game("https://www.chess.com/game/live/8")]}))
+            df, _ = cleaner.clean({"a": path})
+        df = cleaner.optimize_dtypes(df)
+        self.assertEqual(len(df), 1)
+        self.assertTrue(pd.isna(df["StartTime"].iloc[0]) and pd.isna(df["EndTime"].iloc[0]))
+        self.assertFalse(df["EsTorneo"].iloc[0])
+        self.assertEqual(df["EsTorneo"].dtype, bool)
+
     def test_parse_result_maps_draw(self) -> None:
         cleaner = DataCleaner(self.config)
         df = pd.DataFrame({"Result": ["1-0", "0-1", "1/2-1/2"]})
@@ -151,12 +183,14 @@ class ChessPipelineTest(unittest.TestCase):
                 "es_sorpresa": [0, 1, 0],
                 "cantidad_jugadas": [20, 30, 40],
                 "Termination": ["resignation", "otro", "checkmate"],
+                "EsTorneo": [True, False, False],
             }
         )
 
         summary = build_summary(df, raw_row_count=3)
 
         self.assertEqual(summary["distribucion_time_class"], {"blitz": 2, "rapid": 1})
+        self.assertEqual(summary["partidas_de_torneo"], 1)
 
         self.assertEqual(
             summary["distribucion_familia_apertura"],
