@@ -1,5 +1,45 @@
 # Changelog
 
+## Dataset de predicción en vivo por cortes y notebook 03 (2026-09-26)
+
+Branch `feat/dataset-prediccion-en-vivo` (sobre `feat/historico-matchup-apertura`, con
+`chore/agregar-python-chess` mergeada).
+
+### Qué
+
+- `src/live_features.py` reproduce cada partida con python-chess desde el PGN crudo (el
+  único lugar con los relojes `%clk`) y arma `partidas_cortes.parquet`: una fila por
+  `(GameUrl, corte_ply)` en los cortes 10/20/30/40/60. Guarda posición, relojes y los
+  targets `resultado` y `plies_restantes`. Son 336.001 filas de 76.331 partidas.
+- `src/rating_history.py` migra desde el notebook 02 la reconstrucción del rating previo
+  (el de cada cuenta seleccionada al cierre de su partida anterior del mismo ritmo). El
+  lado del rival queda NaN, sin imputar.
+- DAG: tarea nueva `construir_dataset_cortes` después de `exportar_dataset`. El fallback
+  de rutas crudas vacías se extrajo a `_resolve_raw_paths`, que comparten `limpieza` y
+  la tarea nueva. CLI: `--sin-cortes`.
+- `notebooks/03_prediccion_en_vivo.ipynb`: verificación del dataset, partición temporal,
+  un modelo por corte (M0 frecuencias, M1 pre-partida, M2 en vivo, M3 en vivo +
+  matchup), población común, desbalance de Empate, importancias, ablación del matchup y
+  duración restante.
+
+### Resultados principales
+
+- Sobre la misma población, el modelo en vivo empata con el piso hasta el ply 20 y lo
+  supera desde el 30: log-loss 0,731 contra 0,913 al ply 60.
+- El matchup de apertura no aporta: ±0,003 de log-loss, con calibración plana.
+- Sin balancear, Empate no se predice nunca. Balanceando, el recall de Empate llega a
+  0,32 al ply 60 a costa de calibración.
+
+### Validación
+
+- Cada partida del tidy encontró su PGN y los plies reproducidos coinciden con
+  `cantidad_jugadas` en las 76.803 (la construcción falla si no).
+- Test anti-fuga: cambiar las jugadas posteriores al corte no cambia ninguna feature del
+  corte.
+- Durante el desarrollo se encontró y corrigió un error de orden de columnas en la
+  log-loss (sklearn asume orden alfabético). El notebook ahora verifica que el piso
+  quede por debajo de ln 3.
+
 ## Matchup de apertura por color y su historial sin fuga (2026-09-26)
 
 Branch `feat/historico-matchup-apertura` (sobre `feat/pipeline-torneo-y-horarios`).
