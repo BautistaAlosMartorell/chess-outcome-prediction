@@ -14,6 +14,7 @@ Estructura del grafo:
                                 └── ingenieria_de_caracteristicas
                                         └── verificar_calidad
                                                 └── exportar_dataset
+                                                        └── construir_dataset_cortes
 
 Módulos de src/ detrás de cada tarea:
     - listar_jugadores    → src/player_selection.py (load_or_create_selection: lista congelada)
@@ -22,6 +23,8 @@ Módulos de src/ detrás de cada tarea:
     - ingenieria_de_caracteristicas → src/feature_engineering.py (FeatureEngineer)
     - verificar_calidad   → assert de los 7 criterios sobre el parquet INTERMEDIO
     - exportar_dataset    → src/pipeline.py (exporta parquet + CSV + summary)
+    - construir_dataset_cortes → src/live_features.py (tabla derivada para predicción en
+      vivo: una fila por partida y corte de plies, reproducida desde el PGN crudo)
 
 La descarga se paraleliza por cuenta con dynamic task mapping (.expand()); la tolerancia a
 fallos (min_users_ok / min_total_games) se evalúa en consolidar_descarga, DESPUÉS del fan-out.
@@ -55,6 +58,38 @@ PROJECT_ROOT = "/project"
 def _enter_project_root() -> None:
     """Set the working directory to the mounted project root (see note above)."""
     os.chdir(PROJECT_ROOT)
+
+
+def _resolve_raw_paths(raw_paths: dict[str, str], config: dict) -> dict[str, Path]:
+    """Rutas de los JSON crudos: las del XCom o, si llegan vacías, las de la selección.
+
+    Se reconstruyen desde la selección congelada (no con un glob de data/raw), así que
+    JSON crudos de cualquier otra selección nunca entran al dataset. Sólo se conservan
+    las cuentas efectivamente descargadas: la descarga tolera fallos por usuario
+    (min_users_ok).
+    """
+    if raw_paths:
+        return {u: Path(p) for u, p in raw_paths.items()}
+
+    from src.player_selection import load_selection
+
+    template = config["chess_com"]["raw_filename_template"]
+    usernames = load_selection(config["player_selection"]["selection_path"])
+    paths = {
+        u: RAW_DIR / template.format(username=u)
+        for u in usernames
+        if (RAW_DIR / template.format(username=u)).exists()
+    }
+    if not paths:
+        raise FileNotFoundError(
+            f"raw_paths vacío y no hay JSON crudos de la selección congelada en "
+            f"{RAW_DIR}: correr descarga_usuario primero."
+        )
+    log.warning(
+        "raw_paths vacío; reconstruidas %d rutas desde la selección congelada: %s",
+        len(paths), sorted(paths),
+    )
+    return paths
 
 
 # ---------------------------------------------------------------------------
@@ -184,32 +219,7 @@ def pipeline_ajedrez_chesscom():
         _enter_project_root()
         config = load_config(CONFIG_PATH)
 
-        # raw_paths llega por XCom; si viniera vacío, se reconstruye desde el config.
-        if raw_paths:
-            paths = {u: Path(p) for u, p in raw_paths.items()}
-        else:
-            # Rebuild from the frozen selection (not a glob of data/raw), so raw JSON
-            # left over from any other selection never leaks into the dataset. Only
-            # accounts actually downloaded are kept: the download tolerates per-user
-            # failures (min_users_ok).
-            from src.player_selection import load_selection
-
-            template = config["chess_com"]["raw_filename_template"]
-            usernames = load_selection(config["player_selection"]["selection_path"])
-            paths = {
-                u: RAW_DIR / template.format(username=u)
-                for u in usernames
-                if (RAW_DIR / template.format(username=u)).exists()
-            }
-            if not paths:
-                raise FileNotFoundError(
-                    f"raw_paths vacío y no hay JSON crudos de la selección congelada en "
-                    f"{RAW_DIR}: correr descarga_usuario primero."
-                )
-            log.warning(
-                "raw_paths vacío; reconstruidas %d rutas desde la selección congelada: %s",
-                len(paths), sorted(paths),
-            )
+        paths = _resolve_raw_paths(raw_paths, config)
 
         cleaner = DataCleaner(config)
         df, raw_count = cleaner.clean(paths)
@@ -490,6 +500,31 @@ def pipeline_ajedrez_chesscom():
 
         return raw_count
 
+    @task(task_id="construir_dataset_cortes")
+    def construir_dataset_cortes(parquet_path: str, raw_paths: dict[str, str]) -> str:
+        """Construye la tabla derivada de predicción en vivo desde el Parquet ya exportado.
+
+        Reproduce cada partida jugada a jugada con python-chess desde el PGN crudo (el
+        único lugar con los relojes %clk) y guarda la posición y los relojes en cada
+        corte de ``live_prediction.cortes_ply``. ``build_cut_dataset`` hace fallar la
+        tarea si alguna partida del Parquet no tiene PGN crudo, si los plies
+        reproducidos no coinciden con ``cantidad_jugadas`` o si la clave
+        (GameUrl, corte_ply) se repite. El Parquet tidy no se modifica.
+        """
+        import pandas as pd
+
+        from src.pipeline import export_cut_dataset
+        from src.utils import load_config
+
+        _enter_project_root()
+        config = load_config(CONFIG_PATH)
+        df = pd.read_parquet(parquet_path)
+        cut_df = export_cut_dataset(df, _resolve_raw_paths(raw_paths, config), config)
+        log.info(
+            "Dataset de cortes: %d filas de %d partidas", len(cut_df), cut_df["GameUrl"].nunique()
+        )
+        return config["paths"]["cortes_parquet"]
+
     # La descarga se abre en fan-out por cuenta (.expand()) y se cierra en
     # consolidar_descarga; de ahí en adelante el grafo es lineal. La validación
     # (verificar_calidad) corre antes de exportar: si el dataset no cumple, exportar
@@ -500,7 +535,8 @@ def pipeline_ajedrez_chesscom():
     raw_count = limpieza(raw_paths)
     raw_count_fe = ingenieria_de_caracteristicas(raw_count)
     raw_count_ok = verificar_calidad(raw_count_fe)
-    exportar(raw_count_ok)
+    parquet_path = exportar(raw_count_ok)
+    construir_dataset_cortes(parquet_path, raw_paths)
 
 
 pipeline_ajedrez_chesscom()

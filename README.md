@@ -117,19 +117,23 @@ config/config.yaml                         parámetros del pipeline y política 
 data/raw/                                  JSON regenerables, ignorados por Git
 data/raw/seleccion/                        lista congelada de jugadores + snapshots de las listas públicas
 data/processed/                            Parquet, sample y resumen, ignorados por Git
-dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación
+dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación → dataset de cortes
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb
-notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selección de variables
+notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selección de variables (congelado, ver abajo)
+notebooks/03_prediccion_en_vivo.ipynb         Entrega 3 (avance): predicción en vivo por cortes y matchup de apertura
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
-src/feature_engineering.py                 características analíticas derivadas
+src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
+src/live_features.py                       dataset de predicción en vivo: una fila por partida y corte de plies (python-chess)
+src/rating_history.py                      rating previo a la partida, reconstruido desde el historial propio de cada cuenta
 src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 tests/test_player_selection.py             pruebas del selector de jugadores
+tests/test_live_features.py                pruebas del dataset en vivo (incluida la de no mirar jugadas futuras) y del rating previo
 ```
 
 ## Diccionario de datos
@@ -194,7 +198,8 @@ Después:
    dispararlo con ▶ (*Trigger DAG*).
 3. La corrida lista usuarios, descarga en paralelo por cuenta y luego recorre la cadena
    `consolidar_descarga` → `limpieza_y_parseo` →
-   `ingenieria_de_caracteristicas` → `verificar_calidad` → `exportar_dataset`.
+   `ingenieria_de_caracteristicas` → `verificar_calidad` → `exportar_dataset` →
+   `construir_dataset_cortes` (tabla derivada para predicción en vivo, ~5 min).
    La verificación hace `assert` de los siete criterios de calidad, así que una corrida
    en verde implica un dataset válido.
 
@@ -205,6 +210,7 @@ data/raw/chesscom_<usuario>_raw.json          capa cruda, un archivo por cuenta
 data/processed/partidas_ajedrez_clean.parquet dataset final
 data/processed/partidas_ajedrez_clean_sample.csv
 data/processed/data_summary.json
+data/processed/partidas_cortes.parquet        tabla derivada para predicción en vivo (partida × corte)
 ```
 
 Volver a disparar el DAG sin borrar `data/raw/` reutiliza los JSON ya descargados
@@ -219,7 +225,7 @@ no existe, la crea igual que `listar_jugadores`). Requiere Python 3.11 o superio
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt      # Windows: py -m venv .venv; .venv\Scripts\python.exe ...
-.venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen
+.venv/bin/python -m src.pipeline                          # --skip-download si los JSON crudos ya existen; --sin-cortes para saltear el dataset en vivo
 ```
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el

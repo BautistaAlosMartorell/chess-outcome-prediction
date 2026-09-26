@@ -14,7 +14,7 @@ antes de llegar a este, y qué falta validar con datos reales de volumen.
 
 ```
 src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG
-dags/        DAG de Airflow que orquesta el pipeline (5 tareas 1:1 con src/ + verificación de calidad)
+dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
 notebooks/   pipeline narrado y verificación (01_data_ingestion_verification.ipynb)
 config/      config.yaml — usuarios de Chess.com, bandas de ELO, ventana temporal, parámetros de descarga
 data/        vacío en git — se regenera corriendo el pipeline
