@@ -41,6 +41,35 @@ elo:
     experto: [2200, 2600]
     top_mundial: [2600, 4000]
 
+# Matchup de apertura por color: primera jugada de blancas x primera respuesta de
+# negras (SAN). Taxonomía propia del equipo, NO el estándar ECO. La lista está
+# CONGELADA: son las 17 combinaciones más frecuentes de la corrida del 26/09/2026
+# (76.803 partidas; juntas cubren el 80,39 %, la menor tiene 760 partidas y ninguna
+# baja de 96 dentro de un mismo TimeClass). Lo demás cae en "otra". No se recalcula
+# por corrida: si cambiara, la categoría de una misma partida cambiaría con los datos.
+matchup_apertura:
+  categorias:
+    - e4-e5
+    - e4-c5
+    - d4-Nf6
+    - d4-d5
+    - e4-e6
+    - e4-c6
+    - e4-d5
+    - e4-d6
+    - e4-g6
+    - Nf3-Nf6
+    - d4-e6
+    - Nf3-d5
+    - c4-e5
+    - d4-d6
+    - e4-Nf6
+    - d4-g6
+    - c4-Nf6
+  # Mínimo de partidas previas (del mismo matchup y TimeClass, terminadas antes de que
+  # empiece la partida) para publicar una tasa histórica. Debajo queda NaN.
+  min_partidas_previas: 30
+
 download:
   timeout_seconds: 60
   max_retries: 5

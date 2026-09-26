@@ -233,6 +233,9 @@ def pipeline_ajedrez_chesscom():
             - nivel_promedio (bandas de ELO del config)
             - es_sorpresa (1 si ganó el de menor ELO)
             - familia_apertura (clasificación ECO A-E)
+            - matchup_apertura (primera jugada de blancas x respuesta de negras)
+            - n_previas_matchup, historial_suficiente, tasa_{blancas,tablas,negras}_hist
+              (tasas históricas del matchup con partidas terminadas antes del inicio)
         """
         import pandas as pd
 
@@ -325,6 +328,12 @@ def pipeline_ajedrez_chesscom():
         # excepción es estructural, no un faltante: cualquier otro nulo hace fallar el DAG.
         nulos_documentados: dict[str, str] = {
             "TournamentUrl": "nula cuando la partida no es de torneo (EsTorneo=False, ~92 %)",
+            # Historial insuficiente: menos de matchup_apertura.min_partidas_previas partidas
+            # del mismo matchup y ritmo terminadas antes de que empiece esta. Es missingness
+            # real (no había historia que mirar) y se deja NaN a propósito, sin imputar.
+            "tasa_blancas_hist": "NaN cuando historial_suficiente=False",
+            "tasa_tablas_hist": "NaN cuando historial_suficiente=False",
+            "tasa_negras_hist": "NaN cuando historial_suficiente=False",
         }
 
         _enter_project_root()
@@ -403,6 +412,11 @@ def pipeline_ajedrez_chesscom():
         invertidas = df[df["StartTime"] > df["EndTime"]]
         assert invertidas.empty, (
             f"❌ Consistencia FALLÓ: {len(invertidas)} partidas con StartTime > EndTime"
+        )
+        # Las tasas históricas sólo pueden faltar cuando el historial es insuficiente.
+        tasas = ["tasa_blancas_hist", "tasa_tablas_hist", "tasa_negras_hist"]
+        assert (df[tasas].isna().any(axis=1) == ~df["historial_suficiente"]).all(), (
+            "❌ Consistencia FALLÓ: tasas históricas nulas fuera de historial_suficiente=False"
         )
         log.info(
             "✅ Consistencia: EsTorneo = TournamentUrl presente (%d partidas de torneo) "

@@ -1,5 +1,39 @@
 # Changelog
 
+## Matchup de apertura por color y su historial sin fuga (2026-09-26)
+
+Branch `feat/historico-matchup-apertura` (sobre `feat/pipeline-torneo-y-horarios`).
+
+### Qué
+
+- `matchup_apertura`: primera jugada de blancas × primera respuesta de negras, tomada de
+  `moves_text`. Hay 17 combinaciones congeladas en `config.yaml` más `otra`.
+- `matchup_history()` calcula, para cada partida, las tasas de victoria blanca, tablas y
+  victoria negra del mismo matchup y ritmo, usando **sólo partidas terminadas antes de
+  que la actual empezara** (`EndTime_previa < StartTime_actual`). Con menos de 30
+  previas las tasas quedan NaN y `historial_suficiente = False`, sin imputar.
+- DAG: las tres tasas pasan a `nulos_documentados`, y se verifica que sólo falten cuando
+  el historial es insuficiente.
+- El Parquet pasa a 35 columnas. Las 25 originales siguen idénticas.
+
+### Por qué esta taxonomía y no `familia_apertura`
+
+- `familia_apertura` es un solo valor por partida: no hay un "blancas vs negras". Además,
+  el ECO de Chess.com mira la línea completa (hasta 40 plies), mientras que el matchup
+  sólo necesita los plies 1 y 2.
+- Chequeo de factibilidad: hay 290 combinaciones. Las 17 más frecuentes cubren el 80,39 %
+  y la menor tiene 760 partidas (≥ 96 dentro de cada ritmo), así que se cumple el
+  criterio acordado (≥ 30 partidas en las combinaciones que cubren el 80 %).
+
+### Validación
+
+- El cálculo vectorizado coincide con uno por fuerza bruta en 300 partidas al azar
+  (0 diferencias).
+- Tests con partidas solapadas, empate exacto de horario, orden de filas y partidas
+  futuras.
+- Sin historial quedan 1.620 partidas (2,1 %): las primeras 30 de cada uno de los 54
+  grupos, concentradas en 2014–2021.
+
 ## Torneo y horarios exactos en el Parquet (2026-09-26)
 
 Branch `feat/pipeline-torneo-y-horarios`.

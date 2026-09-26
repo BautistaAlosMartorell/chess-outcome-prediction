@@ -2,12 +2,12 @@
 
 ## Propósito del documento
 
-Esta guía explica las 29 columnas de
+Esta guía explica las 35 columnas de
 `data/processed/partidas_ajedrez_clean.parquet`: de dónde sale cada una, qué
 transformación recibe, por qué algunas parecen redundantes y para qué sirven en
 ingeniería de datos, EDA, modelado y una futura aplicación para usuarios finales.
 
-El objetivo no es afirmar que las 29 columnas deban entrar juntas a un modelo. El
+El objetivo no es afirmar que las 35 columnas deban entrar juntas a un modelo. El
 Parquet es una **capa plata**: reúne información limpia, trazable y cómoda para más de
 un consumidor. La selección de predictores se hace después, al construir una tabla
 **oro** específica para cada problema.
@@ -165,7 +165,7 @@ modelo, si hay volumen y una estrategia adecuada para manejar cardinalidad.
 
 La redundancia es problemática cuando:
 
-- se presentan 29 columnas como si fueran 29 fuentes independientes de señal;
+- se presentan 35 columnas como si fueran 35 fuentes independientes de señal;
 - se introducen todas las representaciones en el mismo modelo sin justificación;
 - se produce multicolinealidad en un modelo lineal;
 - una misma dimensión recibe peso varias veces;
@@ -613,6 +613,70 @@ grupo razonables y comunicar patrones generales.
 `cantidad_jugadas` fue débil (`eta² = 0,007`). Sale del baseline pre-partida y queda como
 experimento separado: comparar modelos con y sin apertura fuera de muestra.
 
+### `matchup_apertura`
+
+**Origen.** Los dos primeros plies de `moves_text`: la primera jugada de blancas y la
+primera respuesta de negras en notación SAN, unidas con un guion (`e4-e5`, `d4-Nf6`).
+
+**Transformación.** Si la combinación está en la lista congelada de
+`config.yaml → matchup_apertura.categorias` queda tal cual; si no, cae en `otra`. Es
+categórica con 18 niveles.
+
+**Es una taxonomía nueva definida por el equipo, no el estándar ECO.** La lista son las 17
+combinaciones más frecuentes de la corrida del 26/09/2026: juntas cubren el 80,39 % de las
+76.803 partidas, la menos frecuente tiene 760 y ninguna baja de 96 dentro de un mismo
+`TimeClass`. De las 290 combinaciones observadas, 190 tienen menos de 30 partidas, pero
+suman sólo 1.350 (1,76 %): la fragmentación está en la cola y queda en `otra` (19,6 %). La
+lista se congela y no se recalcula por corrida, porque si cambiara, la categoría de una
+misma partida cambiaría al entrar datos nuevos. Sesgo declarado: se eligió mirando la
+frecuencia del dataset completo, no los resultados.
+
+**Por qué no `familia_apertura`.** `familia_apertura` es un único valor por partida, así
+que no permite un "blancas vs negras". Además, Chess.com asigna el ECO mirando la línea
+completa jugada (mediana de 10 plies, hasta 40), mientras que `matchup_apertura` sólo
+necesita los plies 1 y 2. Tampoco sirve el repertorio por jugador: 41.066 de los 50.326
+jugadores aparecen una sola vez en la muestra.
+
+**Modelado.** Se conoce en el ply 2. Es feature **en vivo o post-apertura**, nunca
+pre-partida.
+
+### `n_previas_matchup`, `historial_suficiente`, `tasa_blancas_hist`, `tasa_tablas_hist`, `tasa_negras_hist`
+
+**Origen.** `src/feature_engineering.py` (`matchup_history`). Para cada partida se toman
+las partidas del **mismo `matchup_apertura` y el mismo `TimeClass`** que **terminaron
+antes de que esta empezara** (`EndTime_previa < StartTime_actual`, con igualdad excluida).
+`n_previas_matchup` es cuántas son, y las tres tasas son la proporción de victorias
+blancas, tablas y victorias negras entre ellas.
+
+**Por qué `StartTime`/`EndTime` y no `Date`.** `Date` sólo tiene día. Ordenar por fin de
+partida tampoco alcanza: una partida que terminó mientras esta estaba en curso no era
+conocida al empezar. El cálculo es vectorizado (`searchsorted` sobre los `EndTime`
+ordenados) y está verificado contra un cálculo por fuerza bruta en 300 partidas al azar
+(0 diferencias). Los tests cubren partidas solapadas, empates exactos de horario,
+invariancia al orden de las filas y que agregar partidas futuras no cambia ninguna
+feature pasada.
+
+**Umbral y faltantes.** Con menos de 30 previas
+(`matchup_apertura.min_partidas_previas`), `historial_suficiente = False` y las tres tasas
+quedan **NaN**. No se imputan: es missingness real, porque no había historia que mirar. En
+la corrida validada son 1.620 partidas (2,1 %), exactamente las 30 primeras de cada uno de
+los 54 grupos (18 matchups × 3 ritmos). Se concentran en los años viejos de la muestra
+(316 en 2014, 267 en 2016, ninguna en 2026) y afectan más a rapid (2,96 %) y bullet
+(2,70 %) que a blitz (1,40 %). Están declaradas en `nulos_documentados` del DAG, que
+además verifica que las tasas sólo falten cuando `historial_suficiente = False`.
+
+**Variante sin NaN.** Para modelos que no aceptan faltantes,
+`matchup_history(df, min_prev, shrink_m=m)` devuelve la tasa contraída
+`(k + m · p_previa) / (n + m)`, donde `p_previa` es la tasa del mismo ritmo, también sólo
+con partidas previas. No se persiste en el Parquet: se calcula en el notebook de modelado
+y siempre va acompañada de `historial_suficiente`.
+
+**Qué representa y qué no.** Es la tasa **de la muestra** (100 jugadores seleccionados y
+sus rivales), no la de Chess.com. Además arrastra el drift temporal de la muestra. La
+señal esperada es débil: la victoria blanca varía poco entre familias de apertura (entre
+48,4 % y 49,8 %). Entra a la Entrega 3 como experimento con ablación (modelo con y sin),
+no como feature garantizada.
+
 ### `EsTorneo`
 
 **Origen.** Derivada: `TournamentUrl.notna()`.
@@ -765,6 +829,7 @@ o mantenerse con una advertencia explícita.
 Todo el escenario pre-partida
 + familia_apertura
 o ECO agrupado
+o matchup_apertura + tasa_*_hist + historial_suficiente (se conocen en el ply 2)
 ```
 
 La comparación entre ambos escenarios mide cuánta información marginal aporta conocer la
@@ -901,7 +966,7 @@ presenta explícitamente como post-apertura.
 
 ### En la capa plata
 
-Se conservan las 29 columnas. La coexistencia de dato crudo, dato normalizado y agregación
+Se conservan las 35 columnas. La coexistencia de dato crudo, dato normalizado y agregación
 es deliberada: mejora trazabilidad, EDA y comunicación.
 
 ### En una matriz de modelado
@@ -966,7 +1031,7 @@ Si preguntan qué significa “generar variables útiles”:
 
 ## 13. Conclusión
 
-El dataset no contiene 29 predictores independientes. Contiene 29 columnas con roles
+El dataset no contiene 35 predictores independientes. Contiene 35 columnas con roles
 distintos y un linaje verificable:
 
 ```text

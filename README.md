@@ -168,6 +168,9 @@ tests/test_player_selection.py             pruebas del selector de jugadores
 | `es_sorpresa` | int8 | 1 cuando gana el jugador con menor rating. |
 | `familia_apertura` | category | Familia ECO: flanco, semiabierta, abierta, cerrada, india o desconocida. |
 | `EsTorneo` | bool | `True` si la partida se jugó en un torneo (`TournamentUrl` presente). |
+| `matchup_apertura` | category | Primera jugada de blancas × respuesta de negras (`e4-e5`, `d4-Nf6`…): 17 combinaciones congeladas en `config.yaml` + `otra`. Taxonomía propia, no ECO. |
+| `n_previas_matchup`, `historial_suficiente` | Int32 / bool | Partidas del mismo matchup y ritmo terminadas antes de que empiece esta, y si llegan al mínimo (30). |
+| `tasa_blancas_hist`, `tasa_tablas_hist`, `tasa_negras_hist` | float | Tasas históricas de resultado de esas partidas previas; NaN si el historial es insuficiente (no se imputa). |
 
 ## Cómo ejecutar
 
@@ -227,7 +230,7 @@ ese pipeline (76.803 partidas finales en la corrida vigente). Ambos notebooks de
 
 > **El notebook 02 está congelado como se entregó en la Entrega 2.** Se corrió sobre el
 > Parquet de 25 columnas. Desde la Entrega 3 el pipeline agrega `TournamentUrl`,
-> `EsTorneo`, `StartTime` y `EndTime` (29 columnas), así que **no se vuelve a correr**:
+> `EsTorneo`, `StartTime` y `EndTime` (y después el matchup de apertura y su historial: 35 columnas), así que **no se vuelve a correr**:
 > sus cifras de perfil ("25 columnas") dejarían de coincidir con lo defendido. El anexo
 > de matchmaking del final del notebook lee `tournament` directo del JSON crudo por el
 > mismo motivo. El trabajo nuevo va en notebooks nuevos.
