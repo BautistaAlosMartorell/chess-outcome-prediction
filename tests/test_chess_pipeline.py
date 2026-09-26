@@ -14,7 +14,7 @@ import requests
 
 from src.clean_data import DataCleaner
 from src.download_data import DataDownloader
-from src.feature_engineering import FeatureEngineer
+from src.feature_engineering import FeatureEngineer, matchup_history
 from src.pipeline import build_summary
 from src.utils import load_config
 
@@ -184,6 +184,7 @@ class ChessPipelineTest(unittest.TestCase):
                 "cantidad_jugadas": [20, 30, 40],
                 "Termination": ["resignation", "otro", "checkmate"],
                 "EsTorneo": [True, False, False],
+                "historial_suficiente": [True, True, False],
             }
         )
 
@@ -236,6 +237,9 @@ class ChessPipelineTest(unittest.TestCase):
                 "TimeClass": ["bullet", "blitz", "rapid"],
                 "resultado": ["Gana Blancas", "Gana Negras", "Empate"],
                 "ECO": ["B20", "C50", "D00"],
+                "moves_text": ["1. e4 1... e5 2. Nf3", "1. d4 1... d5 2. c4", "1. e4 1... e5 2. Bc4"],
+                "StartTime": pd.to_datetime(["2026-08-01 10:00", "2026-08-01 10:00", "2026-08-01 11:00"], utc=True),
+                "EndTime": pd.to_datetime(["2026-08-01 10:05", "2026-08-01 10:05", "2026-08-01 11:05"], utc=True),
             }
         )
         transformed = FeatureEngineer(self.config).transform(df)
@@ -243,6 +247,64 @@ class ChessPipelineTest(unittest.TestCase):
         self.assertNotIn("modalidad", transformed.columns)
         self.assertNotIn("favorito", transformed.columns)
         self.assertEqual(transformed["es_sorpresa"].tolist(), [1, 1, 0])
+
+    def test_opening_matchup_uses_first_two_plies_and_groups_the_rest(self) -> None:
+        engineer = FeatureEngineer(self.config)
+        df = pd.DataFrame({"moves_text": ["1. e4 1... e5 2. Nf3 2... Nc6", "1. d4 1... Nf6 2. c4", "1. b3 1... e5 2. Bb2"]})
+        df = engineer.add_opening_matchup(df)
+        self.assertEqual(df["matchup_apertura"].astype(str).tolist(), ["e4-e5", "d4-Nf6", "otra"])
+        self.assertEqual(len(df["matchup_apertura"].cat.categories), 18)  # 17 congeladas + "otra"
+
+    @staticmethod
+    def _history_games() -> pd.DataFrame:
+        # Same matchup and TimeClass, overlapping in time, plus one game of another
+        # matchup that must never be counted in the e4-e5 history.
+        rows = [
+            ("e4-e5", "10:00", "10:05", "Gana Blancas"),  # g0
+            ("e4-e5", "10:01", "10:10", "Gana Negras"),   # g1: g0 still running when g1 starts
+            ("e4-e5", "10:05", "10:20", "Empate"),        # g2: g0 ends exactly at g2's start -> not prior
+            ("e4-e5", "10:11", "10:30", "Gana Blancas"),  # g3: prior = g0, g1
+            ("e4-e5", "10:21", "10:40", "Gana Negras"),   # g4: prior = g0, g1, g2
+            ("d4-d5", "09:00", "09:05", "Gana Blancas"),  # other matchup
+        ]
+        return pd.DataFrame(
+            {
+                "matchup_apertura": [r[0] for r in rows],
+                "TimeClass": "blitz",
+                "StartTime": pd.to_datetime([f"2026-08-01 {r[1]}" for r in rows], utc=True),
+                "EndTime": pd.to_datetime([f"2026-08-01 {r[2]}" for r in rows], utc=True),
+                "resultado": [r[3] for r in rows],
+            }
+        )
+
+    def test_matchup_history_counts_only_games_finished_before_start(self) -> None:
+        history = matchup_history(self._history_games(), min_prev=2)
+        self.assertEqual(history["n_previas_matchup"].tolist(), [0, 0, 0, 2, 3, 0])
+        self.assertEqual(history["historial_suficiente"].tolist(), [False, False, False, True, True, False])
+        rates = history[["tasa_blancas_hist", "tasa_tablas_hist", "tasa_negras_hist"]]
+        self.assertTrue(rates.iloc[[0, 1, 2, 5]].isna().all().all())  # insufficient history -> NaN, not imputed
+        self.assertEqual(rates.iloc[3].tolist(), [0.5, 0.0, 0.5])
+        for value in rates.iloc[4].tolist():
+            self.assertAlmostEqual(value, 1 / 3)
+        self.assertTrue(((rates.dropna().sum(axis=1) - 1).abs() < 1e-12).all())
+
+    def test_matchup_history_is_invariant_to_row_order_and_future_games(self) -> None:
+        games = self._history_games()
+        base = matchup_history(games, min_prev=2)
+        shuffled = games.sample(frac=1, random_state=0)
+        pd.testing.assert_frame_equal(matchup_history(shuffled, min_prev=2).loc[games.index], base)
+        # A game that starts after everything else can't change any earlier feature.
+        later = pd.concat([games, games.iloc[[0]].assign(
+            StartTime=pd.Timestamp("2026-08-01 12:00", tz="UTC"), EndTime=pd.Timestamp("2026-08-01 12:05", tz="UTC")
+        )], ignore_index=True)
+        pd.testing.assert_frame_equal(matchup_history(later, min_prev=2).iloc[: len(games)], base)
+
+    def test_matchup_history_shrinkage_uses_only_prior_games(self) -> None:
+        history = matchup_history(self._history_games(), min_prev=2, shrink_m=1)
+        # g3: matchup prior (1 W, 1 B of 2); TimeClass prior = d4-d5 W, g0 W, g1 B -> p_W = 2/3.
+        self.assertAlmostEqual(history["tasa_blancas_hist"].iloc[3], (1 + 2 / 3) / (2 + 1))
+        # The first game of the TimeClass has no prior at all: still NaN, never imputed.
+        self.assertTrue(pd.isna(history["tasa_blancas_hist"].iloc[5]))
 
     def test_termination_reason_strips_username(self) -> None:
         cleaner = DataCleaner(self.config)

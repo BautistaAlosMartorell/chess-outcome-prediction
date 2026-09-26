@@ -55,6 +55,7 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         "distribucion_familia_apertura": _opening_family_counts(df),
         "tasa_sorpresa_pct": round(100 * df["es_sorpresa"].mean(), 2),
         "partidas_de_torneo": int(df["EsTorneo"].sum()),
+        "partidas_con_historial_de_matchup": int(df["historial_suficiente"].sum()),
         "cantidad_jugadas_promedio": round(float(df["cantidad_jugadas"].mean()), 1),
         "nulos_por_columna": df.isna().sum().loc[lambda s: s > 0].to_dict(),
         # Categorías "fallback": cuando el crudo no trae el dato, no queda nulo sino una
