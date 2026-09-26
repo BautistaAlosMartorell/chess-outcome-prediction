@@ -391,8 +391,9 @@ o representación secuencial.
 **Limitación tidy.** Contiene una secuencia completa en una celda. Separarla en filas rompería
 la unidad actual de una fila por partida; separarla en columnas produciría un ancho variable.
 
-**Modelado.** No es un predictor tabular pre-partida. Podría alimentar otro problema, por
-ejemplo predicción en vivo después de los primeros movimientos.
+**Modelado.** No es un predictor tabular pre-partida. Alimenta otro problema, la
+predicción en vivo por cortes (§8.5): `src/live_features.py` la reproduce jugada a jugada
+desde el PGN crudo, porque acá ya no quedan los relojes.
 
 ### `TournamentUrl`
 
@@ -864,6 +865,48 @@ Esta tabla sirve para dashboards, explicaciones y navegación; no representa una
 predictores pre-partida.
 
 ---
+
+### 8.5 Resultado en vivo por corte
+
+Tabla derivada `data/processed/partidas_cortes.parquet`, **no** una columna más del tidy:
+una fila por `(GameUrl, corte_ply)`, con cortes en `config.yaml → live_prediction.cortes_ply`
+(10, 20, 30, 40 y 60 plies). Una partida aporta una fila por cada corte estrictamente menor
+que su `cantidad_jugadas`: 336.001 filas de 76.331 partidas en la corrida validada. El
+contexto de la partida se une desde el tidy por `GameUrl` (muchos a uno, con assert de
+conteo), así que no se duplica en disco.
+
+```text
+Clave
+  GameUrl + corte_ply
+
+Targets
+  resultado            (el final de la partida)
+  plies_restantes      (cantidad_jugadas − corte_ply)
+
+Features del corte (sólo miran jugadas <= corte_ply)
+  turno_blancas, en_jaque, movilidad, promociones
+  material_blancas, material_negras, balance_material, material_no_peon_frac
+  jaques_*, capturas_*, enroco_*, derechos_enroque_*
+  reloj_*_seg, reloj_frac_*, diferencia_reloj_seg, gasto_reciente_*_seg
+
+Contexto que se une desde el tidy
+  TimeClass, tiempo_base_seg, incremento_seg, EsTorneo
+  elo_blancas_previo, elo_negras_previo   (src/rating_history.py; NaN del lado sin historial)
+  matchup_apertura, tasa_*_hist, historial_suficiente
+  StartTime / EndTime                      (sólo para la partición temporal)
+
+Prohibidas (fuga)
+  WhiteElo, BlackElo, diferencia_elo, elo_promedio, nivel_promedio  (rating posterior)
+  Termination, cantidad_jugadas, EndTime como feature, es_sorpresa
+  ECO, Opening, familia_apertura    (Chess.com asigna el ECO mirando la línea completa)
+  accuracies del JSON crudo         (análisis posterior a la partida)
+```
+
+Anomalías conocidas: `reloj_frac_*` supera 1 en el 5,45 % de las filas (acumulación de
+incrementos) y `gasto_reciente_*` es negativo en 4 filas (se agregó tiempo en partidas sin
+incremento). Se conservan. Para comparar entre cortes hay que usar la población común
+(partidas que llegan al último corte): cada corte describe partidas de distinta duración.
+Los resultados están en `notebooks/03_prediccion_en_vivo.ipynb`.
 
 ## 9. Diagnóstico cuantitativo de las 80.145 partidas
 
