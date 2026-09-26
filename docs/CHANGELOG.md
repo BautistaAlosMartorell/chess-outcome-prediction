@@ -1,5 +1,46 @@
 # Changelog
 
+## Torneo y horarios exactos en el Parquet (2026-09-26)
+
+Branch `feat/pipeline-torneo-y-horarios`.
+
+### Qué
+
+- `parse_game()` conserva tres campos que el crudo ya traía y se descartaban:
+  `tournament` del JSON (`TournamentUrl`), la hora de inicio UTC de los headers
+  `UTCDate` + `UTCTime` (`StartTime`) y `end_time` del JSON (`EndTime`).
+- `parse_timestamps()` los convierte a `datetime64[UTC]` y deriva `EsTorneo` de
+  `TournamentUrl`. Un horario faltante queda `NaT` pero no descarta la partida.
+- DAG: `TournamentUrl` pasa a `nulos_documentados` (es nula cuando la partida no es de
+  torneo) y se agregan dos chequeos: `EsTorneo == TournamentUrl.notna()` y
+  `StartTime <= EndTime`.
+- `data_summary.json` suma `partidas_de_torneo`.
+- El Parquet pasa de 25 a 29 columnas. Las 25 anteriores quedan idénticas: verificado
+  comparando contra el Parquet previo, con las mismas 76.803 filas.
+
+### Por qué
+
+- El anexo de matchmaking (notebook 02) mostró que el 60,4 % de las partidas que violan
+  el límite de ±200 del emparejamiento automático son de torneo. `Event` vale siempre
+  `Live Chess`, así que sin `tournament` no hay forma de distinguirlas en el dataset.
+- `Date` sólo tiene granularidad de día. Las features históricas de la Entrega 3 tienen
+  que mirar sólo partidas terminadas antes de que la actual empezara
+  (`EndTime_previa < StartTime_actual`), y eso necesita hora exacta de inicio y de fin.
+
+### Anomalías documentadas
+
+- `Date` es el día UTC de inicio (coincide en el 100 % con `StartTime`). 263 partidas
+  terminan al día siguiente.
+- `EndTime − StartTime` supera el presupuesto de los relojes en el 21 % de las partidas
+  (exceso mediano 12 s): no es tiempo de reloj. Detalle en la guía de columnas.
+
+### Notebooks
+
+- El notebook 01 se re-ejecutó y sus cifras escritas a mano se sincronizaron con la
+  corrida vigente (76.803 partidas; antes decía 80.145, de una corrida anterior).
+- El notebook 02 queda **congelado** como se entregó (25 columnas) y no se re-ejecuta.
+  Aviso en el README.
+
 ## Selección de jugadores sin seeds y congelada (2026-09-22)
 
 Branch `fix/restos-lista-fija-jugadores`.
