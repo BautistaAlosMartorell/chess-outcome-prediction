@@ -552,6 +552,27 @@ La muestra usa `random_state=42`, por lo que el mismo dataset produce la misma m
 `_interim_clean.parquet` no es el Silver final: es un artefacto temporal entre tareas y se
 elimina al terminar correctamente la exportación.
 
+### `construir_dataset_cortes`: la tabla de predicción en vivo
+
+```python
+@task(task_id="construir_dataset_cortes")
+def construir_dataset_cortes(parquet_path: str, raw_paths: dict[str, str]) -> str:
+    df = pd.read_parquet(parquet_path)
+    cut_df = export_cut_dataset(df, _resolve_raw_paths(raw_paths, config), config)
+```
+
+Corre después de exportar y no modifica el Parquet tidy. `src/live_features.py` reproduce
+cada partida jugada a jugada con python-chess desde el PGN **crudo**, porque es el único
+lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (10,
+20, 30, 40 y 60 plies) guarda la posición y los relojes: material, jaques, capturas,
+enroques, movilidad, turno, reloj restante y tiempo gastado reciente. Resultado:
+`partidas_cortes.parquet`, con una fila por `(GameUrl, corte_ply)`.
+
+La tarea falla, en vez de descartar en silencio, si una partida del tidy no tiene PGN
+crudo, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave se
+repite. Una partida sólo aporta los cortes **anteriores** a su final: en el ply *k* la
+partida tiene que seguir en curso. Tarda unos 5 minutos para las 76.803 partidas.
+
 ## 13. La construcción del grafo
 
 ```python
@@ -561,7 +582,8 @@ raw_paths = consolidar_descarga(resultados)
 raw_count = limpieza(raw_paths)
 raw_count_fe = feature_engineering(raw_count)
 raw_count_ok = verificar_calidad(raw_count_fe)
-exportar(raw_count_ok)
+parquet_path = exportar(raw_count_ok)
+construir_dataset_cortes(parquet_path, raw_paths)
 ```
 
 En la API TaskFlow, estas llamadas construyen dependencias y objetos de referencia a los
