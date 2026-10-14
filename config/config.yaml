@@ -22,6 +22,8 @@ paths:
   clean_parquet: "data/processed/partidas_ajedrez_clean.parquet"
   clean_sample_csv: "data/processed/partidas_ajedrez_clean_sample.csv"
   summary_json: "data/processed/data_summary.json"
+  # Tabla derivada para predicción en vivo: una fila por (partida, corte de plies).
+  cortes_parquet: "data/processed/partidas_cortes.parquet"
 
 processing:
   sample_size: 5000
@@ -69,6 +71,13 @@ matchup_apertura:
   # Mínimo de partidas previas (del mismo matchup y TimeClass, terminadas antes de que
   # empiece la partida) para publicar una tasa histórica. Debajo queda NaN.
   min_partidas_previas: 30
+
+# Predicción en vivo: cortes fijos en medio-movimientos (plies). Una partida aporta una
+# fila por cada corte estrictamente menor que su cantidad_jugadas. 10 ~ mediana de
+# profundidad de la línea ECO; 40 y 60 ~ cuartil 1 y mediana de la duración. Si el
+# tiempo aprieta, la reducción acordada es [10, 30, 60].
+live_prediction:
+  cortes_ply: [10, 20, 30, 40, 60]
 
 download:
   timeout_seconds: 60
