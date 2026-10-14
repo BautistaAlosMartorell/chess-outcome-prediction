@@ -6,6 +6,7 @@ Uso
 ----
     python -m src.pipeline
     python -m src.pipeline --config config/config.yaml --skip-download
+    python -m src.pipeline --skip-download --sin-cortes   # sin el dataset de cortes (~5 min)
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from rich.table import Table
 from src.clean_data import DataCleaner
 from src.download_data import DataDownloader
 from src.feature_engineering import FeatureEngineer
+from src.live_features import build_cut_dataset
 from src.player_selection import load_or_create_selection, load_selection
 from src.utils import load_config, setup_logger
 
@@ -55,6 +57,7 @@ def build_summary(df: pd.DataFrame, raw_row_count: int) -> dict[str, Any]:
         "distribucion_familia_apertura": _opening_family_counts(df),
         "tasa_sorpresa_pct": round(100 * df["es_sorpresa"].mean(), 2),
         "partidas_de_torneo": int(df["EsTorneo"].sum()),
+        "partidas_con_historial_de_matchup": int(df["historial_suficiente"].sum()),
         "cantidad_jugadas_promedio": round(float(df["cantidad_jugadas"].mean()), 1),
         "nulos_por_columna": df.isna().sum().loc[lambda s: s > 0].to_dict(),
         # Categorías "fallback": cuando el crudo no trae el dato, no queda nulo sino una
@@ -91,7 +94,26 @@ def _fallback_category_counts(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
     return resumen
 
 
-def run_pipeline(config_path: str = "config/config.yaml", skip_download: bool = False) -> pd.DataFrame:
+def export_cut_dataset(df: pd.DataFrame, raw_paths: dict[str, Path], config: dict[str, Any]) -> pd.DataFrame:
+    """Construye y guarda el dataset de predicción en vivo (una fila por partida y corte).
+
+    Es una tabla derivada del Parquet tidy, no lo reemplaza: se guarda en
+    ``paths.cortes_parquet`` con clave ``(GameUrl, corte_ply)``.
+    """
+    cuts = config["live_prediction"]["cortes_ply"]
+    cut_df = build_cut_dataset(df, raw_paths.values(), cuts)
+    cut_path = Path(config["paths"]["cortes_parquet"])
+    cut_path.parent.mkdir(parents=True, exist_ok=True)
+    cut_df.to_parquet(cut_path, engine="pyarrow", compression="snappy", index=False)
+    logger.info("Dataset de cortes guardado en %s (%d filas)", cut_path, len(cut_df))
+    return cut_df
+
+
+def run_pipeline(
+    config_path: str = "config/config.yaml",
+    skip_download: bool = False,
+    build_cuts: bool = True,
+) -> pd.DataFrame:
     """Ejecuta el pipeline completo de principio a fin.
 
     Parameters
@@ -101,6 +123,9 @@ def run_pipeline(config_path: str = "config/config.yaml", skip_download: bool = 
     skip_download : bool, optional
         Si es ``True``, no intenta descargar (asume que los PGN ya existen
         en ``data/raw``).
+    build_cuts : bool, optional
+        Si es ``True`` (por defecto), también construye el dataset de cortes para
+        predicción en vivo.
 
     Returns
     -------
@@ -161,6 +186,9 @@ def run_pipeline(config_path: str = "config/config.yaml", skip_download: bool = 
     logger.info("Resumen guardado en %s", summary_path)
 
     _print_summary_table(summary)
+
+    if build_cuts:
+        export_cut_dataset(df, raw_paths, config)
     return df
 
 
@@ -191,9 +219,14 @@ def main() -> None:
         action="store_true",
         help="No descargar; usar los PGN ya presentes en data/raw",
     )
+    parser.add_argument(
+        "--sin-cortes",
+        action="store_true",
+        help="No construir el dataset de cortes para predicción en vivo",
+    )
     args = parser.parse_args()
 
-    run_pipeline(config_path=args.config, skip_download=args.skip_download)
+    run_pipeline(config_path=args.config, skip_download=args.skip_download, build_cuts=not args.sin_cortes)
 
 
 if __name__ == "__main__":
