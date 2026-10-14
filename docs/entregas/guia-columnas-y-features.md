@@ -2,12 +2,12 @@
 
 ## Propósito del documento
 
-Esta guía explica las 25 columnas de
+Esta guía explica las 29 columnas de
 `data/processed/partidas_ajedrez_clean.parquet`: de dónde sale cada una, qué
 transformación recibe, por qué algunas parecen redundantes y para qué sirven en
 ingeniería de datos, EDA, modelado y una futura aplicación para usuarios finales.
 
-El objetivo no es afirmar que las 25 columnas deban entrar juntas a un modelo. El
+El objetivo no es afirmar que las 29 columnas deban entrar juntas a un modelo. El
 Parquet es una **capa plata**: reúne información limpia, trazable y cómoda para más de
 un consumidor. La selección de predictores se hace después, al construir una tabla
 **oro** específica para cada problema.
@@ -165,7 +165,7 @@ modelo, si hay volumen y una estrategia adecuada para manejar cardinalidad.
 
 La redundancia es problemática cuando:
 
-- se presentan 25 columnas como si fueran 25 fuentes independientes de señal;
+- se presentan 29 columnas como si fueran 29 fuentes independientes de señal;
 - se introducen todas las representaciones en el mismo modelo sin justificación;
 - se produce multicolinealidad en un modelo lineal;
 - una misma dimensión recibe peso varias veces;
@@ -199,7 +199,8 @@ fenómeno.
 **Transformación.** Se convierte a categoría.
 
 **Para qué sirve.** Auditoría del universo retenido. Después del filtro vale siempre
-`Live Chess`.
+`Live Chess`: **no distingue** una partida de emparejamiento automático de una de torneo o
+de un desafío directo. Para eso está `TournamentUrl`/`EsTorneo`.
 
 **Modelado.** Se excluye por ser constante.
 
@@ -209,6 +210,11 @@ fenómeno.
 
 **Transformación.** Se parsea con formato `YYYY.MM.DD`. Una fecha inválida se convierte
 en `NaT` y la fila se descarta porque la fecha es un campo crítico.
+
+**Granularidad.** Sólo día, sin hora. En la corrida validada coincide en el 100 % de las
+filas con el día UTC de `StartTime`, así que es el **día UTC de inicio** (no el día local
+del jugador). No alcanza para ordenar causalmente dos partidas del mismo día: para eso se
+usan `StartTime` y `EndTime`.
 
 **Para qué sirve.** Análisis temporal, detección de drift, evolución de la muestra y
 separación cronológica entre entrenamiento y prueba.
@@ -388,6 +394,71 @@ la unidad actual de una fila por partida; separarla en columnas produciría un a
 **Modelado.** No es un predictor tabular pre-partida. Podría alimentar otro problema, por
 ejemplo predicción en vivo después de los primeros movimientos.
 
+### `TournamentUrl`
+
+**Origen.** Campo `tournament` del objeto de partida del JSON de la PubAPI (por ejemplo
+`https://api.chess.com/pub/tournament/<slug>`). El PGN trae lo mismo en el header
+`Tournament`. Sólo existe cuando la partida se jugó dentro de un torneo de Chess.com.
+
+**Transformación.** Se copia sin modificar; queda nula cuando la partida no es de torneo.
+Se guarda como `string` y no como `category`: tiene un valor por torneo.
+
+**Para qué sirve.** Es la única traza en la fuente del mecanismo por el que se armó la
+partida (`Event` vale siempre `Live Chess`). El anexo del notebook 02 mostró que el
+emparejamiento automático de Chess.com limita la diferencia a ±200 puntos para jugadores
+por debajo de 2500 (bullet/blitz) o 2000 (rapid), y que 3.070 de las 5.080 partidas que
+violan ese límite (60,4 %) son de torneo.
+
+**Nulos.** Es la única columna con nulos del Parquet (~92 % de las filas), y son
+estructurales: "no es de torneo", no un dato faltante. Están declarados en
+`nulos_documentados` del DAG (criterio 5).
+
+**Modelado.** No entra como texto: tiene cardinalidad alta. Su versión útil es `EsTorneo`.
+
+**Alcance.** El PGN trae además un header `Match` en 98 partidas descargadas (matches por
+equipos, otro mecanismo sin el límite de ±200). No se extrae todavía; queda como candidato
+si hiciera falta distinguirlo.
+
+### `StartTime`
+
+**Origen.** Headers PGN `UTCDate` + `UTCTime`: fecha y hora de **inicio** en UTC.
+
+**Transformación.** Se une y se parsea como `datetime64[UTC]` con formato
+`YYYY.MM.DD HH:MM:SS`. Si falta o no parsea queda `NaT` y la partida **se conserva** (a
+diferencia de `Date`): ninguno de los dos targets depende de la hora. En la corrida
+validada no hay faltantes.
+
+**Para qué sirve.** Ordenar partidas en el tiempo con resolución de segundos: particiones
+temporales de entrenamiento/prueba y features históricas que sólo pueden mirar partidas
+**terminadas antes de que esta empezara** (`EndTime_previa < StartTime_actual`).
+
+**Modelado.** No entra como predictor crudo. Es la columna de orden y partición.
+
+### `EndTime`
+
+**Origen.** Campo `end_time` del JSON (epoch Unix en segundos).
+
+**Transformación.** Se convierte a `datetime64[UTC]`. Mismo criterio de nulos que
+`StartTime`.
+
+**Para qué sirve.** Condición causal de las features históricas y auditoría. El DAG
+verifica que `StartTime <= EndTime` en todas las filas.
+
+**Anomalías conocidas.**
+
+- 263 partidas (0,34 %) terminan un día UTC después de `Date`: empezaron antes de la
+  medianoche UTC. Es esperado, no un error.
+- `EndTime − StartTime` **no es tiempo de reloj**. En 16.188 partidas (21 %, casi todas
+  bullet y blitz, dos tercios terminadas por tiempo) supera el máximo que permiten los
+  relojes (`2 × tiempo_base_seg + cantidad_jugadas × incremento_seg`), con un exceso
+  mediano de 12 s y p99 de 44 s. Es compatible con tiempo que no corre en el reloj
+  (antes de las primeras jugadas, compensación de latencia) y con la resolución de un
+  segundo de `UTCTime`. No se filtra; si se necesita el tiempo consumido de verdad, está
+  en los relojes `%clk` del PGN crudo.
+
+**Modelado.** **Fuga para cualquier predicción antes del final**: la duración total
+revela cuánto duró la partida. Sólo se usa como condición temporal, nunca como feature.
+
 ---
 
 ## 5. Diccionario completo: targets y features derivadas
@@ -542,6 +613,20 @@ grupo razonables y comunicar patrones generales.
 `cantidad_jugadas` fue débil (`eta² = 0,007`). Sale del baseline pre-partida y queda como
 experimento separado: comparar modelos con y sin apertura fuera de muestra.
 
+### `EsTorneo`
+
+**Origen.** Derivada: `TournamentUrl.notna()`.
+
+**Transformación.** Booleana. Se deriva en `parse_timestamps` y no se lee aparte del crudo,
+para que no pueda contradecir a `TournamentUrl`; el DAG lo verifica.
+
+**Para qué sirve.** Separar las partidas de torneo del resto al estudiar el límite de ±200
+del emparejamiento automático, y como candidata a feature: el mecanismo de emparejamiento
+cambia la distribución de `diferencia_elo`. 6.261 partidas (8,2 %) en la corrida validada.
+
+**Modelado.** Se conoce antes de empezar la partida, así que no tiene fuga. Candidata
+pre-partida para la Entrega 3.
+
 ### Columnas derivadas descartadas
 
 `modalidad` y `favorito` existieron en una versión anterior de la capa plata y se retiraron
@@ -596,7 +681,8 @@ Conservar:
 ```text
 GameUrl, Event, Date, White, Black, Result,
 WhiteElo, BlackElo, Variant, TimeControl,
-TimeClass, ECO, Opening, Termination, Rated, moves_text
+TimeClass, ECO, Opening, Termination, Rated, moves_text,
+TournamentUrl, StartTime, EndTime
 ```
 
 Permiten reconstruir decisiones, investigar anomalías y verificar derivaciones.
@@ -815,7 +901,7 @@ presenta explícitamente como post-apertura.
 
 ### En la capa plata
 
-Se conservan las 25 columnas. La coexistencia de dato crudo, dato normalizado y agregación
+Se conservan las 29 columnas. La coexistencia de dato crudo, dato normalizado y agregación
 es deliberada: mejora trazabilidad, EDA y comunicación.
 
 ### En una matriz de modelado
@@ -830,6 +916,8 @@ Rated
 Result
 moves_text
 Termination
+TournamentUrl        (se usa EsTorneo)
+StartTime, EndTime   (orden y partición; EndTime es fuga)
 resultado, cuando no sea el target actual
 cantidad_jugadas, cuando no sea el target actual
 es_sorpresa, cuando no sea el target actual
@@ -878,7 +966,7 @@ Si preguntan qué significa “generar variables útiles”:
 
 ## 13. Conclusión
 
-El dataset no contiene 25 predictores independientes. Contiene 25 columnas con roles
+El dataset no contiene 29 predictores independientes. Contiene 29 columnas con roles
 distintos y un linaje verificable:
 
 ```text

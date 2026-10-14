@@ -320,10 +320,12 @@ def pipeline_ajedrez_chesscom():
 
         from src.utils import load_config
 
-        # Columnas donde se aceptan nulos, con su explicación (criterio 5). Hoy el
-        # pipeline descarta las filas incompletas en vez de imputar, así que el
-        # conjunto está vacío: cualquier nulo inesperado hace fallar el DAG.
-        nulos_documentados: dict[str, str] = {}
+        # Columnas donde se aceptan nulos, con su explicación (criterio 5). El
+        # pipeline descarta las filas incompletas en vez de imputar; la única
+        # excepción es estructural, no un faltante: cualquier otro nulo hace fallar el DAG.
+        nulos_documentados: dict[str, str] = {
+            "TournamentUrl": "nula cuando la partida no es de torneo (EsTorneo=False, ~92 %)",
+        }
 
         _enter_project_root()
         config = load_config(CONFIG_PATH)
@@ -389,6 +391,23 @@ def pipeline_ajedrez_chesscom():
             ELO_MIN, ELO_MAX,
             df["WhiteElo"].min(), df["WhiteElo"].max(),
             df["BlackElo"].min(), df["BlackElo"].max(),
+        )
+
+        # 4c. Consistencia de torneo y horarios (extensión propia, como 4b).
+        # EsTorneo se deriva de TournamentUrl; si se contradicen, el parseo se rompió.
+        assert (df["EsTorneo"] == df["TournamentUrl"].notna()).all(), (
+            "❌ Consistencia FALLÓ: EsTorneo no coincide con TournamentUrl.notna()"
+        )
+        # Una partida no puede terminar antes de empezar (StartTime sale del PGN y
+        # EndTime del JSON: son dos fuentes distintas, por eso se cruzan).
+        invertidas = df[df["StartTime"] > df["EndTime"]]
+        assert invertidas.empty, (
+            f"❌ Consistencia FALLÓ: {len(invertidas)} partidas con StartTime > EndTime"
+        )
+        log.info(
+            "✅ Consistencia: EsTorneo = TournamentUrl presente (%d partidas de torneo) "
+            "y StartTime <= EndTime en todas las filas",
+            int(df["EsTorneo"].sum()),
         )
 
         # 5. Nulos conocidos y documentados

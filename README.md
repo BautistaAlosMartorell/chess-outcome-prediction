@@ -152,6 +152,8 @@ tests/test_player_selection.py             pruebas del selector de jugadores
 | `Termination` | category | Motivo de finalización normalizado (resignation, time, checkmate, etc.), sin el username del ganador que trae el dato crudo de Chess.com. |
 | `Rated` | bool | Indica si la partida afectó el rating. |
 | `moves_text` | str | Jugadas en notación algebraica, sin comentarios de reloj. |
+| `TournamentUrl` | str | URL del torneo de Chess.com; nula si la partida no es de torneo (única columna con nulos, documentados). |
+| `StartTime`, `EndTime` | datetime64 UTC | Inicio (headers `UTCDate` + `UTCTime`) y fin (`end_time` del JSON). Orden causal entre partidas del mismo día. |
 
 ### Features generadas
 
@@ -165,6 +167,7 @@ tests/test_player_selection.py             pruebas del selector de jugadores
 | `nivel_promedio` | category | Banda de rating configurada. |
 | `es_sorpresa` | int8 | 1 cuando gana el jugador con menor rating. |
 | `familia_apertura` | category | Familia ECO: flanco, semiabierta, abierta, cerrada, india o desconocida. |
+| `EsTorneo` | bool | `True` si la partida se jugó en un torneo (`TournamentUrl` presente). |
 
 ## Cómo ejecutar
 
@@ -219,8 +222,15 @@ python3 -m venv .venv
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
 pipeline completo con la misma lista congelada que el DAG y verifica el dataset. El
 análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` consume el Parquet que produce
-ese pipeline (80.145 partidas finales). Ambos notebooks deben ejecutarse con
+ese pipeline (76.803 partidas finales en la corrida vigente). Ambos notebooks deben ejecutarse con
 **Restart & Run All**.
+
+> **El notebook 02 está congelado como se entregó en la Entrega 2.** Se corrió sobre el
+> Parquet de 25 columnas. Desde la Entrega 3 el pipeline agrega `TournamentUrl`,
+> `EsTorneo`, `StartTime` y `EndTime` (29 columnas), así que **no se vuelve a correr**:
+> sus cifras de perfil ("25 columnas") dejarían de coincidir con lo defendido. El anexo
+> de matchmaking del final del notebook lee `tournament` directo del JSON crudo por el
+> mismo motivo. El trabajo nuevo va en notebooks nuevos.
 
 ### Tests
 
