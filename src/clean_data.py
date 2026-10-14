@@ -46,6 +46,14 @@ _TERMINATION_ALIASES = {
 }
 
 
+def _utc_start(headers: dict[str, str]) -> str | None:
+    """Une los headers PGN ``UTCDate`` y ``UTCTime`` en un solo texto parseable."""
+    utc_date, utc_time = headers.get("UTCDate"), headers.get("UTCTime")
+    if not utc_date or not utc_time:
+        return None
+    return f"{utc_date} {utc_time}"
+
+
 class DataCleaner:
     """Convierte los JSON crudos de Chess.com en una tabla tidy de partidas."""
 
@@ -94,6 +102,15 @@ class DataCleaner:
             "Termination": headers.get("Termination"),
             "Rated": game.get("rated"),
             "moves_text": moves_text,
+            # URL del torneo de Chess.com; ausente (None) cuando la partida no es de
+            # torneo. Es la única traza del mecanismo de emparejamiento: `Event` vale
+            # "Live Chess" para todas las partidas en vivo.
+            "TournamentUrl": game.get("tournament") or None,
+            # Inicio (headers UTCDate + UTCTime) y fin (end_time, epoch) en UTC. `Date`
+            # sólo tiene granularidad de día; estos dos campos permiten ordenar
+            # causalmente partidas del mismo día.
+            "StartTime": _utc_start(headers),
+            "EndTime": game.get("end_time"),
         }
 
     def parse_json_file(self, json_path: str | Path) -> pd.DataFrame:
@@ -168,6 +185,20 @@ class DataCleaner:
         df["Date"] = pd.to_datetime(df["Date"], format="%Y.%m.%d", errors="coerce")
         return df
 
+    @staticmethod
+    def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+        """Convierte ``StartTime``/``EndTime`` a ``datetime`` UTC y deriva ``EsTorneo``.
+
+        A diferencia de ``Date``, un horario faltante o inválido NO descarta la
+        partida: queda ``NaT`` y se loguea, porque ninguno de los dos targets
+        depende de la hora. ``EsTorneo`` se deriva de ``TournamentUrl`` (no se lee
+        aparte del crudo) para que las dos columnas no puedan contradecirse.
+        """
+        df["StartTime"] = pd.to_datetime(df["StartTime"], format="%Y.%m.%d %H:%M:%S", errors="coerce", utc=True)
+        df["EndTime"] = pd.to_datetime(pd.to_numeric(df["EndTime"], errors="coerce"), unit="s", utc=True)
+        df["EsTorneo"] = df["TournamentUrl"].notna()
+        return df
+
     def filter_invalid_rows(self, df: pd.DataFrame) -> pd.DataFrame:
         """Conserva partidas rated, estándar, con resultado, ratings, fecha y jugadas válidas.
 
@@ -228,6 +259,10 @@ class DataCleaner:
             df[col] = pd.to_numeric(df[col], downcast="integer")
         for col in ["resultado", "Termination", "ECO", "Opening", "Event", "TimeClass"]:
             df[col] = df[col].astype("category")
+        # TournamentUrl no se pasa a category: su cardinalidad es alta (un valor por
+        # torneo) y es un identificador de auditoría, no una categoría analítica.
+        df["TournamentUrl"] = df["TournamentUrl"].astype("string")
+        df["EsTorneo"] = df["EsTorneo"].astype(bool)
         # ``Date`` ya viene parseada desde ``parse_date``; se re-parsea solo si
         # ``optimize_dtypes`` se llamara sobre datos sin limpiar.
         if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
@@ -246,7 +281,13 @@ class DataCleaner:
         if invalid_dates:
             logger.info("%d partidas descartadas por fecha inválida (p. ej. '????.??.??').", invalid_dates)
 
+        df = self.parse_timestamps(df)
+
         df = self.filter_invalid_rows(df)
+        missing_times = int((df["StartTime"].isna() | df["EndTime"].isna()).sum())
+        if missing_times:
+            logger.warning("%d partidas válidas sin StartTime o EndTime (se conservan con NaT).", missing_times)
+        logger.info("Partidas de torneo retenidas: %d (%.1f%%).", int(df["EsTorneo"].sum()), 100 * df["EsTorneo"].mean())
         df = self.normalize_termination(df)
         logger.info(
             "Limpieza completa: %d registros descargados -> %d partidas válidas (%.1f%%).",
