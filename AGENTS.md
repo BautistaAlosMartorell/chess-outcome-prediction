@@ -16,7 +16,7 @@ antes de llegar a este, y qué falta validar con datos reales de volumen.
 ```
 src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG
 dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
-notebooks/   01 pipeline narrado · 02 y 02_1 EDA antes y durante la partida · 03 predicción en vivo
+notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo
 config/      config.yaml (bandas de ELO, ventana temporal, cortes, descarga) y jugadores_seleccionados.yaml (lista congelada, versionada)
 data/        vacío en git — se regenera corriendo el pipeline
 tests/       pruebas unitarias sin acceso de red (python -m unittest discover -s tests)

@@ -144,8 +144,7 @@ docker-compose.yml                         stack de Airflow 3.3 (postgres, redis
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
 notebooks/01_data_ingestion_verification.ipynb     Entrega 1: pipeline narrado y verificación
-notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil, fugas y cuatro hipótesis antes de la partida + anexo de matchmaking
-notebooks/02_1_hipotesis_prediccion_en_vivo.ipynb  Entrega 2: cuatro hipótesis durante la partida, sobre la tabla de cortes
+notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil y fugas, cuatro hipótesis antes de la partida (Parte A) y cuatro durante, sobre la tabla de cortes (Parte B), + anexo de matchmaking
 notebooks/03_prediccion_en_vivo.ipynb              Entrega 3 (exploración): curva por corte, desbalance de Empate y matchup de apertura
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
@@ -275,7 +274,7 @@ python3 -m venv .venv
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
 pipeline completo con la misma lista congelada que el DAG y verifica el dataset. Los
-notebooks 02, 02_1 y 03 consumen lo que produce el DAG (las dos tablas de
+notebooks 02 y 03 consumen lo que produce el DAG (las dos tablas de
 `data/processed/`). Todos deben ejecutarse con **Restart & Run All**, en ese orden.
 
 ### Tests
