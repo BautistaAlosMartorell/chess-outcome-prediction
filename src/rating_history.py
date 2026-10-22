@@ -2,12 +2,13 @@
 
 ``WhiteElo``/``BlackElo`` son el rating **posterior** a la partida (sección 9 del
 notebook 02: el signo del cambio de rating coincide con el resultado de esa misma
-partida en el 99,91 % de los casos), así que llevan el resultado adentro.
+partida en el 99,93 % de los casos), así que llevan el resultado adentro.
 
 El rating previo de un jugador en una partida es su rating al cierre de su partida
 anterior del mismo ``time_class``. Eso sólo se puede leer para las cuentas cuyo
 historial se descargó (las seleccionadas): del rival casi nunca hay historial, y ese
-lado queda NaN. No se imputa: un valor inventado sería peor que declararlo faltante.
+lado queda NaN. La reconstrucción no inventa un rating; si el estimador necesita
+imputación, se ajusta después y sólo con su entrenamiento.
 
 Del mismo historial sale la **forma reciente** del jugador (``reconstruct_recent_form``):
 puntaje de las últimas partidas, racha, tendencia del rating y si viene de una sesión
