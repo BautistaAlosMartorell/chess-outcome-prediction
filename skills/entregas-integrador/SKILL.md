@@ -15,8 +15,9 @@ empate) y la **duración restante** (`plies_restantes`) de una partida de ajedre
 real **antes de que empiece y a medida que avanza**. Antes de empezar se conocen el nivel,
 el ritmo (bullet/blitz/rapid) y el color; durante la partida se suman la apertura, la
 posición y los relojes.
-Unidad de análisis: la partida en un momento dado (partida × corte de plies: 0, 10, 20,
-30, 40, 60). La tabla base sigue teniendo una partida por fila; la de cortes se deriva.
+Unidad de análisis: la partida en un momento dado (partida × corte de plies: uno cada
+5, del 0 al 120). La tabla base sigue teniendo una partida por fila; la de cortes se
+deriva.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
 autenticación. Partidas reales de 100 jugadores, 20 por cada banda de ELO, seleccionados
@@ -81,10 +82,11 @@ congelada que el DAG.
 
 **Al 22/10/2026 (preparando la Entrega 3, vigente):** La pregunta pasó a ser el resultado y
 la duración **antes y durante** la partida, y la unidad de modelado la partida × corte
-(tabla `partidas_cortes.parquet`, cortes 0/10/20/30/40/60; el 0 es antes de mover). La
-lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`. Corrida oficial
-del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas (99,51 %), 35
-columnas, 435.689 filas de cortes. El notebook 02 es uno solo (Parte A antes, Parte B
+(tabla `partidas_cortes.parquet`, un corte cada 5 plies del 0 al 120; el 0 es antes de
+mover). La lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`.
+Corrida oficial del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas
+(99,51 %), 35 columnas, 1.216.417 filas de cortes (435.689 en los cortes de referencia
+0/10/20/30/40/60, que usan el EDA y el notebook 03). El notebook 02 es uno solo (Parte A antes, Parte B
 durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03
 muestra que antes de empezar ningún modelo le gana al piso y que desde el ply 30 el
 modelo en vivo sí (log-loss 0,738 contra 0,913 al ply 60). Falta el modelado formal de

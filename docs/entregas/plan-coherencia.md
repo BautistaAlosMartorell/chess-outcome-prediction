@@ -37,7 +37,7 @@ antes de la Entrega 3 (28/10).
 | Dataset oficial | Una corrida **nueva**, con una selección de jugadores nueva. Ninguna de las dos anteriores (80.145 ni 76.803): todas las cifras se rehacen sobre esta |
 | Dónde vive la lista | `config/jugadores_seleccionados.yaml`, versionada en git. Snapshots y checkpoint siguen en `data/raw/seleccion/` (`player_selection.snapshot_dir`) |
 | Documentos de entregas pasadas | Se actualizan todos; nada queda congelado |
-| Cortes | `[0, 10, 20, 30, 40, 60]`. El 0 es la partida antes de la primera jugada |
+| Cortes | `[0, 10, 20, 30, 40, 60]`. El 0 es la partida antes de la primera jugada. Después se densificaron a uno cada 5 plies hasta el 120; esos seis quedan como `cortes_referencia` (ver CHANGELOG) |
 | Pregunta | Resultado (y duración) **antes y durante** la partida |
 | Evaluación con motor (Stockfish) | No entra |
 
@@ -86,8 +86,8 @@ números: cada documento se corrige contra ella, no contra otro documento.
 | Ventana temporal | hasta `2026-08` |
 | Registros descargados → partidas finales (retención) | 81.094 → 80.697 (99,51 %; 397 descartadas) |
 | Columnas del Parquet | 35 |
-| Filas de la tabla de cortes / partidas con al menos un corte | 435.689 / 80.697 (27 columnas) |
-| Filas por corte | 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 · 40: 69.788 · 60: 51.266 |
+| Filas de la tabla de cortes / partidas con al menos un corte | 1.216.417 / 80.697 (27 columnas); 435.689 en los cortes de referencia |
+| Filas por corte (referencia) | 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 · 40: 69.788 · 60: 51.266 (y 120: 8.204) |
 | Reparto de `resultado` (Blancas / Empate / Negras) | 39.540 / 4.905 / 36.252 (49,0 % / 6,1 % / 44,9 %) |
 | Partidas de torneo | 6.220 |
 | Partidas sin historial de matchup | 1.620 (las primeras 30 de cada uno de los 54 grupos) |

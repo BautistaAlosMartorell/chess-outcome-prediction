@@ -16,8 +16,8 @@ tablas, una derivada de la otra:
 - `partidas_ajedrez_clean.parquet`: **una fila por partida** (tidy). Es la capa base de
   la Entrega 1: describe la partida completa.
 - `partidas_cortes.parquet`: **una fila por (partida, corte)**, con la posición y los
-  relojes en los plies 0 (antes de mover), 10, 20, 30, 40 y 60. Es la tabla de modelado.
-  El corte 0 es la predicción pre-partida; los demás, la predicción en vivo.
+  relojes cada 5 plies, del 0 (antes de mover) al 120. Es la tabla de modelado. El corte
+  0 es la predicción pre-partida; los demás, la predicción en vivo.
 
 El proyecto incluye el pipeline automatizado de ingeniería de datos —descarga, parseo,
 limpieza, validación, ingeniería de características, exportación y tabla de cortes—, el
@@ -127,7 +127,7 @@ no sobre "ajedrez online" en general.
 | 2 | Unidad alineada | La pregunta es sobre la partida en un momento dado, y la tabla de cortes es exactamente eso. |
 | 3 | Algo modelable | `resultado` en cada corte es el target de clasificación y `plies_restantes`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida oficial produjo 80.697 partidas y 435.689 filas de cortes. |
+| 5 | Volumen | La corrida oficial produjo 80.697 partidas y 1.216.417 filas de cortes. |
 | 6 | Columnas informativas | Hay rating previo, color, apertura, ritmo, relojes, material y posición en cada corte, resultado y fecha. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -208,7 +208,7 @@ por `GameUrl`.
 
 | Columna | Descripción |
 |---|---|
-| `corte_ply` | Plies jugados en el corte: 0, 10, 20, 30, 40 o 60. |
+| `corte_ply` | Plies jugados en el corte: 0, 5, 10, …, 120 (uno cada 5). El EDA y el notebook 03 usan los de referencia: 0, 10, 20, 30, 40 y 60. |
 | `resultado`, `plies_restantes` | Targets: resultado final y plies que faltan desde el corte. |
 | `material_*`, `balance_material`, `material_no_peon_frac` | Material de cada bando (peón 1, caballo/alfil 3, torre 5, dama 9), su diferencia y la fracción de material sin peones que queda. |
 | `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
@@ -300,7 +300,9 @@ de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
   (partidas que no son de torneo) y las tres `tasa_*_hist` (1.620 partidas sin historial
   suficiente del matchup).
 - Las cinco bandas de ELO quedan entre 18,4 % y 21,8 % del dataset.
-- Tabla de cortes: 435.689 filas (corte 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 ·
+- Tabla de cortes: 1.216.417 filas, un corte cada 5 plies del 0 al 120 (corte 0: 80.697 ·
+  60: 51.266 · 120: 8.204). Filtrada a los cortes de referencia que usan el EDA y el
+  notebook 03 son 435.689 filas (corte 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 ·
   40: 69.788 · 60: 51.266).
 
 Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG

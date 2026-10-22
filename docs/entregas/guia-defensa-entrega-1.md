@@ -53,7 +53,7 @@ Los 20 minutos son para mostrar y explicar, **no** para instalar ni esperar desc
    tomadas de las listas públicas por país y de titulados, y deja esa lista congelada y
    versionada en `config/`.
 3. **Qué es una fila.** *Una fila es **una partida en un momento dado**: la partida vista
-   después de 0, 10, 20, 30, 40 o 60 medio-movimientos (plies).* El pipeline produce dos
+   después de 0, 5, 10, …, 120 medio-movimientos (plies), uno cada 5.* El pipeline produce dos
    tablas: la base, con **una fila por partida** (rated, bullet/blitz/rapid, de alguna de
    las cuentas seleccionadas), y la de cortes, derivada de la base, con **una fila por
    (partida, corte)**. La de cortes es la que se modela.
@@ -88,7 +88,7 @@ listar_jugadores → descarga_usuario (×N, .expand) → consolidar_descarga →
 | 5 | `ingenieria_de_caracteristicas` | `src/feature_engineering.py` | Deriva características analíticas: `diferencia_elo`, `elo_promedio`, `nivel_promedio` (bandas de ELO), `es_sorpresa`, `familia_apertura` (letra ECO), `matchup_apertura` (primera jugada de blancas × respuesta de negras) y las tasas históricas de resultado de ese matchup, calculadas sólo con partidas que terminaron antes de que empiece cada una. | Agrega variables para el EDA y el modelado. Las que tienen fuga (las del rating posterior) se marcan y no entran al modelo. |
 | 6 | `verificar_calidad` | inline en el DAG | Lee el parquet **intermedio** (antes de exportar) y hace `assert` de los **7 criterios** (entre ellos: mezcla de tipos **con fecha obligatoria**, nulos solo en columnas documentadas, y **ambos** targets `resultado` y `cantidad_jugadas` sin nulos), más un chequeo de **rango plausible de ELO** `[100, 4000]`. Es un límite amplio para detectar corrupción, no un supuesto récord máximo. Si algo falla, **el DAG se pone en rojo y `exportar_dataset` no llega a correr**. También registra el volumen en una Airflow Variable y avisa si se desvía > 5 % del baseline. | Garantía operativa: **toda corrida en verde ⟹ dataset válido**, y no se materializan artefactos de un dataset inválido. |
 | 7 | `exportar_dataset` | `src/pipeline.py` | Escribe el **Parquet completo**, una **muestra CSV** de hasta 5.000 filas (`random_state=42`) y `data_summary.json` con métricas. | Materializa la **capa plata** (el entregable) en disco, **solo si la validación pasó**. |
-| 8 | `construir_dataset_cortes` | `src/live_features.py` | Reproduce cada partida jugada a jugada con python-chess desde el PGN crudo (el único lugar con los relojes `%clk`) y escribe `partidas_cortes.parquet`: una fila por partida y corte (0, 10, 20, 30, 40, 60) con material, jaques, capturas, enroques, movilidad y relojes en ese momento. Falla si una partida no tiene PGN, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave `(GameUrl, corte_ply)` se repite. | Es la **tabla de modelado**: la que permite predecir antes y durante la partida. Ninguna feature de un corte mira jugadas posteriores (hay un test que lo garantiza). |
+| 8 | `construir_dataset_cortes` | `src/live_features.py` | Reproduce cada partida jugada a jugada con python-chess desde el PGN crudo (el único lugar con los relojes `%clk`) y escribe `partidas_cortes.parquet`: una fila por partida y corte (uno cada 5 plies, del 0 al 120) con material, jaques, capturas, enroques, movilidad y relojes en ese momento. Falla si una partida no tiene PGN, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave `(GameUrl, corte_ply)` se repite. | Es la **tabla de modelado**: la que permite predecir antes y durante la partida. Ninguna feature de un corte mira jugadas posteriores (hay un test que lo garantiza). |
 
 **Cómo pasan los datos entre tareas:** el DAG está escrito con la **TaskFlow API de
 Airflow 3** (`@dag` / `@task` de `airflow.sdk`), con **dynamic task mapping** (`.expand()`) en
@@ -111,7 +111,7 @@ corre **antes** de exportar: si el dataset no cumple, ni siquiera se escriben lo
 Corrida oficial del **22/10/2026** (DAG completo en **Airflow 3.3**, CeleryExecutor,
 ventana congelada hasta agosto de 2026, 100 jugadores seleccionados —20 por banda de
 ELO—): **81.094 registros descargados → 80.697 partidas finales** (99,51 % de retención) y
-**435.689 filas de cortes**. Comandos para verificar **en vivo** sobre `df`:
+**1.216.417 filas de cortes**. Comandos para verificar **en vivo** sobre `df`:
 
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
 |---|---|---|---|---|

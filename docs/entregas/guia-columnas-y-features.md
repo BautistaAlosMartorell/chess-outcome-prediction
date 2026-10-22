@@ -880,9 +880,12 @@ predictores pre-partida.
 
 Tabla derivada `data/processed/partidas_cortes.parquet`, **no** una columna más del tidy:
 una fila por `(GameUrl, corte_ply)`, con cortes en `config.yaml → live_prediction.cortes_ply`
-(0, 10, 20, 30, 40 y 60 plies). El corte 0 es la posición inicial, antes de la primera
+(uno cada 5 plies, del 0 al 120). El corte 0 es la posición inicial, antes de la primera
 jugada. Una partida aporta una fila por cada corte estrictamente menor que su
-`cantidad_jugadas`: 435.689 filas de las 80.697 partidas en la corrida oficial. El
+`cantidad_jugadas`: 1.216.417 filas de las 80.697 partidas en la corrida oficial. El EDA
+y el notebook 03 la filtran a `live_prediction.cortes_referencia` (0, 10, 20, 30, 40 y
+60): 435.689 filas. Las features de un corte sólo dependen de esa partida hasta ese
+ply, así que filtrar reproduce exactamente la tabla de seis cortes. El
 contexto de la partida se une desde el tidy por `GameUrl` (muchos a uno, con assert de
 conteo), así que no se duplica en disco.
 

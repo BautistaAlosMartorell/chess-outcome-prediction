@@ -1,5 +1,30 @@
 # Changelog
 
+## Cortes cada 5 plies (2026-10-22)
+
+Branch `feat/cortes-densos`.
+
+### Qué
+
+- `live_prediction.cortes_ply` pasa de `[0, 10, 20, 30, 40, 60]` a uno cada 5 plies del 0
+  al 120 (~ percentil 90 de la duración). La app de la Entrega 4 tiene que mostrar la
+  probabilidad jugada a jugada, y un modelo con `corte_ply` como columna sólo había visto
+  seis valores.
+- Clave nueva `live_prediction.cortes_referencia` con los seis cortes de antes. El EDA
+  (notebook 02, Parte B) y el notebook 03 filtran la tabla a esos cortes.
+- La tabla de cortes se regeneró con el DAG (`manual__2026-10-22T15:41:01`; el tidy no
+  cambia): 1.216.417 filas de 80.697 partidas, 27 columnas, y la tarea tarda ~7 minutos.
+  Filtrada a los cortes de referencia son 435.689 filas, las mismas que antes.
+- Con cortes impares, `turno_blancas` deja de ser constante en la tabla completa (en el
+  ply 5 mueven negras). En los cortes de referencia sigue siendo constante.
+
+### Validación
+
+- Test nuevo: la fila de un corte no depende de qué otros cortes se pidan. Es la
+  garantía de que filtrar la tabla nueva reproduce la anterior. 51 tests en verde.
+- Notebooks 02 y 03 re-ejecutados con kernel limpio: todas las salidas de texto
+  coinciden con las anteriores (sólo cambian la hora y el orden de los logs).
+
 ## Corrida oficial, corte 0 y coherencia entre etapas (2026-10-22)
 
 Branches `feat/corte-cero-y-lista-versionada` (PR #26) y `docs/coherencia-etapas`.
