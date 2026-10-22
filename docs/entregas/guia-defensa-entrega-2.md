@@ -6,7 +6,8 @@
 > objetivo, qué hay que transformar — es la materia prima de la Entrega 3.
 
 Fuente de los números: la **corrida oficial del 22/10/2026** (100 jugadores, 80.697
-partidas, 435.689 filas de cortes; ver la hoja de datos en `plan-coherencia.md`) y
+partidas, 435.689 filas en los seis cortes de referencia; ver la hoja de datos en
+`plan-coherencia.md`) y
 `notebooks/02_eda_hipotesis.ipynb`, ejecutado de punta a punta con kernel limpio. Todos
 los números de este documento salen de una celda ejecutada de ese notebook.
 
@@ -49,7 +50,8 @@ GM/IM para `experto` y `top_mundial`, jugadores de ocho países para `principian
 congela la lista en `config/jugadores_seleccionados.yaml`, versionada en git. La corrida
 oficial seleccionó **100 jugadores, 20 por banda**, y produjo **80.697 partidas** finales
 sobre **81.094** descargadas (99,51 % de retención). Además construye la **tabla de
-cortes** (435.689 filas: cada partida vista en los plies 0, 10, 20, 30, 40 y 60). El
+cortes** (1.216.417 filas: cada partida vista cada 5 plies, del 0 al 120; el EDA usa los
+cortes de referencia 0, 10, 20, 30, 40 y 60, que son 435.689 filas). El
 detalle está en `criterio-seleccion-jugadores.md`.
 
 **De la pregunta:** pasó a ser qué tan bien se predice el `resultado` (clasificación) y
@@ -317,7 +319,7 @@ fuga por diseño, objetivos).
 
 ## 7b. Parte B — las cuatro hipótesis durante la partida
 
-Sobre la tabla de cortes (435.689 filas, una por partida y corte). Cada hipótesis se
+Sobre la tabla de cortes filtrada a los seis cortes de referencia (435.689 filas, una por partida y corte). Cada hipótesis se
 evalúa sobre la **población común** —las 51.266 partidas que llegan al ply 60— para no
 confundir "la partida avanzó" con "sólo quedaron las partidas largas". El corte 0 no
 entra: en la posición inicial material y relojes son iguales en todas las partidas.

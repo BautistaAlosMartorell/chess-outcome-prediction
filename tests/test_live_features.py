@@ -61,6 +61,13 @@ class LiveFeaturesTest(unittest.TestCase):
         truncated, _ = game_cut_features(_pgn(other_future), [10], 180, 2)
         self.assertEqual(full, truncated)
 
+    def test_cut_row_does_not_depend_on_the_other_cuts(self) -> None:
+        # Densifying the cuts must reproduce the old table when filtered back to its cuts.
+        alone, _ = game_cut_features(_pgn(MOVES), [10], 180, 2)
+        dense, _ = game_cut_features(_pgn(MOVES), range(0, 25, 5), 180, 2)
+        self.assertEqual([row["corte_ply"] for row in dense], [0, 5, 10, 15, 20])
+        self.assertEqual(alone[0], dense[2])
+
     def test_cut_zero_is_the_starting_position(self) -> None:
         rows, _ = game_cut_features(_pgn(MOVES), [0, 10], 180, 2)
         at0 = rows[0]

@@ -10,9 +10,9 @@ escribió el 22/10/2026 contrastando la consigna de la cátedra contra lo que ya
 `data/processed/partidas_cortes.parquet` ya es el dataset de entrenamiento: una fila por
 `(GameUrl, corte_ply)` con lo que un observador veía en ese momento (material, jaques,
 capturas, enroques, movilidad, relojes) y los targets `resultado` y `plies_restantes`.
-Son 435.689 filas de 80.697 partidas, en los cortes 0 (antes de mover), 10, 20, 30, 40 y
-60. El contexto fijo de la partida (ritmo, control de
-tiempo, torneo, rating previo) se une desde el Parquet tidy por `GameUrl`.
+Son 1.216.417 filas de 80.697 partidas, con un corte cada 5 plies del 0 (antes de
+mover) al 120. El contexto fijo de la partida (ritmo, control de tiempo, torneo, rating
+previo) se une desde el Parquet tidy por `GameUrl`.
 
 Lo que **no** está es el modelado que pide la consigna. `notebooks/03_prediccion_en_vivo.ipynb`
 es un **avance exploratorio**: un solo `HistGradientBoosting` por corte, con una única
@@ -53,9 +53,8 @@ La consigna dice que el modelo elegido es el que usa la app de la Entrega 4, y l
 necesita **un** artefacto. Se entrena un solo pipeline con todas las filas y `corte_ply`
 como feature, y se **reporta** la métrica por corte (la curva de nb03 sigue siendo el
 gráfico central). El corte 0 es la predicción antes de empezar: la pregunta "antes y
-durante" se responde con una sola curva. La alternativa, un modelo por corte, son seis
-artefactos y seis
-tablas de comparación: más trabajo para la misma pregunta.
+durante" se responde con una sola curva. La alternativa, un modelo por corte, son 25
+artefactos y 25 tablas de comparación: más trabajo para la misma pregunta.
 
 ### 3. Métrica: log-loss principal, F1 macro y recall de Empate como secundarias
 
@@ -70,7 +69,7 @@ orden alfabético de etiqueta (`PROBA_ORDER`). Usar `model.classes_` siempre.
 
 ### 4. Validación: temporal y por partida
 
-Las filas se repiten por partida (hasta 6 cortes) y por jugador (hasta 1.000 partidas), y el
+Las filas se repiten por partida (hasta 25 cortes) y por jugador (hasta 1.000 partidas), y el
 uso es predecir partidas **futuras**. Entonces:
 
 - **Test:** el mismo corte temporal de nb03 (percentil 80 de `StartTime`): train = partidas
@@ -127,7 +126,7 @@ Para la Entrega 3 eso cuenta como test gastado. Qué hacer:
    - `LogisticRegression` con `SimpleImputer(add_indicator=True)` + `StandardScaler` +
      `OneHotEncoder(TimeClass)`: la referencia.
    - `RandomForestClassifier` (o `DecisionTreeClassifier` si el bosque tarda demasiado
-     con ~270 mil filas: probar con `max_samples`).
+     con ~1 millón de filas de train: probar con `max_samples`).
    - `HistGradientBoostingClassifier` (maneja NaN de forma nativa; el imputador sobra pero
      no molesta).
    - Regla de la consigna: si el complejo no le gana al simple por más que el desvío, se
@@ -152,11 +151,10 @@ Para la Entrega 3 eso cuenta como test gastado. Qué hacer:
 
 - Función `predecir(pgn_parcial)` en `src/`: calcula las features con
   `game_cut_features()` en el ply actual y llama al pipeline guardado.
-- Hoy los cortes son fijos (0/10/20/30/40/60). Un modelo con `corte_ply` como columna se
-  puede **evaluar** en cualquier ply, pero sólo vio esos cinco valores. Si la app tiene que
-  predecir en el ply 47, conviene densificar los cortes en `live_prediction.cortes_ply`
-  (por ejemplo, cada 5 plies) y volver a correr el DAG. Decidirlo antes de entrenar el
-  modelo final, porque cambia el dataset.
+- Los cortes ya están densificados: uno cada 5 plies del 0 al 120 (corrida del
+  22/10/2026). Un modelo con `corte_ply` como columna se puede **evaluar** en cualquier
+  ply, y para la app (ply 47, por ejemplo) hay que mostrar en el notebook que en plies
+  intermedios rinde como en los cortes vecinos.
 
 ## Qué contar en los minutos 0–2 ("qué cambió desde la Entrega 2")
 

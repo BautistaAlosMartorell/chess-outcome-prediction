@@ -409,7 +409,7 @@ señal representativa para la duración ni para el resultado de una partida juga
 cada jugada en su propia fila multiplicaría el volumen por ~75 con filas casi idénticas, y
 abrirlas en columnas tendría ancho variable. De ahí se derivan valores atómicos:
 `cantidad_jugadas` en la tabla base y, en la tabla de cortes (sección 12), la posición y
-los relojes en seis momentos fijos de la partida.
+los relojes cada 5 plies de la partida.
 
 ## 9. Parquet temporal y por qué no se usa XCom para el DataFrame
 
@@ -569,8 +569,8 @@ def construir_dataset_cortes(parquet_path: str, raw_paths: dict[str, str]) -> st
 
 Corre después de exportar y no modifica el Parquet tidy. `src/live_features.py` reproduce
 cada partida jugada a jugada con python-chess desde el PGN **crudo**, porque es el único
-lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (0,
-10, 20, 30, 40 y 60 plies) guarda la posición y los relojes: material, jaques, capturas,
+lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (uno
+cada 5 plies, del 0 al 120) guarda la posición y los relojes: material, jaques, capturas,
 enroques, movilidad, turno, reloj restante y tiempo gastado reciente. El corte 0 es la
 posición inicial con los relojes completos: es la predicción antes de empezar, y ahí
 `gasto_reciente_*` queda NaN porque todavía no hubo jugadas. Resultado:
@@ -579,8 +579,9 @@ posición inicial con los relojes completos: es la predicción antes de empezar,
 La tarea falla, en vez de descartar en silencio, si una partida del tidy no tiene PGN
 crudo, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave se
 repite. Una partida sólo aporta los cortes **anteriores** a su final: en el ply *k* la
-partida tiene que seguir en curso. En la corrida oficial son 435.689 filas de las 80.697
-partidas, y tarda unos 5 minutos.
+partida tiene que seguir en curso. En la corrida oficial son 1.216.417 filas de las
+80.697 partidas, y tarda unos 7 minutos. El EDA y el notebook 03 usan sólo los cortes de
+`live_prediction.cortes_referencia` (0, 10, 20, 30, 40 y 60: 435.689 filas).
 
 ## 13. La construcción del grafo
 
