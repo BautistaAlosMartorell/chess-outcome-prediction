@@ -61,6 +61,17 @@ class LiveFeaturesTest(unittest.TestCase):
         truncated, _ = game_cut_features(_pgn(other_future), [10], 180, 2)
         self.assertEqual(full, truncated)
 
+    def test_cut_zero_is_the_starting_position(self) -> None:
+        rows, _ = game_cut_features(_pgn(MOVES), [0, 10], 180, 2)
+        at0 = rows[0]
+        self.assertEqual(at0["corte_ply"], 0)
+        self.assertTrue(at0["turno_blancas"])
+        self.assertEqual(at0["movilidad"], 20)
+        self.assertEqual((at0["material_blancas"], at0["balance_material"]), (39, 0))
+        self.assertEqual((at0["reloj_blancas_seg"], at0["diferencia_reloj_seg"]), (180, 0))
+        self.assertIsNone(at0["gasto_reciente_blancas_seg"])  # no moves played yet
+        self.assertEqual(rows[1], game_cut_features(_pgn(MOVES), [10], 180, 2)[0][0])
+
     def test_no_row_when_the_game_ends_at_or_before_the_cut(self) -> None:
         rows, plies = game_cut_features(_pgn(MOVES[:10]), [10, 20], 180, 2)
         self.assertEqual(plies, 10)

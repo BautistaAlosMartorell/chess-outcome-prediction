@@ -48,6 +48,7 @@ class PlayerSelectionTest(unittest.TestCase):
             "paises": {"countries": ["AR"], "bands": ["principiante", "intermedio"]},
         }
         config["player_selection"]["selection_path"] = str(self.tmp / "seleccion" / "sel.yaml")
+        config["player_selection"]["snapshot_dir"] = str(self.tmp / "seleccion")
         if targets is not None:
             config["player_selection"]["target_per_band"] = targets
         return config

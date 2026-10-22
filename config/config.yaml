@@ -73,11 +73,12 @@ matchup_apertura:
   min_partidas_previas: 30
 
 # Predicción en vivo: cortes fijos en medio-movimientos (plies). Una partida aporta una
-# fila por cada corte estrictamente menor que su cantidad_jugadas. 10 ~ mediana de
-# profundidad de la línea ECO; 40 y 60 ~ cuartil 1 y mediana de la duración. Si el
-# tiempo aprieta, la reducción acordada es [10, 30, 60].
+# fila por cada corte estrictamente menor que su cantidad_jugadas. 0 = antes de la
+# primera jugada (la predicción pre-partida es el primer punto de la misma curva);
+# 10 ~ mediana de profundidad de la línea ECO; 40 y 60 ~ cuartil 1 y mediana de la
+# duración.
 live_prediction:
-  cortes_ply: [10, 20, 30, 40, 60]
+  cortes_ply: [0, 10, 20, 30, 40, 60]
 
 download:
   timeout_seconds: 60
@@ -100,7 +101,7 @@ download:
 # /stats, lo valida contra sus partidas hasta cutoff y llena target_per_band. Los pools se
 # recorren en ronda (uno por turno) y cada uno se abandona cuando todas sus `bands` están
 # llenas, sin gastar más requests. El avance se guarda en un checkpoint
-# (<selection_path>.parcial.yaml) para que un reintento siga desde ahí.
+# (<snapshot_dir>/<nombre>.parcial.yaml) para que un reintento siga desde ahí.
 # El resultado se escribe en selection_path y queda CONGELADO: las corridas siguientes
 # descargan exactamente la misma lista. Para volver a seleccionar, borrar ese archivo.
 player_selection:
@@ -136,6 +137,10 @@ player_selection:
     avanzado: 20
     experto: 20
     top_mundial: 20
-  # Lista congelada + manifiesto (candidatos evaluados y motivos de rechazo). Junto a él
-  # quedan los snapshots crudos de las listas por país/título (bronce de la selección).
-  selection_path: "data/raw/seleccion/jugadores_seleccionados.yaml"
+  # Lista congelada + manifiesto (candidatos evaluados y motivos de rechazo). Vive en
+  # config/ y se versiona en git: es lo que define la muestra, y si quedara en data/
+  # (ignorada por git) cada integrante terminaría con su propia lista y su propio dataset.
+  selection_path: "config/jugadores_seleccionados.yaml"
+  # Snapshots crudos de las listas por país/título (bronce de la selección) y checkpoint
+  # de una selección a medias: son datos regenerables, quedan fuera de git.
+  snapshot_dir: "data/raw/seleccion"
