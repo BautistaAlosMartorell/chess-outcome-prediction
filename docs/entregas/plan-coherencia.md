@@ -73,17 +73,31 @@ números: cada documento se corrige contra ella, no contra otro documento.
 | Dato | Valor |
 |---|---|
 | Pregunta y unidad de análisis | (arriba) |
-| Fecha de la corrida oficial | _pendiente_ |
+| Fecha de la corrida oficial | 22/10/2026 (`manual__2026-10-22T14:28:37`, DAG completo en verde) |
 | Jugadores seleccionados / por banda | 100 / 20 |
 | Ventana temporal | hasta `2026-08` |
-| Registros descargados → partidas finales (retención) | _pendiente_ |
-| Columnas del Parquet | _pendiente_ (35 esperadas) |
-| Filas de la tabla de cortes / partidas con al menos un corte | _pendiente_ |
-| Filas por corte | _pendiente_ |
-| Reparto de `resultado` (Blancas / Empate / Negras) | _pendiente_ |
-| Partidas de torneo | _pendiente_ |
-| Partidas sin historial de matchup | _pendiente_ |
-| Cobertura del rating previo (blancas / negras / algún lado) | _pendiente_ |
+| Registros descargados → partidas finales (retención) | 81.094 → 80.697 (99,51 %; 397 descartadas) |
+| Columnas del Parquet | 35 |
+| Filas de la tabla de cortes / partidas con al menos un corte | 435.689 / 80.697 (27 columnas) |
+| Filas por corte | 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 · 40: 69.788 · 60: 51.266 |
+| Reparto de `resultado` (Blancas / Empate / Negras) | 39.540 / 4.905 / 36.252 (49,0 % / 6,1 % / 44,9 %) |
+| Partidas de torneo | 6.220 |
+| Partidas sin historial de matchup | 1.620 (las primeras 30 de cada uno de los 54 grupos) |
+| Cobertura del rating previo (blancas / negras / algún lado / ambos) | 49,8 % / 49,9 % / 99,7 % / 5 partidas |
+| Rango de fechas | 2013-01-06 a 2026-09-01 |
+| Ritmos (bullet / blitz / rapid) | 21.916 / 45.461 / 13.320 |
+| Jugadores en común con la lista local del 22/09 | 97 de 100 |
+
+**Anomalías de esta corrida, a documentar en la Fase 2:**
+
+- 56 partidas tienen `Date` = 2026-09-01 aunque la ventana termina en `2026-08`. Empezaron
+  entre las 00:00 y las 02:00 UTC del 1/09: el archivo mensual de Chess.com no corta por
+  mes UTC. No es un error del filtro.
+- `gasto_reciente_*` es NaN en exactamente las 80.697 filas del corte 0 (todavía no hubo
+  jugadas) y en ninguna otra.
+- En Linux, el contenedor de Airflow (uid 50000) necesita permiso de escritura sobre
+  `config/` para guardar la lista en la primera corrida
+  (`setfacl -m u:50000:rwx config`). Documentarlo en el README.
 
 ## Fase 2 · Revisión etapa por etapa
 
