@@ -155,6 +155,18 @@ class ChessPipelineTest(unittest.TestCase):
         self.assertFalse(df["EsTorneo"].iloc[0])
         self.assertEqual(df["EsTorneo"].dtype, bool)
 
+    def test_clean_output_does_not_depend_on_raw_paths_order(self) -> None:
+        # The DAG and the notebook pass the accounts in different orders: same file either way.
+        cleaner = DataCleaner(self.config)
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = {}
+            for user, game_id in [("a", "9"), ("b", "10")]:
+                paths[user] = Path(tmp) / f"{user}.json"
+                paths[user].write_text(json.dumps({"games": [self._minimal_game(f"https://www.chess.com/game/live/{game_id}")]}))
+            forward, _ = cleaner.clean(paths)
+            backward, _ = cleaner.clean(dict(reversed(paths.items())))
+        pd.testing.assert_frame_equal(forward, backward)
+
     def test_parse_result_maps_draw(self) -> None:
         cleaner = DataCleaner(self.config)
         df = pd.DataFrame({"Result": ["1-0", "0-1", "1/2-1/2"]})

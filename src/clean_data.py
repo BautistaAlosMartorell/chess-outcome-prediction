@@ -289,6 +289,9 @@ class DataCleaner:
             logger.warning("%d partidas válidas sin StartTime o EndTime (se conservan con NaT).", missing_times)
         logger.info("Partidas de torneo retenidas: %d (%.1f%%).", int(df["EsTorneo"].sum()), 100 * df["EsTorneo"].mean())
         df = self.normalize_termination(df)
+        # Row order would otherwise follow the order of raw_paths, which differs between the
+        # DAG (XCom) and the notebook (selection list): sorting makes both write the same file.
+        df = df.sort_values("GameUrl", kind="stable").reset_index(drop=True)
         logger.info(
             "Limpieza completa: %d registros descargados -> %d partidas válidas (%.1f%%).",
             raw_row_count,
