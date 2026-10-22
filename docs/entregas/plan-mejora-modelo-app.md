@@ -1,223 +1,155 @@
-# Plan de mejora del modelo final de la app
+# Plan de mejora del modelo de la app
 
-Estado al 22/10/2026. Documento de traspaso para continuar en otra sesión o con otro modelo.
-**Este documento propone trabajo; todavía no se reentrenó ni reemplazó el modelo.**
+Estado al 22/10/2026. Reemplaza la primera versión de este plan (queda en el historial
+de git); la evidencia sigue en [la auditoría](../auditorias/modelo-app-2026-10-22.md) y
+[el avance](../auditorias/avance-mejora-modelo-app-2026-10-22.md).
 
-**Avance posterior:** ya se preservó el artefacto, se fijó el protocolo y se ejecutaron
-un piloto de cobertura sin red y referencias iniciales de diagnóstico. Leer primero
-el [punto de continuación y resultados](../auditorias/avance-mejora-modelo-app-2026-10-22.md).
-El modelo de producción sigue intacto; las referencias no son artefactos de la app.
+**Objetivo:** que la probabilidad que muestra la app responda bien al nivel de los dos
+jugadores, sin romper lo que ya funciona en vivo. Se trabaja **en una rama aparte** desde
+después de la Entrega 3 (28/10) o en paralelo sin tocar `main`; la decisión de promover
+se toma **a más tardar el 31/10** para llegar a la Entrega 4 (04/11) con la app integrada
+y tiempo para las visualizaciones.
 
-## Objetivo y alcance
+La Entrega 3 se presenta con el modelo actual. Si este plan mejora el modelo, en la
+Entrega 4 se muestra como la corrección posterior, con el antes y el después: la consigna
+dice que el modelo de la Entrega 3 es el que usa la app, así que el cambio se declara.
 
-Mejorar las probabilidades de resultado que muestra la app antes de empezar y durante
-la partida, especialmente la respuesta a la diferencia de nivel entre jugadores.
-Conservar la reconstrucción temporal del historial y verificar la misma entrada en
-entrenamiento y API. La duración restante es secundaria: medirla y evitar regresiones,
-sin convertir su ajuste en requisito previo para resolver las probabilidades.
+## Qué se sabe
 
-No corregir porcentajes a mano, no introducir reglas para Hikaru y no confundir
-puntuación esperada (`P(victoria) + 0,5 P(tablas)`) con probabilidad de ganar.
+| Hallazgo | Número | Consecuencia |
+|---|---|---|
+| Partidas de train con rating previo de los dos lados | 185 / 80.314 (0,23 %) | El modelo casi nunca vio una diferencia de rating real |
+| Con ratings de rivales que ya están en los JSON descargados | 33.496 / 80.314 (41,7 %) | La mayor parte del arreglo no necesita red |
+| En la app, la diferencia de rating de −200 a +200 | Baja P(gana blancas) | Inversión visible en la demo |
+| Referencia logística de rating, solo cuentas propias → con rivales | 0,892 → 0,868 de log-loss CV (−0,024 ± 0,006, mejora en 5/5 folds) | Hay señal; falta probarla en el bosque y en vivo |
+| Antigüedad del rating de un rival | Mediana < 1 día; p95 de 692 días (train) | Hace falta la antigüedad como columna |
+| Dama ganada | +9,02 / +10,34 puntos frente a >15 exigidos | Fallo conocido; no es objetivo de este plan |
 
-## Leer antes de continuar
+Por qué pasa: el rating que trae una partida es el posterior. El previo de una cuenta se
+reconstruye con sus cierres anteriores, y sólo se descargaron los archivos de las 120
+cuentas, no los de sus rivales. Pero cada partida descargada también trae el rating del
+rival al terminar: es una observación del rating del rival, que hoy se descarta.
 
-1. `AGENTS.md`, `README.md` y las skills `skills/pipeline-datos/SKILL.md`,
-   `skills/entregas-integrador/SKILL.md` y `skills/git-workflow/SKILL.md`.
-2. [Auditoría y evidencia](../auditorias/modelo-app-2026-10-22.md).
-3. [Estado de Entrega 3 y validación previa](plan-entrega-3.md).
-4. `src/predict.py`, `src/history_transformer.py`, `src/rating_history.py`,
-   `src/model_validation.py`, `api/chesscom.py`, `api/main.py` y notebook 04.
+## Qué cambia respecto del plan anterior
 
-No es necesario repetir la auditoría para empezar a diseñar la corrección. Repetirla
-si cambiaron el artefacto o los datos, o para evaluar el candidato final.
+| Plan anterior | Ahora | Por qué |
+|---|---|---|
+| Descargar rivales a un salto, con piloto estratificado | **Fuera**, salvo que la fase 1 deje una banda sin cobertura | Los JSON existentes ya dan 41,7 %; descargar cambia el dataset a días de la Entrega 4 |
+| Evaluación temporal nueva, reservada | **Fuera** | Requiere bajar meses nuevos. Se elige sólo por CV con los mismos folds del 04 y el test se sigue declarando reusado |
+| Banderas de procedencia (propio/incidental) como columnas | **No entran al modelo** | En la app los dos ratings salen de archivos propios: la bandera sería constante en uso y el modelo aprendería algo que nunca va a ver. Se usa la antigüedad, que la app sí calcula |
+| Brier, calibración por subgrupo, controles ±800, tolerancias de promoción múltiples | **Fuera** | No lo pide la consigna; se usan la métrica y la regla del 04 |
+| Ablación de pausas y sesión | **Se mantiene**, como una sola variante | Barata en el mismo arnés y la auditoría la marcó |
+| Reentrenar primero, agregar diferencia después | **Se mantiene** | Aísla qué parte de la mejora viene de los datos y cuál de las columnas |
 
-## Estado que recibe la próxima sesión
+## Reglas
 
-- Rama observada: `feat/actualizar-modelado-120-cuentas`. Revisar `git status` antes de
-  editar: puede haber trabajo nuevo del usuario. No cambiar ni descartar cambios ajenos.
-- Se agregaron, sin commit, `src/audit_predictions.py`, `api/audit_predictions.py`,
-  `docs/auditorias/modelo-app-2026-10-22.md` y este plan. No hubo push ni PR.
-- Artefacto local: `models/modelo_en_vivo.joblib`, random forest, 40 columnas,
-  entrenado hasta `2026-07-04T01:29:25+00:00`, rango declarado 100–3403.
-  SHA-256: `25051ff7bd92a11b8911c69ee0fbf0152a780b84ddf5b688e895a31d45cebe8d`.
-- El pipeline oficial y la lista congelada de 120 cuentas permanecen intactos.
-- El servidor de la app observado corre desde otro worktree temporal, no desde este
-  directorio. Su código relevante coincidía y su modelo era un enlace al artefacto de
-  este repo. No asumir que editar acá recarga ese proceso; verificar cwd/configuración
-  al integrar. No depender de que ese worktree siga existiendo en otra sesión.
+- Mismo arnés que el 04: `temporal_game_folds` de `src/model_validation.py`, cinco folds
+  temporales por partida, semilla 42, log-loss como métrica y la regla del 04: una
+  variante gana si mejora el log-loss global por más que el desvío de las diferencias
+  pareadas **y no empeora el corte 0** por más que su desvío.
+- Todo dentro del Pipeline: los ratings de rivales se derivan en `PlayerHistoryTransformer`,
+  con cierres estrictamente anteriores al inicio. Nada se calcula sobre el dataset entero.
+- El test del 04 no decide nada. Se mira una vez, con la variante ya elegida, y se dice que
+  el período ya estaba usado.
+- No se toca el dataset oficial, `config/jugadores_seleccionados.yaml`, el DAG ni
+  `download.until_month`. No se baja el umbral del test de dama.
+- `main` y el notebook 04 no cambian hasta que una variante se promueva.
 
-Hallazgos comprobados:
+## Fases
 
-- Sólo **185/80.314 partidas de train (0,23 %)** tienen ambos ratings previos; en el
-  período posterior son **85/20.080**. La app intenta consultar ambos historiales.
-  Hay una diferencia de distribución de entradas y evidencia insuficiente para validar
-  diferencias de ELO por banda. Ampliar cuentas élite no resuelve por sí solo esto.
-- La app transmite las probabilidades del modelo correctamente. Casos confirmados en
-  el servidor: 733 contra 1358 recibe 44,89 % de victoria de blancas; 108 contra 2686,
-  34,41 %. La auditoría también muestra 2044 contra 2744 con 45,02 %.
-- En controles iniciales de igual ritmo/posición, pasar de −200 a +200 de diferencia
-  de rating reduce la probabilidad de blancas para medias de 2000, 2800 y 3200.
-  Ocurre dentro del rango del modelo, no sólo con Hikaru fuera del máximo.
-- Un minuto adicional de pausa de blancas cambia más de cinco puntos la predicción
-  en 6,40 % de los casos disponibles. No prueba que quitar pausas mejore el modelo.
-- Los promedios por nivel son razonables, pero no validan los enfrentamientos entre
-  niveles. Buena calibración agregada puede ocultar errores que se compensan.
-- Suite ejecutada: 86 pruebas; una falla en dos subcasos ya conocidos, por sensibilidad
-  insuficiente a ganar una dama (+9,02/+10,34 puntos, contrato >15). No bajar el umbral.
+### 0 · Línea base reproducible (medio día)
 
-## Secuencia de implementación
+Rama `feat/ratings-de-rivales` desde `main` con el PR #32 mergeado. Script
+`src/experiment_rival_ratings.py` que arma el bosque final del 04 (40 columnas,
+`max_features=0.3`, `min_samples_leaf=20`) y lo evalúa en los cinco folds.
 
-### 1. Congelar la comparación antes de buscar un modelo mejor
+Salida: log-loss por fold, global y en el corte 0, más la grilla de control de rating
+(ver fase 3). **Criterio para seguir:** reproduce 0,830 ± 0,023 de la grilla del 04
+(mismo desvío de sklearn) con diferencia menor a 0,001. Si no, se arregla el arnés
+antes de comparar nada.
 
-- Preservar una copia local del artefacto actual y su hash; no versionar modelos/datos.
-- Registrar hashes de datos, semilla, versiones y particiones. Mantener la evaluación
-  histórica para comparar versiones, declarándola exploratoria y ya observada.
-- Definir una evaluación temporal nueva antes de seleccionar candidatos. Las partidas
-  de esta auditoría y las ya inspeccionadas no son un holdout nuevo. Si se usan meses
-  posteriores, inventariar y excluir de la evaluación ciega los casos ya examinados.
-- Elegir por CV temporal por partida. Exigir separación de partidas y disponibilidad
-  de train al inicio de validación; excluir partidas que cruzan los límites temporales.
-- Congelar tablas de resultados por ritmo, nivel, brecha de rating, cobertura de uno/dos
-  historiales y ply. Comparar los mismos juegos al medir avance entre cortes.
+### 1 · Ratings de rivales dentro del historial (uno o dos días)
 
-Entregable: protocolo breve, particiones reproducibles y métricas del artefacto vigente
-en esas mismas particiones. No seleccionar cambios por su desempeño en el test final.
+- En `src/rating_history.py`, una función que, además de las partidas propias, devuelva
+  una observación **de sólo rating** del rival en cada partida descargada (rating al
+  cerrar, ritmo, cierre, inicio, `GameUrl`). Deduplicar por cuenta y `GameUrl`.
+- En `player_history_payloads` y en `_timeline`, el rating previo y su tendencia consultan
+  todas las observaciones del mismo ritmo; **forma, racha, sesión y estilo siguen usando
+  sólo partidas propias**, porque de un rival se ve una partida suelta, no su secuencia.
+- Columna nueva por color: `antiguedad_rating_dias` (inicio actual menos el cierre de la
+  observación usada). En la app se calcula igual desde `api/chesscom.historial`.
+- Tests nuevos en `tests/test_history_transformer.py`: la propia partida objetivo aparece
+  como observación del rival y **no** se usa (cierra después del inicio); un cierre
+  simultáneo no se usa; una aparición incidental no cambia la forma; duplicados entre
+  archivos se cuentan una vez; antigüedad correcta.
 
-### 2. Corregir cobertura y comparabilidad del historial
+**Criterio para seguir:** el transformer reproduce la cobertura del piloto
+(33.496 / 80.314 en train con los dos ratings) y pasan todos los tests salvo el de dama.
 
-Esta etapa precede a una búsqueda amplia de hiperparámetros.
+### 2 · Columnas de nivel relativo (medio día)
 
-- Medir primero, sin red, cuánto aumentaría la cobertura al usar apariciones previas de
-  los rivales en los JSON existentes. Deduplicar por cuenta/partida. Son observaciones
-  parciales: no tratarlas como las últimas diez partidas completas de esa cuenta.
-- Diseñar un enriquecimiento **acotado a un salto de rivales** de las partidas objetivo.
-  Consultar archivos mensuales anteriores a sus inicios, con presupuesto configurable
-  de cuentas, meses y solicitudes. No descargar recursivamente rivales de rivales.
-- Hacer un piloto estratificado por seis niveles, tres ritmos donde existan y brechas
-  absolutas 0–100, 100–200, 200–400 y ≥400. Verificar costo y cobertura antes de ampliar.
-  Procurar al menos 100 partidas con dos ratings en cada celda principal disponible;
-  es un mínimo operativo de diagnóstico, no garantía estadística. Informar celdas vacías.
-- Usar caché idempotente, requests en serie, User-Agent, reintentos y escritura atómica.
-  Guardar el enriquecimiento separado de la muestra oficial. No borrar ni regenerar
-  `config/jugadores_seleccionados.yaml`; no cambiar en silencio `download.until_month`.
-- Para cada cuenta, usar sólo cierres estrictamente anteriores al inicio, del mismo
-  ritmo para rating/forma. Nunca rellenar con WhiteElo/BlackElo del juego objetivo.
-- Distinguir rating ausente, historial parcial, ventana de diez resultados suficiente
-  y pausa desconocida. Una ausencia en un historial truncado no demuestra inactividad.
-- Unificar la política de ventana/contexto entre entrenamiento y `api/chesscom.py`.
-  La app consulta hasta tres archivos activos recientes: para partidas antiguas puede
-  no obtener observaciones anteriores al inicio. Elegir consulta por fecha del objetivo
-  o declarar el contexto faltante; evitar una pausa ficticia por ventana incompleta.
-- Revisar `partidas_sesion`: truncar el historial también trunca el conteo de la sesión.
+- `diferencia_elo_previa` sólo si se conocen los dos ratings; si falta uno, queda vacía
+  y el imputador agrega su indicador. No se resta un rating imputado.
+- `elo_promedio_previo` con los ratings conocidos.
 
-Archivos probables: módulo nuevo de enriquecimiento, configuración separada,
-`src/rating_history.py`, `src/history_transformer.py`, `api/chesscom.py` y tests.
-Mantener observaciones crudas separadas de features derivadas por el Pipeline.
+### 3 · Comparación en los mismos folds (un día, contando corridas)
 
-Entregable: cobertura antes/después por banda/ritmo/brecha, procedencia y fallos
-documentados. Si la cobertura sigue siendo insuficiente, reportarlo; no afirmar que
-el modelo quedó validado para ese uso ni pasar directamente a una grilla grande.
+| Variante | Qué tiene |
+|---|---|
+| A | Bosque actual (línea base de la fase 0) |
+| B | A + ratings de rivales y antigüedad |
+| C | B + diferencia y promedio de rating |
+| D | La mejor entre B y C, sin `minutos_desde_anterior` ni `partidas_sesion` |
 
-### 3. Comparar candidatos pequeños y explicables
+Mismos hiperparámetros del 04: no se abre una grilla nueva salvo que la variante elegida
+cambie de familia. Para cada variante: log-loss global y en el corte 0, diferencia pareada
+contra A con su desvío, y la grilla de control:
 
-Hacer las transformaciones de features dentro del Pipeline y compartirlas con la app.
+- Posición inicial, ambos ratings conocidos, antigüedad de un día, forma vacía.
+- Rating promedio 1200, 1800, 2400 y 3000; diferencia −400, −200, 0, +200 y +400; los tres
+  ritmos donde haya datos.
+- **Se exige que P(gana blancas) no baje al subir la diferencia.** Se informan las
+  inversiones; no se fija un porcentaje esperado.
 
-1. Referencia de tres resultados basada en diferencia y nivel medio de rating, color y
-   ritmo. Una logística multinomial es un primer candidato; aprender tablas explícitamente.
-2. Modelo actual reentrenado con datos enriquecidos, sin otros cambios: aislar el aporte
-   de la cobertura de datos antes de atribuir mejoras a nuevas features.
-3. Añadir diferencia de ELO, promedio y banderas de disponibilidad. Calcular diferencia
-   sólo si se conocen ambos; no restar dos imputaciones y presentarlas como observadas.
-4. Comparar forma mínima (resultados recientes) contra forma completa; luego pausas y
-   sesión como grupo separado. Reentrenar cada variante en los mismos folds. La prueba
-   previa de hacer columnas faltantes no sustituye esta ablación.
-5. Probar acotar/transformar pausas y marcar cobertura incompleta sólo si el diagnóstico
-   lo justifica. Suprimirlas si no aportan mejora robusta fuera de muestra.
+**Decisión (a más tardar el 31/10):** se promueve la mejor variante que gane a A con la
+regla del 04 y pase la grilla de control. Si ninguna gana, se queda A y se documenta.
 
-Priorizar una sola ruta de predicción que sirva antes y durante. Si un modelo inicial
-separado mejora claramente, evaluar una arquitectura que incorpore contexto inicial y
-features en vivo sin un salto artificial en el primer ply. No introducir una mezcla de
-probabilidades o pesos arbitrarios sólo para corregir los ejemplos de esta auditoría.
+### 4a · Si se promueve (uno o dos días)
 
-Archivos probables: transformador compartido, `src/predict.py`, notebook 04 y tests.
-Preservar nombres/orden de clases y contrato de `predecir`. La calibración, si se prueba,
-se ajusta en particiones temporales de entrenamiento, nunca sobre el test final.
+- Notebook 04: la variante entra como un grupo más en §7 (columnas con y sin) y en el
+  modelo final; Restart & Run All y salidas guardadas. Se regenera `models/modelo_en_vivo.joblib`
+  con una copia del anterior en `models/baselines/`.
+- `api/main.py`: que la app pase la antigüedad. Test de paridad entre el camino de
+  entrenamiento y la API para una partida real.
+- `tests/test_model_realism.py`: agregar la grilla de control como prueba.
+- Actualizar en el mismo commit README, `plan-entrega-3.md`, `plan-coherencia.md`,
+  CHANGELOG, la skill de entregas y el texto de la app ("Qué mira el modelo").
 
-### 4. Validar comportamiento y calidad probabilística
+### 4b · Si no se promueve (medio día)
 
-- Métrica principal: log-loss pareada contra la versión anterior en los mismos juegos
-  y cortes. Complementar con Brier y calibración por clase y brecha; mostrar n por celda.
-- Reportar variación entre folds y, donde se estimen intervalos, considerar repetición
-  de cuentas y dependencia temporal. No declarar significancia por 21 ejemplos elegidos.
-- Control inicial con rating medio fijo, diferencias −800/−400/−200/0/+200/+400/+800,
-  ambos colores y ritmos. Mantener ratings individuales dentro de rangos soportados.
-  Exigir orden coherente en una referencia sin forma; registrar inversiones del candidato.
-- Controlar que no se apruebe una respuesta casi plana por ser apenas monótona: contrastar
-  magnitud con tasas observadas y con la referencia, sin imponer porcentajes inventados.
-- Separar controles con forma faltante de contextos completos reales. Variar pausas sin
-  cruzar el límite de sesión, o recalcular sesión de forma coherente si se cruza.
-- Mantener casos de prueba de datos futuros, simultáneos, solapados, rating posterior,
-  duplicados, historial parcial y paridad entrenamiento/API. Cada merge lleva assert.
-- Preservar el contrato de dama ganada. Verificar relojes, posiciones iniciales y que
-  el ganador real recibe mayor probabilidad cerca del final **en promedio**.
-- Medir duración con MAE/sesgo por corte/nivel/ritmo y población comparable. No presentar
-  una disminución del error sobre otra población como mejora dentro de una partida.
+Se documenta en el 04 como columna probada que no sirvió, con el número, y en la app se
+avisa cuando el modelo no tiene el rating de uno de los dos lados.
 
-Criterio para promover: mejora de log-loss reproducible en CV, sin deterioro sistemático
-de la predicción inicial ni en vivo; respuesta de ELO coherente y respaldada por grupos
-con cobertura suficiente; calibración sin deterioros materiales por subgrupo. Fijar las
-tolerancias numéricas antes de inspeccionar el nuevo test. Si hay un intercambio entre
-métricas, documentar el costo y no promover automáticamente.
+## Riesgos que hay que mirar
 
-### 5. Integrar y cerrar
+- **Ratings viejos:** un rival observado hace dos años no informa su nivel actual. La
+  antigüedad entra como columna; si el bosque no la aprovecha, se prueba descartar
+  observaciones de más de 30 días (ya medido en la referencia: 0,874 frente a 0,868).
+- **Partidas antiguas en la app:** la app baja hasta tres archivos mensuales recientes;
+  al analizar una partida vieja puede no haber observaciones previas al inicio. Se declara
+  en la interfaz como contexto faltante.
+- **Tiempo de corrida:** el 04 tarda 37 minutos; cada variante del arnés, una fracción.
+  No se corre el notebook entero hasta tener la variante elegida.
 
-- Ejecutar notebook 04 con Restart & Run All; guardar outputs en español y metadata del
-  artefacto: versión de features, rango, cobertura, fecha, datos y métricas.
-- Hacer que la API valide compatibilidad del artefacto y exponga metadata pertinente.
-  Revisar el aviso de rango de la interfaz: el rango individual no detecta brechas o
-  combinaciones no representadas. Comunicar falta de contexto cuando ayude al usuario.
-- Repetir auditoría poblacional, muestra de app y controles de comportamiento, usando
-  snapshots para reproducir. Conservar los casos auditados como regresiones, no como test
-  ciego. Verificar el servidor que usa realmente el navegador y su modelo cargado.
-- Correr la suite completa; documentar cualquier fallo restante. Actualizar README,
-  mapa de Entrega 3 e informe de auditoría. No declarar corregido lo que no se verificó.
-- Mantener una copia local anterior para volver atrás. No versionar datos/modelos.
-  Pedir confirmación antes de push, PR y merge, según las reglas del repo.
+## Fuera de este plan, pero en la Entrega 4
 
-## Orden recomendado si queda poco tiempo
+La Entrega 4 también pide **visualizaciones que comuniquen los hallazgos**, no sólo la app.
+Reservar al menos dos días para eso; este plan no las cubre.
 
-Primero cobertura y piloto; después referencia simple y diferencia de rating; luego
-ablación de pausas; finalmente reentrenamiento completo e integración. Evitar una grilla
-grande, motores de ajedrez o nuevas features de posición antes de resolver las entradas.
-Si sólo alcanza para el diagnóstico/piloto, dejar números y limitaciones, sin publicar
-una supuesta corrección ni reemplazar el artefacto por una regla improvisada.
+## Para retomar en otra conversación
 
-## Artefactos locales y comandos ya disponibles
-
-Los archivos de `/tmp` pueden desaparecer entre sesiones; el informe versionable
-conserva los hallazgos. Los scripts permiten regenerar lo necesario:
-
-```bash
-.venv/bin/python -m src.audit_predictions --output /tmp/auditoria-probabilidades.json
-.venv/bin/python -m api.audit_predictions --snapshot /tmp/auditoria-app-fuentes.json --output /tmp/auditoria-app.json
-.venv/bin/python -m api.audit_predictions --active-accounts --snapshot /tmp/auditoria-app-activos-fuentes.json --output /tmp/auditoria-app-activos.json
-.venv/bin/python -m unittest discover -s tests
-```
-
-Si existen snapshots, la auditoría de la app los reproduce sin red; si no, consulta
-Chess.com y puede obtener una muestra diferente. Los JSON incluyen curvas de control,
-contextos previos y métricas; los snapshots contienen respuestas públicas originales.
-También quedó `/tmp/auditoria-api-servidor.json` con tres verificaciones del servidor.
-
-## Instrucción breve para retomar
-
-> Leé AGENTS.md, las skills aplicables, docs/entregas/plan-mejora-modelo-app.md y
-> docs/auditorias/modelo-app-2026-10-22.md y
-> docs/auditorias/avance-mejora-modelo-app-2026-10-22.md. Continuá desde las próximas
-> acciones del avance, sin repetir el piloto sin red, respetando el estado real de git.
-> La auditoría ya confirmó falta de cobertura
-> de ambos ratings, probabilidades poco sensibles o invertidas ante diferencias de ELO
-> y sensibilidad a pausas. No reentrenes a ciegas ni fuerces porcentajes. Preservá el
-> artefacto actual, diseñá una evaluación temporal no contaminada y documentá cada
-> etapa. Antes de reemplazar el modelo final, verificá mejoras fuera de muestra y la
-> misma ruta de predicción en la app. No hagas push, PR ni merge sin confirmación.
+> Leé AGENTS.md, las skills de `skills/` y `docs/entregas/plan-mejora-modelo-app.md`.
+> Empezá por la fase 0 en una rama `feat/ratings-de-rivales` desde `main`. Seguí las
+> reglas del plan: mismos folds y regla del 04, todo dentro del Pipeline, sin tocar
+> el dataset oficial ni el notebook 04 hasta decidir en la fase 3. Pedí confirmación
+> antes de push, PR y merge.
