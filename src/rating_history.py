@@ -95,13 +95,22 @@ def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
     return history.sort_values(["username", "time_class", "end_time", "GameUrl"], kind="stable").reset_index(drop=True)
 
 
-def reconstruct_prior_ratings(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
+def reconstruct_prior_ratings(
+    raw_paths: Mapping[str, Path], start_times: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Rating previo de blancas y negras por ``GameUrl`` (NaN donde no hay historial).
 
     Devuelve una fila por partida con al menos un lado reconstruible y las columnas
     ``elo_blancas_previo`` y ``elo_negras_previo``. Si los dos jugadores son cuentas
-    seleccionadas, cada lado sale del historial de su propia cuenta.
+    seleccionadas, cada lado sale del historial de su propia cuenta. Para modelado,
+    pasar ``start_times``: excluye cierres iguales o posteriores al inicio actual.
+    Sin horarios conserva el diagnóstico legado de cierre anterior, que no garantiza
+    disponibilidad al inicio y no debe alimentar el modelo.
     """
+    if start_times is not None:
+        return _history_features_at_start(raw_paths, start_times, ["elo_blancas_previo", "elo_negras_previo"])
+    # Legacy diagnostic: previous closure, without a known start. Modeling must pass
+    # start_times to exclude overlapping games and equal timestamps.
     history = own_game_history(raw_paths)
     history["rating_previo"] = history.groupby(["username", "time_class"])["rating_posterior"].shift()
     known = history.dropna(subset=["rating_previo"])
@@ -165,49 +174,35 @@ def reconstruct_recent_form(raw_paths: Mapping[str, Path], start_times: pd.DataF
     - ``derrotas_por_tiempo``: qué fracción perdió por quedarse sin reloj.
     - ``reloj_final``: con qué fracción del tiempo base suele terminar (bajo = juega apurado).
 
-    Todo se calcula con ``shift()`` sobre partidas ordenadas por cierre, así que la
-    partida actual nunca entra en su propia fila. Sin historial suficiente queda NaN, no 0.
+    Se consulta el historial con ``EndTime < StartTime`` mediante el mismo transformador
+    del Pipeline. Se excluyen cierres simultáneos, partidas solapadas y futuras.
+    Sin historial suficiente queda NaN, no 0.
     """
+    columns = [f"{column}_{side}" for column in FORM_COLUMNS + STYLE_COLUMNS for side in ("blancas", "negras")]
+    return _history_features_at_start(raw_paths, start_times, columns)
+
+
+def _history_features_at_start(raw_paths, start_times, columns):
+    """Compatibilidad para el EDA: el mismo transformador causal que usa el modelo."""
+    from src.history_transformer import PlayerHistoryTransformer, attach_player_histories, player_history_payloads
+
     history = own_game_history(raw_paths)
-    per_class = history.groupby(["username", "time_class"])
-    previous_score = per_class["puntaje"].shift()
-    history["forma_ultimas10"] = previous_score.groupby([history["username"], history["time_class"]]).transform(
-        lambda scores: scores.rolling(FORM_WINDOW, min_periods=FORM_WINDOW).mean()
-    )
-    streak_after = per_class["puntaje"].transform(_streak_after_each_game)
-    history["racha"] = streak_after.groupby([history["username"], history["time_class"]]).shift()
-    history["tendencia_rating"] = per_class["rating_posterior"].shift() - per_class["rating_posterior"].shift(FORM_WINDOW + 1)
-    for column, source in (("derrotas_por_tiempo", "por_tiempo"), ("reloj_final", "reloj_final_frac")):
-        previous = per_class[source].shift().astype("float64")
-        history[column] = previous.groupby([history["username"], history["time_class"]]).transform(
-            lambda values: values.rolling(STYLE_WINDOW, min_periods=FORM_WINDOW).mean()
-        )
-
-    # Sessions mix time classes: order each account by close time across all of them.
-    starts = start_times[["GameUrl", "StartTime"]].drop_duplicates("GameUrl")
-    start_seconds = (starts["StartTime"] - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(seconds=1)
-    start_by_url = pd.Series(start_seconds.to_numpy(), index=starts["GameUrl"])
-    by_account = history.sort_values(["username", "end_time", "GameUrl"], kind="stable")
-    # Games outside the tidy table have no StartTime: their close time is the safe stand-in.
-    start = by_account["GameUrl"].map(start_by_url).fillna(by_account["end_time"])
-    previous_end = by_account.groupby("username")["end_time"].shift()
-    gap_minutes = (start - previous_end) / 60
-    new_session = gap_minutes.isna() | (gap_minutes >= SESSION_GAP_MINUTES)
-    session_id = new_session.groupby(by_account["username"]).cumsum()
-    history["minutos_desde_anterior"] = gap_minutes
-    history["partidas_sesion"] = by_account.groupby([by_account["username"], session_id]).cumcount()
-
-    # Same pivot as reconstruct_prior_ratings: one row per (GameUrl, color) before pivoting.
-    per_side = history.drop_duplicates(["GameUrl", "color"])
-    form = per_side.pivot(index="GameUrl", columns="color", values=FORM_COLUMNS + STYLE_COLUMNS)
-    form.columns = [f"{column}_{'blancas' if color == 'white' else 'negras'}" for column, color in form.columns]
-    ordered = [f"{column}_{suffix}" for column in FORM_COLUMNS + STYLE_COLUMNS for suffix in ("blancas", "negras")]
-    form = form.reindex(columns=ordered).reset_index()
-    logger.info(
-        "Forma reciente: %d partidas con historial de 10 previas de al menos un lado.",
-        int(form[["forma_ultimas10_blancas", "forma_ultimas10_negras"]].notna().any(axis=1).sum()),
-    )
-    return form
+    accounts = history.drop_duplicates(["GameUrl", "color"]).pivot(index="GameUrl", columns="color", values="username")
+    accounts = accounts.reindex(columns=["white", "black"]).rename(columns={"white": "White", "black": "Black"})
+    rhythm = history.drop_duplicates("GameUrl").set_index("GameUrl")["time_class"]
+    accounts["TimeClass"] = rhythm
+    starts = start_times.set_index("GameUrl")["StartTime"]
+    assert starts.index.is_unique, "Un inicio por partida"
+    accounts["StartTime"] = accounts.index.map(starts)
+    # Raw games excluded from the tidy table have no observed start. Their close is
+    # a conservative diagnostic fallback, never used as a modeled game.
+    ends = history.drop_duplicates("GameUrl").set_index("GameUrl")["end_time"]
+    accounts["StartTime"] = accounts["StartTime"].fillna(pd.Series(pd.to_datetime(accounts.index.map(ends), unit="s", utc=True), index=accounts.index))
+    payloads = player_history_payloads(raw_paths, start_times)
+    inputs = attach_player_histories(accounts, payloads)
+    features = PlayerHistoryTransformer(columns).fit_transform(inputs)
+    features.index.name = "GameUrl"
+    return features.reset_index()
 
 
 def add_recent_form(df: pd.DataFrame, form: pd.DataFrame) -> pd.DataFrame:

@@ -18,6 +18,7 @@ import chess.pgn
 import joblib
 import pandas as pd
 
+from src.history_transformer import HISTORY_INPUTS
 from src.live_features import game_cut_features
 from src.rating_history import FORM_COLUMNS, STYLE_COLUMNS
 
@@ -70,6 +71,15 @@ def model_frame(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return frame
 
 
+def model_input_frame(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Entrada del Pipeline con observaciones del historial, aún sin agregarlas."""
+    frame = model_frame(df, columns)
+    for column in ["TimeClass", *HISTORY_INPUTS]:
+        if column in df:
+            frame[column] = df[column]
+    return frame
+
+
 def cargar_modelo(path: Path | str = MODEL_PATH) -> dict[str, Any]:
     """Carga el artefacto que guarda el notebook 04 (pipelines y columnas)."""
     return joblib.load(path)
@@ -80,7 +90,11 @@ def predecir(pgn: str, contexto: Mapping[str, Any], modelo: Mapping[str, Any]) -
 
     ``contexto`` trae lo que se sabía antes de empezar: ``TimeClass``, ``tiempo_base_seg``
     e ``incremento_seg`` son obligatorios; el rating previo y la forma de cada lado, si se
-    conocen (lo que falta queda NaN, como el rival en entrenamiento). ``modelo`` es el
+    conocen (lo que falta queda NaN, como el rival en entrenamiento). Con el Pipeline
+    de historial, también acepta ``StartTime`` y ``historial_blancas/negras`` (tuplas de
+    observaciones de ``player_history_payloads``); el transformador deriva las columnas
+    al consultar ese inicio y excluye cierres simultáneos, solapados o futuros.
+    ``modelo`` es el
     artefacto del notebook 04: ``resultado`` (clasificador), ``columnas`` y, si está,
     ``plies_restantes`` (regresor).
 
@@ -97,10 +111,12 @@ def predecir(pgn: str, contexto: Mapping[str, Any], modelo: Mapping[str, Any]) -
     )
     frame = pd.DataFrame(rows)
     for key, value in contexto.items():
-        frame[key] = value
-    features = model_frame(frame, list(modelo["columnas"]))
-
+        frame[key] = [value] * len(frame) if key.startswith("historial_") else value
     classifier = modelo["resultado"]
+    has_history = "historial" in getattr(classifier, "named_steps", {})
+    prepare = model_input_frame if has_history else model_frame
+    features = prepare(frame, list(modelo["columnas"]))
+
     proba = classifier.predict_proba(features)
     classes = list(classifier.classes_)
     result = pd.DataFrame({"ply": frame["corte_ply"].to_numpy()})

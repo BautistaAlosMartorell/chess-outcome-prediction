@@ -7,6 +7,10 @@ import unittest
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
+
+from src.history_transformer import PlayerHistoryTransformer
 
 from src.model_validation import temporal_game_folds
 from src.predict import LIVE, PRE_GAME, RESULT_ORDER, model_frame, predecir
@@ -57,6 +61,22 @@ class PredecirTest(unittest.TestCase):
         np.testing.assert_allclose(result[RESULT_ORDER].sum(axis=1), 1)
         np.testing.assert_allclose(result.loc[0, RESULT_ORDER].to_numpy(dtype=float), [3 / 6, 1 / 6, 2 / 6])
         self.assertTrue((result["plies_restantes"] >= 1).all())  # a game in progress has at least one ply left
+
+    def test_predecir_passes_raw_history_through_the_saved_pipeline(self) -> None:
+        columns = ["elo_blancas_previo"]
+        history_step = PlayerHistoryTransformer(columns)
+        classifier = Pipeline([
+            ("historial", history_step),
+            ("modelo", DecisionTreeClassifier(max_depth=1, random_state=42)),
+        ])
+        classifier.fit(pd.DataFrame({"elo_blancas_previo": [1000., 2000.], "TimeClass": ["blitz"] * 2}),
+                       ["Gana Negras", "Gana Blancas"])
+        payload = ((600, "blitz", 2000, 1., False, .5, 300, "previous"),)
+        context = {**self.CONTEXT, "StartTime": pd.Timestamp(900, unit="s", tz="UTC"),
+                   "historial_blancas": payload, "elo_blancas_previo": 1000}
+        result = predecir(_pgn(MOVES), context, {"resultado": classifier, "columnas": columns})
+        self.assertTrue(result["Gana Blancas"].eq(1).all())
+        self.assertTrue(result["Empate"].eq(0).all())
 
     def test_model_frame_types_and_missing_columns(self) -> None:
         frame = model_frame(
