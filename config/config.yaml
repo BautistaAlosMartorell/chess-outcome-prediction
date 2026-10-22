@@ -47,8 +47,10 @@ elo:
 # negras (SAN). Taxonomía propia del equipo, NO el estándar ECO. La lista está
 # CONGELADA: son las 17 combinaciones más frecuentes de la corrida del 26/09/2026
 # (76.803 partidas; juntas cubren el 80,39 %, la menor tiene 760 partidas y ninguna
-# baja de 96 dentro de un mismo TimeClass). Lo demás cae en "otra". No se recalcula
-# por corrida: si cambiara, la categoría de una misma partida cambiaría con los datos.
+# baja de 96 dentro de un mismo TimeClass). Sobre la corrida oficial del 22/10/2026
+# (80.697 partidas) cubren el 79,71 %, la menor tiene 740 y ninguna baja de 46 por
+# TimeClass. Lo demás cae en "otra". No se recalcula por corrida: si cambiara, la
+# categoría de una misma partida cambiaría con los datos.
 matchup_apertura:
   categorias:
     - e4-e5

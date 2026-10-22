@@ -221,6 +221,8 @@ def build_cut_dataset(clean_df: pd.DataFrame, raw_paths: Iterable[Path], cuts: I
     assert (cut_df["plies_restantes"] > 0).all(), "Un corte no puede estar en o después del final"
     front = ["GameUrl", "corte_ply", "resultado", "plies_restantes"]
     cut_df = cut_df[front + [c for c in cut_df.columns if c not in front]]
+    # Same reason as the tidy table: the order must not depend on the order of raw_paths.
+    cut_df = cut_df.sort_values(["GameUrl", "corte_ply"], kind="stable").reset_index(drop=True)
     logger.info(
         "Dataset de cortes: %d filas de %d partidas; filas por corte: %s",
         len(cut_df), cut_df["GameUrl"].nunique(), cut_df["corte_ply"].value_counts().sort_index().to_dict(),

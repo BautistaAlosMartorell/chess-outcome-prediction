@@ -12,6 +12,9 @@ viva es `notebooks/01_data_ingestion_verification.ipynb` (y el pipeline reusable
 ## Principio: el repo guarda código, no datos
 
 `data/raw/` y `data/processed/` están vacíos en git (solo `.gitkeep`) y así se quedan.
+La excepción no está en `data/`: la lista de jugadores que define la muestra vive en
+`config/jugadores_seleccionados.yaml` y se versiona, porque si cada uno genera la suya cada
+uno termina con un dataset distinto.
 Cualquiera clona el repo, corre el notebook y obtiene los mismos archivos. Si un dato no
 se puede regenerar corriendo código, el pipeline está incompleto.
 

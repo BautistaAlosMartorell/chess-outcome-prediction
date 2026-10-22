@@ -1,18 +1,27 @@
-# Ajedrez online: ELO, apertura y ritmo como predictores del resultado
+# Ajedrez online: predicción del resultado antes y durante la partida
 
 Proyecto Integrador — Ciencia de Datos (UTN FRM, 5.º año, Ingeniería en Sistemas de
 Información, 2026).
 
 ## Pregunta de investigación
 
-¿Qué combinación de nivel de ELO, apertura jugada, modalidad de ritmo
-(bullet/blitz/rapid) y color de piezas predice mejor quién gana una partida de ajedrez
-online, y qué tan larga es esa partida?
+¿Qué tan bien se puede predecir quién gana una partida de ajedrez online, y cuánto le
+falta para terminar, **antes de que empiece y a medida que avanza**? Antes de empezar se
+conocen el nivel de los jugadores, el ritmo (bullet/blitz/rapid) y el color; durante la
+partida se suman la apertura, la posición en el tablero y los relojes.
 
-La unidad de análisis es una partida individual. El proyecto incluye el pipeline
-automatizado de ingeniería de datos —descarga, parseo, limpieza, validación, ingeniería
-de características y exportación— y el análisis exploratorio que contrasta hipótesis y
-define las variables candidatas para modelado.
+**Unidad de análisis: la partida en un momento dado** (partida × corte de plies). Hay dos
+tablas, una derivada de la otra:
+
+- `partidas_ajedrez_clean.parquet`: **una fila por partida** (tidy). Es la capa base de
+  la Entrega 1: describe la partida completa.
+- `partidas_cortes.parquet`: **una fila por (partida, corte)**, con la posición y los
+  relojes en los plies 0 (antes de mover), 10, 20, 30, 40 y 60. Es la tabla de modelado.
+  El corte 0 es la predicción pre-partida; los demás, la predicción en vivo.
+
+El proyecto incluye el pipeline automatizado de ingeniería de datos —descarga, parseo,
+limpieza, validación, ingeniería de características, exportación y tabla de cortes—, el
+análisis exploratorio que contrasta hipótesis antes y durante la partida, y el modelado.
 
 ## Fuente de datos
 
@@ -41,9 +50,10 @@ entregas siguientes basta con mover el mes o ponerlo en `null`.
 ### Selección automática de jugadores
 
 La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a descargar
-**una sola vez** y la deja congelada:
+**una sola vez** y la deja congelada en `config/jugadores_seleccionados.yaml`, que **se
+versiona en git**:
 
-1. **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
+1. **Primera corrida:** si no existe `config/jugadores_seleccionados.yaml`,
    arma tres pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
    ciertas bandas:
    - FM, CM y NM (`/pub/titled/{título}`) para `avanzado`;
@@ -65,9 +75,15 @@ La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a desca
 
 No hay cuentas iniciales elegidas a mano ni dependencia del Parquet de una corrida
 anterior. El archivo de selección también es el manifiesto auditable: incluye la política,
-los candidatos evaluados y los motivos de rechazo. Junto a él quedan los snapshots crudos
-de las listas por país y por título. Por qué hay tres pools y qué se midió para definirlos
-está en el doc del criterio de selección. Para volver a seleccionar hay que borrarlo a propósito.
+los candidatos evaluados y los motivos de rechazo. Los snapshots crudos de las listas por
+país y por título quedan en `data/raw/seleccion/` (regenerables, fuera de git). Por qué hay
+tres pools y qué se midió para definirlos está en el doc del criterio de selección. Para
+volver a seleccionar hay que borrarlo a propósito.
+
+**Por qué la lista está en `config/` y no en `data/`.** Hasta el 22/10/2026 vivía en
+`data/raw/seleccion/`, ignorada por git, y cada integrante terminó con su propia lista y
+su propio dataset (llegaron a convivir cifras de 80.145 y de 76.803 partidas). La lista es
+lo que define la muestra, como `until_month`: es configuración, no un dato regenerable.
 El detalle está en [`docs/entregas/criterio-seleccion-jugadores.md`](docs/entregas/criterio-seleccion-jugadores.md);
 la configuración, en `config/config.yaml` bajo `player_selection`.
 
@@ -75,15 +91,20 @@ la configuración, en `config/config.yaml` bajo `player_selection`.
 
 Chess.com entrega en cada objeto el rating del jugador **después** de que el resultado
 ajustó su puntaje Glicko, no un snapshot previo a la partida. A diferencia de Lichess
-(que expone el rating previo y el ajuste posterior por separado), esta API no permite
-aislar el rating estrictamente anterior sin reconstruir el historial cronológico
-completo de cada jugador.
+(que expone el rating previo y el ajuste posterior por separado), esta API no da el
+rating anterior a la partida.
 
 En consecuencia, `WhiteElo`, `BlackElo` y todo lo derivado de ellos (`diferencia_elo`,
-`elo_promedio`, `nivel_promedio`, `es_sorpresa`) contienen una fuga de
-información hacia `resultado`, de magnitud pequeña pero sistemática, concentrada
-justamente en las partidas de rating parejo. Se documenta como limitación conocida de
-la fuente para el modelado de Entrega 3, no se corrige con un parche improvisado.
+`elo_promedio`, `nivel_promedio`, `es_sorpresa`) contienen una fuga de información hacia
+`resultado`: el signo del cambio de rating coincide con el resultado en el 99,9 % de las
+partidas (notebook 02, sección 9). **No entran al modelo.**
+
+**Cómo se resolvió.** `src/rating_history.py` reconstruye el **rating previo**: el de cada
+cuenta seleccionada al cierre de su partida anterior del mismo ritmo, leído de su propio
+historial. Sólo se puede reconstruir el lado de la cuenta seleccionada (≈ 50 % de blancas y
+50 % de negras, al menos un lado en el 99,7 % de las partidas): del rival no se descargó el
+historial, así que ese lado queda NaN, sin imputar. Es la principal limitación de la
+predicción antes de la partida.
 
 ### Limitación de la muestra
 
@@ -102,28 +123,29 @@ no sobre "ajedrez online" en general.
 
 | # | Criterio | Aplicación |
 |---|---|---|
-| 1 | Datos tidy | El dataset final tiene una fila por partida y una columna por variable. |
-| 2 | Unidad alineada | La partida es exactamente la unidad sobre la que pregunta el proyecto. |
-| 3 | Algo modelable | `resultado` es el target de clasificación y `cantidad_jugadas`, el de regresión. |
+| 1 | Datos tidy | La tabla base tiene una fila por partida; la de cortes, una fila por (partida, corte). Las dos con una columna por variable. |
+| 2 | Unidad alineada | La pregunta es sobre la partida en un momento dado, y la tabla de cortes es exactamente eso. |
+| 3 | Algo modelable | `resultado` en cada corte es el target de clasificación y `plies_restantes`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida validada produjo 80.145 partidas limpias. |
-| 6 | Columnas informativas | Hay ratings, color, apertura, ritmo, tiempo, resultado, fecha y terminación. |
+| 5 | Volumen | La corrida oficial produjo 80.697 partidas y 435.689 filas de cortes. |
+| 6 | Columnas informativas | Hay rating previo, color, apertura, ritmo, relojes, material y posición en cada corte, resultado y fecha. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
 ## Estructura
 
 ```text
 config/config.yaml                         parámetros del pipeline y política de selección de jugadores
+config/jugadores_seleccionados.yaml        lista congelada de jugadores + manifiesto de la selección (versionada)
 data/raw/                                  JSON regenerables, ignorados por Git
-data/raw/seleccion/                        lista congelada de jugadores + snapshots de las listas públicas
+data/raw/seleccion/                        snapshots de las listas públicas usadas en la selección
 data/processed/                            Parquet, sample y resumen, ignorados por Git
 dags/pipeline_ajedrez_dag.py               DAG de Airflow: listar_jugadores (selección automática) → descarga (mapeada por cuenta) → limpieza → ingeniería de características → verificación → exportación → dataset de cortes
 docker-compose.yml                         stack de Airflow 3.3 (postgres, redis, api-server, scheduler, dag-processor, triggerer, worker)
 Dockerfile                                 imagen de Airflow con las dependencias del proyecto
 .env.example                               plantilla de variables de entorno para la stack
-notebooks/01_data_ingestion_verification.ipynb
-notebooks/02_eda_hipotesis.ipynb              EDA, cuatro hipótesis y selección de variables (congelado, ver abajo)
-notebooks/03_prediccion_en_vivo.ipynb         Entrega 3 (avance): predicción en vivo por cortes y matchup de apertura
+notebooks/01_data_ingestion_verification.ipynb     Entrega 1: pipeline narrado y verificación
+notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil y fugas, cuatro hipótesis antes de la partida (Parte A) y cuatro durante, sobre la tabla de cortes (Parte B), + anexo de matchmaking
+notebooks/03_prediccion_en_vivo.ipynb              Entrega 3 (exploración): curva por corte, desbalance de Empate y matchup de apertura
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
@@ -156,7 +178,7 @@ tests/test_live_features.py                pruebas del dataset en vivo (incluida
 | `Termination` | category | Motivo de finalización normalizado (resignation, time, checkmate, etc.), sin el username del ganador que trae el dato crudo de Chess.com. |
 | `Rated` | bool | Indica si la partida afectó el rating. |
 | `moves_text` | str | Jugadas en notación algebraica, sin comentarios de reloj. |
-| `TournamentUrl` | str | URL del torneo de Chess.com; nula si la partida no es de torneo (única columna con nulos, documentados). |
+| `TournamentUrl` | str | URL del torneo de Chess.com; nula si la partida no es de torneo (nulo estructural, documentado). |
 | `StartTime`, `EndTime` | datetime64 UTC | Inicio (headers `UTCDate` + `UTCTime`) y fin (`end_time` del JSON). Orden causal entre partidas del mismo día. |
 
 ### Features generadas
@@ -176,13 +198,31 @@ tests/test_live_features.py                pruebas del dataset en vivo (incluida
 | `n_previas_matchup`, `historial_suficiente` | Int32 / bool | Partidas del mismo matchup y ritmo terminadas antes de que empiece esta, y si llegan al mínimo (30). |
 | `tasa_blancas_hist`, `tasa_tablas_hist`, `tasa_negras_hist` | float | Tasas históricas de resultado de esas partidas previas; NaN si el historial es insuficiente (no se imputa). |
 
+### Tabla de cortes (`partidas_cortes.parquet`)
+
+Una fila por `(GameUrl, corte_ply)`. Cada partida se reproduce jugada a jugada con
+python-chess desde el PGN crudo (el único lugar con los relojes `%clk`), y en cada corte se
+guarda sólo lo que se veía en ese momento. Una partida aporta los cortes anteriores a su
+final. El contexto fijo (ritmo, torneo, matchup, rating previo) se une desde la tabla base
+por `GameUrl`.
+
+| Columna | Descripción |
+|---|---|
+| `corte_ply` | Plies jugados en el corte: 0, 10, 20, 30, 40 o 60. |
+| `resultado`, `plies_restantes` | Targets: resultado final y plies que faltan desde el corte. |
+| `material_*`, `balance_material`, `material_no_peon_frac` | Material de cada bando (peón 1, caballo/alfil 3, torre 5, dama 9), su diferencia y la fracción de material sin peones que queda. |
+| `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
+| `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte. |
+| `reloj_*_seg`, `reloj_frac_*`, `diferencia_reloj_seg` | Reloj restante de cada bando, en segundos y como fracción del tiempo base. |
+| `gasto_reciente_*_seg` | Segundos gastados en las últimas 5 jugadas propias. NaN en el corte 0 (todavía no hubo jugadas). |
+
 ## Cómo ejecutar
 
 ### Con Airflow (Docker) — es la forma en que se evalúa la entrega
 
 Requiere Docker con el plugin `compose`. El stack corre sobre **Apache Airflow 3.3**
 (la versión que dicta la cátedra). Un compañero que clona el repo no toca nada más que
-copiar el `.env`:
+copiar el `.env` (y, en Linux, dar un permiso; ver abajo):
 
 ```bash
 git clone <repo> && cd <repo>
@@ -190,6 +230,10 @@ cp .env.example .env                 # la primera vez; .env está en .gitignore
 docker compose up airflow-init       # migra la BD de metadatos (esquema 3.x) y crea el admin
 docker compose up -d                 # levanta postgres, redis, api-server, scheduler, dag-processor, triggerer y worker
 ```
+
+**En Linux**, los contenedores corren con el usuario `50000`, que necesita escribir en
+`config/` si alguna vez hay que volver a seleccionar jugadores:
+`setfacl -m u:50000:rwx config`. En Mac y Windows (Docker Desktop) no hace falta.
 
 Después:
 
@@ -229,17 +273,9 @@ python3 -m venv .venv
 ```
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
-pipeline completo con la misma lista congelada que el DAG y verifica el dataset. El
-análisis exploratorio de `notebooks/02_eda_hipotesis.ipynb` consume el Parquet que produce
-ese pipeline (76.803 partidas finales en la corrida vigente). Ambos notebooks deben ejecutarse con
-**Restart & Run All**.
-
-> **El notebook 02 está congelado como se entregó en la Entrega 2.** Se corrió sobre el
-> Parquet de 25 columnas. Desde la Entrega 3 el pipeline agrega `TournamentUrl`,
-> `EsTorneo`, `StartTime` y `EndTime` (y después el matchup de apertura y su historial: 35 columnas), así que **no se vuelve a correr**:
-> sus cifras de perfil ("25 columnas") dejarían de coincidir con lo defendido. El anexo
-> de matchmaking del final del notebook lee `tournament` directo del JSON crudo por el
-> mismo motivo. El trabajo nuevo va en notebooks nuevos.
+pipeline completo con la misma lista congelada que el DAG y verifica el dataset. Los
+notebooks 02 y 03 consumen lo que produce el DAG (las dos tablas de
+`data/processed/`). Todos deben ejecutarse con **Restart & Run All**, en ese orden.
 
 ### Tests
 
@@ -252,24 +288,26 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean.parquet`
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
+- `data/processed/partidas_cortes.parquet`
 
-Corrida validada el 22/09/2026 (DAG completo en Airflow, ventana congelada hasta agosto
+Corrida oficial del 22/10/2026 (DAG completo en Airflow, ventana congelada hasta agosto
 de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
 
-- 80.521 registros descargados.
-- 80.145 partidas finales.
-- 99,53% de retención.
-- 376 registros descartados por las reglas de deduplicación, alcance y calidad del
-  pipeline.
-- 0 nulos en el dataset final.
-- Las cinco bandas de ELO quedan entre 18,2 % y 21,8 % del dataset.
+- 81.094 registros descargados.
+- 80.697 partidas finales (99,51 % de retención; 397 descartadas por las reglas de
+  deduplicación, alcance y calidad del pipeline).
+- 35 columnas. Los únicos nulos son estructurales y están documentados: `TournamentUrl`
+  (partidas que no son de torneo) y las tres `tasa_*_hist` (1.620 partidas sin historial
+  suficiente del matchup).
+- Las cinco bandas de ELO quedan entre 18,4 % y 21,8 % del dataset.
+- Tabla de cortes: 435.689 filas (corte 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 ·
+  40: 69.788 · 60: 51.266).
 
 Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
-de Airflow. Con la lista de jugadores congelada y la ventana temporal congelada, volver a
-correrlo reproduce ese mismo dataset. La carpeta `data/raw/seleccion/` es la que fija la
-muestra: copiarla a otra máquina reproduce la selección exacta.
+de Airflow. Con la lista de jugadores versionada en `config/` y la ventana temporal
+congelada, volver a correrlo en cualquier máquina reproduce ese mismo dataset.
 
-### Casos límite observados en la corrida validada
+### Casos límite observados en la corrida oficial
 
 Casos encontrados inspeccionando el Parquet final directamente —no sólo el resumen— y
 documentados para que no se confundan con errores del pipeline durante el EDA:

@@ -5,8 +5,11 @@
 La selección corre **dentro del DAG**, en la primera tarea (`listar_jugadores`, en
 `dags/pipeline_ajedrez_dag.py`). La lógica vive en `src/player_selection.py`
 (`load_or_create_selection`). No depende de ninguna cuenta inicial ni del Parquet de
-una corrida anterior, y **se hace una sola vez**: el resultado queda congelado y todas las
-corridas siguientes descargan exactamente los mismos jugadores.
+una corrida anterior, y **se hace una sola vez**: el resultado queda congelado en
+`config/jugadores_seleccionados.yaml`, **versionado en git**, y todas las corridas
+siguientes, en cualquier máquina, descargan exactamente los mismos jugadores.
+
+La lista oficial es la de la corrida del 22/10/2026: 100 jugadores, 20 por banda.
 
 ## Problema que resuelve
 
@@ -24,7 +27,7 @@ Las versiones anteriores tenían dos problemas:
 ## Procedimiento
 
 ```text
-¿Existe data/raw/seleccion/jugadores_seleccionados.yaml?
+¿Existe config/jugadores_seleccionados.yaml?
         │
         ├── Sí  →  Se lee y se devuelve la misma lista (sin selección, sin red).
         │
@@ -106,7 +109,8 @@ Por eso ahora:
 ### Checkpoint: si se corta, retoma
 
 Después de cada validación (y cada 100 candidatos salteados), el avance se guarda en
-`data/raw/seleccion/jugadores_seleccionados.parcial.yaml`: candidatos consumidos por pool,
+`data/raw/seleccion/jugadores_seleccionados.parcial.yaml` (`player_selection.snapshot_dir`):
+candidatos consumidos por pool,
 seleccionados, evaluados y conteos de salteados. Si la tarea se corta (reintento de Airflow,
 worker caído, corte manual), la próxima corrida sigue desde ahí. Como el orden de cada pool
 es determinístico (snapshots + semilla), retomar da el mismo resultado que no haberse
@@ -138,7 +142,7 @@ derecha, para que un rating justo en el límite no pertenezca a dos bandas.
 La selección se hace **una vez** y se reusa. Es la misma idea que la ventana temporal
 congelada (`download.until_month`):
 
-- **Reproducibilidad:** todas las corridas en la misma instalación descargan los mismos
+- **Reproducibilidad:** todas las corridas, en cualquier máquina, descargan los mismos
   jugadores, y como la descarga es idempotente, reusan el bronce ya bajado. Sale el mismo
   dataset.
 - **Bronce append-only:** nunca queda un JSON crudo huérfano de una selección vieja. Además,
@@ -148,14 +152,20 @@ congelada (`download.until_month`):
   la arma sola.
 
 Para **volver a seleccionar** hay que borrar a propósito
-`data/raw/seleccion/jugadores_seleccionados.yaml`, y también el `.parcial.yaml` si
-existiera. Si además se borran los snapshots `country_*.json` / `titled_*.json`, se vuelven
+`config/jugadores_seleccionados.yaml` (y commitear la lista nueva), y también el
+`data/raw/seleccion/jugadores_seleccionados.parcial.yaml` si existiera. Si además se borran los snapshots `country_*.json` / `titled_*.json`, se vuelven
 a pedir las listas a la API.
 
-**Límite conocido:** las listas por país y los `/stats` son datos vivos de Chess.com. Otra
-instalación que corra la selección desde cero otro día puede obtener otros jugadores. Lo que
-se garantiza es que, una vez creada, la selección no cambia entre corridas. Para
-reproducir exactamente la muestra en otra máquina alcanza con copiar `data/raw/seleccion/`.
+**Por qué se versiona.** Las listas por país y los `/stats` son datos vivos de Chess.com:
+otra instalación que corra la selección desde cero otro día obtiene otros jugadores. Hasta
+el 22/10/2026 la lista vivía en `data/raw/seleccion/`, ignorada por git, y pasó exactamente
+eso: cada integrante tenía su propia lista y su propio dataset (llegaron a convivir cifras
+de 80.145 y 76.803 partidas en los documentos). Con la lista en `config/`, el que clona el
+repo descarga los mismos 100 jugadores sin seleccionar nada.
+
+**En Linux** el contenedor de Airflow (uid 50000) necesita permiso de escritura en
+`config/` para guardar la lista si alguna vez se vuelve a seleccionar:
+`setfacl -m u:50000:rwx config`.
 
 ## Tolerancia a bandas incompletas
 
@@ -177,9 +187,13 @@ Incluye:
 - los conteos de candidatos salteados en el pre-filtro, por motivo;
 - cada candidato validado, con su banda estimada, su mediana validada y el motivo de rechazo.
 
-## Qué debe validarse después
+## Resultado de la selección oficial (22/10/2026)
 
-Después de la primera corrida hay que medir la distribución final por ELO en el Parquet
-(`nivel_promedio`) y revisar duplicados y fallos por cuenta. Los umbrales de ingesta
-(`download.min_users_ok: 80`, `download.min_total_games`) y de calidad
-(`quality.min_final_games`) tienen que acompañar el tamaño real de la muestra.
+- 100 jugadores, 20 por banda, sin bandas incompletas.
+- 81.094 registros descargados → 80.697 partidas finales.
+- `nivel_promedio` (banda del promedio de los dos ratings de cada partida) queda entre
+  18,4 % (`avanzado`) y 21,8 % (`intermedio`) del dataset.
+- La selección tardó unos 30 minutos; 97 de los 100 jugadores coinciden con una selección
+  local anterior hecha con los mismos snapshots y la misma semilla. Los 3 distintos se
+  explican porque la banda estimada sale del rating actual (`/stats`), que cambia con el
+  tiempo.

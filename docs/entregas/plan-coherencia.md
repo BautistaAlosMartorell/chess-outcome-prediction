@@ -1,5 +1,13 @@
 # Plan de coherencia de todas las etapas
 
+> **Estado al 22/10/2026: hecho.** Corrida oficial verificada (Fase 0), hoja de datos
+> completa (Fase 1), todos los documentos y notebooks revisados (Fase 2) y búsqueda de
+> cifras viejas sin restos fuera de los registros con fecha (CHANGELOG, estado de la
+> skill de entregas y la explicación de por qué se movió la lista). Cambios respecto del
+> plan: el notebook 02_1 se fusionó en el 02 (Parte B) y se borró, y el pipeline ordena
+> las filas para que DAG y notebook 01 escriban el mismo archivo. Detalle en
+> `docs/CHANGELOG.md`.
+
 Objetivo: que README, guías, skills y notebooks de **todas** las entregas cuenten la
 misma historia, con los mismos números, sobre el mismo dataset. Se escribió el 22/10/2026,
 antes de la Entrega 3 (28/10).

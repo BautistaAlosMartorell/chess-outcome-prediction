@@ -10,16 +10,19 @@ Documento fuente completo: `Kit_de_arranque_Proyecto_Integrador_2026.md` en la r
 
 ## El proyecto
 
-Qué combinación de **ELO**, **apertura**, **modalidad de ritmo** (bullet/blitz/rapid)
-y **color de piezas** predice el **resultado** (`resultado`: gana blancas/negras/
-empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online real.
-Unidad de análisis: una partida individual.
+Qué tan bien se puede predecir el **resultado** (`resultado`: gana blancas/negras/
+empate) y la **duración restante** (`plies_restantes`) de una partida de ajedrez online
+real **antes de que empiece y a medida que avanza**. Antes de empezar se conocen el nivel,
+el ritmo (bullet/blitz/rapid) y el color; durante la partida se suman la apertura, la
+posición y los relojes.
+Unidad de análisis: la partida en un momento dado (partida × corte de plies: 0, 10, 20,
+30, 40, 60). La tabla base sigue teniendo una partida por fila; la de cortes se deriva.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
 autenticación. Partidas reales de 100 jugadores, 20 por cada banda de ELO, seleccionados
 automáticamente por la tarea `listar_jugadores` del DAG desde las listas públicas de
-titulados y de jugadores por país. La lista queda congelada en
-`data/raw/seleccion/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
+titulados y de jugadores por país. La lista queda congelada y versionada en
+`config/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
 sus archivos mensuales.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
@@ -58,7 +61,7 @@ partida (fuga de información hacia `resultado`, no sólo un matiz), y la muestr
 concentrada en 8 jugadores de nivel club a élite mundial, no es representativa de
 "ajedrez online" en general.
 
-**Al 22/09/2026 (Entrega 2 lista):** La lista fija de 8 cuentas se reemplazó por la tarea
+**Al 22/09/2026 (Entrega 2 lista, superada por la del 22/10):** La lista fija de 8 cuentas se reemplazó por la tarea
 `listar_jugadores` del DAG (`src/player_selection.py`), que ya no depende de ninguna cuenta
 inicial ni del Parquet previo: sortea candidatos de las listas públicas de la PubAPI
 (titulados FM/CM/NM para `avanzado`, GM/IM para `experto` y `top_mundial`, jugadores de
@@ -75,6 +78,17 @@ del rating posterior, que el equilibrio entre bandas es una decisión de muestre
 distribución real de Chess.com, y que la banda `avanzado` se arma con titulados de nivel
 bajo porque la API no publica listas por rating. El CLI sin Docker usa la misma lista
 congelada que el DAG.
+
+**Al 22/10/2026 (preparando la Entrega 3, vigente):** La pregunta pasó a ser el resultado y
+la duración **antes y durante** la partida, y la unidad de modelado la partida × corte
+(tabla `partidas_cortes.parquet`, cortes 0/10/20/30/40/60; el 0 es antes de mover). La
+lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`. Corrida oficial
+del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas (99,51 %), 35
+columnas, 435.689 filas de cortes. El notebook 02 es uno solo (Parte A antes, Parte B
+durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03
+muestra que antes de empezar ningún modelo le gana al piso y que desde el ply 30 el
+modelo en vivo sí (log-loss 0,738 contra 0,913 al ply 60). Falta el modelado formal de
+la Entrega 3: `docs/entregas/plan-entrega-3.md`.
 
 ## Qué pide cada entrega
 
