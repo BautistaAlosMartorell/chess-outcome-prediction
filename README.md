@@ -168,6 +168,9 @@ tests/test_live_features.py                pruebas del dataset en vivo (incluida
 tests/test_modeling.py                     pruebas del splitter temporal por partida y de predecir()
 tests/test_history_transformer.py           ventanas, temporalidad y serialización del historial del Pipeline
 tests/test_model_realism.py                 comportamiento y calibración del artefacto final (si existe localmente)
+tests/test_api.py                          pruebas de la API de la app (sin red: Chess.com y el modelo son falsos)
+api/                                       API de la app (FastAPI): predecir jugada a jugada, ficha y partidas de cualquier usuario
+web/                                       interfaz de la app (Next.js): Jugar y Analizar
 models/                                    modelo entrenado (lo regenera el notebook 04), ignorado por Git
 ```
 
@@ -292,6 +295,34 @@ notebooks 02, 03 y 04 consumen lo que produce el DAG (las dos tablas de
 `data/processed/` y los JSON crudos). Todos deben ejecutarse con **Restart & Run All**,
 en ese orden. El 04 requiere decenas de minutos (ver el tiempo medido en su última celda) y deja el modelo para la app en `models/`.
 
+### La app (Entrega 4)
+
+Dos procesos: la API en Python, que usa el modelo de `notebooks/04_modelado.ipynb`, y la
+interfaz en Next.js. Requiere `models/modelo_en_vivo.joblib`: si no está, se genera
+corriendo ese notebook con **Restart & Run All**.
+
+```bash
+# 1. API (desde la raíz del repo), en http://localhost:8000
+.venv/bin/python -m pip install -r requirements.txt -r api/requirements.txt
+.venv/bin/uvicorn api.main:app --reload
+
+# 2. Interfaz (Node 20 o superior), en http://localhost:3000
+cd web
+npm install
+npm run dev
+```
+
+- **Jugar:** dos personas en la misma computadora, con reloj. Después de cada jugada, la
+  barra muestra la probabilidad de que ganen las blancas, de tablas o de que ganen las
+  negras, y cuántas jugadas faltan. Cada lado puede traer su ficha de Chess.com (rating y
+  últimas partidas).
+- **Analizar:** cualquier usuario de Chess.com (no sólo los de la muestra). La app trae
+  sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
+  compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
+
+La API no calcula nada por su cuenta: todo pasa por `src.predict.predecir`, la misma
+función que el notebook 04 verificó contra el camino de entrenamiento.
+
 ### Tests
 
 ```bash
@@ -311,6 +342,8 @@ con historial causal dentro del Pipeline. En test: log-loss 0,804 frente a 0,936
 piso (14,09 % menos); duración: MAE 22,934 frente a 28,357 plies. El período de test
 ya fue observado en la exploración y en una versión previa del 04; las decisiones
 actuales se toman por CV temporal, sin presentarlo como un holdout nuevo.
+Las pruebas de la API (`tests/test_api.py`) se saltean si no está instalado
+`api/requirements.txt`.
 
 ## Artefactos generados
 

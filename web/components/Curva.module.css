@@ -1,0 +1,138 @@
+.figura {
+  margin: 0;
+}
+
+.titulo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.leyenda {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-weight: 400;
+  color: var(--tinta-suave);
+}
+
+.leyenda li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.muestra {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--tinta);
+  border-radius: 2px;
+}
+
+.lienzo {
+  position: relative;
+}
+
+.lienzo svg {
+  display: block;
+  touch-action: none;
+}
+
+.clicable {
+  cursor: pointer;
+}
+
+.vacio {
+  fill: var(--fondo);
+}
+
+.bandaBlancas {
+  fill: var(--blancas);
+  background: var(--blancas);
+}
+
+.bandaTablas {
+  fill: var(--tablas);
+  background: var(--tablas);
+}
+
+.bandaNegras {
+  fill: var(--negras);
+  background: var(--negras);
+}
+
+.mitad {
+  stroke: var(--tinta-suave);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
+
+.marco {
+  fill: none;
+  stroke: var(--tinta);
+  stroke-width: 1.5;
+}
+
+.ejeY {
+  font-size: 12px;
+  fill: var(--tinta-suave);
+  text-anchor: end;
+}
+
+.ejeX {
+  font-size: 12px;
+  fill: var(--tinta-suave);
+  text-anchor: middle;
+}
+
+.etiqueta {
+  font-size: 13px;
+  fill: var(--tinta);
+}
+
+.actual {
+  stroke: var(--reloj-activo);
+  stroke-width: 3;
+}
+
+.guia {
+  stroke: var(--tinta);
+  stroke-width: 1;
+}
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  padding: 8px 10px;
+  background: var(--blancas);
+  border: 1.5px solid var(--tinta);
+  border-radius: var(--radio);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vacioTexto {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--tinta-suave);
+}
+
+.ejeTitulo {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--tinta-suave);
+}

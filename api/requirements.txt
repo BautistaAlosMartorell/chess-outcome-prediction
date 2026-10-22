@@ -1,0 +1,6 @@
+# Dependencias de la API de la app (Entrega 4). Van aparte de requirements.txt porque
+# ese archivo lo instala la imagen de Airflow, que trae su propia versión de FastAPI.
+# Instalar las dos: pip install -r requirements.txt -r api/requirements.txt
+fastapi==0.160.0
+uvicorn==0.54.0
+httpx==0.28.1

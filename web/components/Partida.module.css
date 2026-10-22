@@ -1,0 +1,127 @@
+/* Layout shared by Jugar and Analizar: scoreboard, then board + side panel, then the curve. */
+.pagina {
+  display: grid;
+  gap: var(--separacion);
+}
+
+.cuerpo {
+  display: grid;
+  grid-template-columns: minmax(280px, 560px) minmax(260px, 1fr);
+  gap: var(--separacion);
+  align-items: start;
+}
+
+.tablero {
+  width: 100%;
+  max-width: 560px;
+}
+
+.lateral {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+.titulo {
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.texto {
+  margin: 0;
+  color: var(--tinta-suave);
+}
+
+.grupo {
+  display: grid;
+  gap: 8px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.grupo legend {
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.opcion {
+  padding: 8px 12px;
+  border: 1.5px solid var(--tinta);
+  border-radius: var(--radio);
+  background: var(--blancas);
+}
+
+.opcion[aria-pressed="true"] {
+  background: var(--tinta);
+  color: var(--fondo);
+}
+
+.campo {
+  display: flex;
+  gap: 8px;
+}
+
+.campo input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1.5px solid var(--tinta);
+  border-radius: var(--radio);
+  background: var(--blancas);
+}
+
+.boton {
+  padding: 8px 14px;
+  border: 1.5px solid var(--tinta);
+  border-radius: var(--radio);
+  background: var(--blancas);
+  font-weight: 600;
+}
+
+.boton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.principal {
+  composes: boton;
+  background: var(--tinta);
+  color: var(--fondo);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+}
+
+.nota {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--tinta-suave);
+}
+
+@media (max-width: 860px) {
+  .cuerpo {
+    grid-template-columns: 1fr;
+  }
+
+  .tablero {
+    margin: 0 auto;
+  }
+}

@@ -1,0 +1,70 @@
+/* Tokens. Color encodes sides (white / draw / black) and the running clock; nothing else. */
+:root {
+  --fondo: #f4f6f2;
+  --tinta: #1c2420;
+  --tinta-suave: #4f5a54;
+  --linea: #c9d0ca;
+  --blancas: #ffffff;
+  --tablas: #9ba59e;
+  --negras: #2a302c;
+  --casilla-clara: #e6ece4;
+  --casilla-oscura: #7e9a88;
+  --reloj-activo: #f0b429;
+  --error: #9b2c1f;
+
+  --ancho-condensado: 75%;
+  --radio: 3px;
+  --separacion: clamp(16px, 3vw, 32px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--tinta);
+}
+
+body {
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers that change (clocks, percentages) never jitter. */
+.cifra {
+  font-stretch: var(--ancho-condensado);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--reloj-activo);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -18,6 +18,8 @@ src/         módulos del pipeline (descarga, parseo de PGN, features) reusados 
 dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
 notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado
 models/      modelo entrenado para la app — lo regenera el notebook 04, no se versiona
+api/         API de la app (FastAPI): sirve predecir() y consulta la PubAPI de Chess.com (dependencias en api/requirements.txt)
+web/         app de la Entrega 4 (Next.js): jugar con relojes y analizar partidas de cualquier usuario
 config/      config.yaml (bandas de ELO, ventana temporal, cortes, descarga) y jugadores_seleccionados.yaml (lista congelada, versionada)
 data/        vacío en git — se regenera corriendo el pipeline
 tests/       pruebas unitarias sin acceso de red (python -m unittest discover -s tests)

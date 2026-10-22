@@ -1,0 +1,38 @@
+.cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px var(--separacion);
+  border-bottom: 1px solid var(--linea);
+}
+
+.marca {
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 1.25rem;
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  gap: 20px;
+}
+
+.nav a {
+  text-decoration: none;
+  color: var(--tinta-suave);
+}
+
+.nav a:hover {
+  color: var(--tinta);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.contenido {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--separacion);
+}

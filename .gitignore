@@ -12,6 +12,13 @@ data/processed/*
 # Modelo entrenado: lo regenera notebooks/04_modelado.ipynb
 models/
 
+# App web (Next.js): dependencias y build se regeneran con npm
+web/node_modules/
+web/.next/
+web/next-env.d.ts
+web/*.tsbuildinfo
+web/.env.local
+
 # Jupyter
 .ipynb_checkpoints/
 
