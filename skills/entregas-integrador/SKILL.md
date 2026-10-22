@@ -106,7 +106,7 @@ Entrega 3.
 
 **3 · Modelado.** Objetivo predictivo bien planteado, varios modelos comparados con las
 mismas métricas, y una justificación de por qué esas métricas. Es la entrega donde se
-rompen los proyectos con fuentes flojas.
+rompen los proyectos con fuentes flojas. Consigna completa: `docs/entregas/consigna-entrega-3.md`.
 
 **4 · Visualización e integración.** Visualizaciones que comunican los hallazgos y una
 aplicación funcionando. Demo en vivo en la exposición final.

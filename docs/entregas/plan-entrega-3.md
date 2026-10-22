@@ -1,8 +1,8 @@
 # Plan de la Entrega 3 · Modelado (28/10/2026)
 
-Qué hay, qué falta y cómo armar el notebook de modelado para que cumpla la consigna. Se
-escribió el 22/10/2026 contrastando la consigna de la cátedra contra lo que ya está en
-`main` (PRs #17–#24).
+Qué hay, qué falta y cómo armar el notebook de modelado para que cumpla la consigna
+(transcripta en [`consigna-entrega-3.md`](consigna-entrega-3.md)). Se escribió el 22/10/2026
+contrastando la consigna de la cátedra contra lo que ya está en `main` (PRs #17–#24).
 
 ## La respuesta corta
 
