@@ -10,16 +10,19 @@ Documento fuente completo: `Kit_de_arranque_Proyecto_Integrador_2026.md` en la r
 
 ## El proyecto
 
-Qué combinación de **ELO**, **apertura**, **modalidad de ritmo** (bullet/blitz/rapid)
-y **color de piezas** predice el **resultado** (`resultado`: gana blancas/negras/
-empate) y la **duración** (`cantidad_jugadas`) de una partida de ajedrez online real.
-Unidad de análisis: una partida individual.
+Qué tan bien se puede predecir el **resultado** (`resultado`: gana blancas/negras/
+empate) y la **duración restante** (`plies_restantes`) de una partida de ajedrez online
+real **antes de que empiece y a medida que avanza**. Antes de empezar se conocen el nivel,
+el ritmo (bullet/blitz/rapid) y el color; durante la partida se suman la apertura, la
+posición y los relojes.
+Unidad de análisis: la partida en un momento dado (partida × corte de plies: 0, 10, 20,
+30, 40, 60). La tabla base sigue teniendo una partida por fila; la de cortes se deriva.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
 autenticación. Partidas reales de 100 jugadores, 20 por cada banda de ELO, seleccionados
 automáticamente por la tarea `listar_jugadores` del DAG desde las listas públicas de
-titulados y de jugadores por país. La lista queda congelada en
-`data/raw/seleccion/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
+titulados y de jugadores por país. La lista queda congelada y versionada en
+`config/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
 sus archivos mensuales.
 
 El integrador vale el **50 % de la nota final** — el doble que los cuatro TPs juntos y
