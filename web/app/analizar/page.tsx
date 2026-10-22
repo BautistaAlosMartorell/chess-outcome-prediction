@@ -62,6 +62,24 @@ function Analizar() {
   const [reproduciendo, setReproduciendo] = useState(false);
   const [cargando, setCargando] = useState<"buscar" | string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const espacio = useRef<HTMLElement>(null);
+  const [altoCabecera, setAltoCabecera] = useState(72);
+
+  // The header wraps on small screens; sticky replay follows its actual height.
+  useEffect(() => {
+    const header = document.querySelector("body > header");
+    if (!header) return;
+    const measure = () => setAltoCabecera(header.getBoundingClientRect().height);
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
+  // Opening another game brings its controls into view, without scrolling on each move.
+  useEffect(() => {
+    if (analisis) espacio.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [analisis]);
 
   async function buscarUsuario(nombre: string) {
     setCargando("buscar");
@@ -157,12 +175,13 @@ function Analizar() {
   useEffect(() => {
     if (!analisis) return;
     const teclado = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement) return;
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) event.preventDefault();
       if (event.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
       if (event.key === "ArrowRight") setPly((p) => Math.min(total, p + 1));
       if (event.key === "Home") setPly(0);
       if (event.key === "End") setPly(total);
-      if (event.key === " ") {
+      if (event.key === " " && !(event.target instanceof HTMLElement && event.target.closest("button, a"))) {
         event.preventDefault();
         setReproduciendo((r) => !r);
       }
@@ -205,23 +224,28 @@ function Analizar() {
       {error ? <p className={styles.error}>{error}</p> : null}
 
       {analisis ? (
-        <>
-          <Marcador
-            blancas={{ nombre: analisis.partida.blancas.usuario, rating: analisis.contexto.elo_blancas_previo }}
-            negras={{ nombre: analisis.partida.negras.usuario, rating: analisis.contexto.elo_negras_previo }}
-            relojes={relojesEn(analisis, ply)}
-            activo={ply === total ? null : ply % 2 === 0 ? "blancas" : "negras"}
-            punto={punto}
-            final={final}
-          />
-          <div className={styles.cuerpo}>
-            <div className={styles.tablero}>
-              <Tablero fen={posicion.fen} ultima={posicion.ultima} jaque={posicion.jaque} />
-              <div className={propios.controles}>
-                <button type="button" className={styles.boton} onClick={() => irA(0)} aria-label="Ir al principio">
+        <section
+          ref={espacio}
+          className={propios.analisis}
+          aria-label="Análisis de la partida"
+          style={{ "--alto-cabecera": `${altoCabecera}px` } as React.CSSProperties}
+        >
+          <div className={propios.visor}>
+            <Marcador
+              compacto
+              blancas={{ nombre: analisis.partida.blancas.usuario, rating: analisis.contexto.elo_blancas_previo }}
+              negras={{ nombre: analisis.partida.negras.usuario, rating: analisis.contexto.elo_negras_previo }}
+              relojes={relojesEn(analisis, ply)}
+              activo={ply === total ? null : ply % 2 === 0 ? "blancas" : "negras"}
+              punto={punto}
+              final={final}
+            />
+            <div className={propios.navegacion}>
+              <div className={propios.controles} role="group" aria-label="Controles de reproducción">
+                <button type="button" className={styles.boton} onClick={() => irA(0)} disabled={ply === 0} aria-label="Ir al principio">
                   ⏮
                 </button>
-                <button type="button" className={styles.boton} onClick={() => irA(Math.max(0, ply - 1))} aria-label="Jugada anterior">
+                <button type="button" className={styles.boton} onClick={() => irA(Math.max(0, ply - 1))} disabled={ply === 0} aria-label="Jugada anterior">
                   ◀
                 </button>
                 <button
@@ -235,10 +259,10 @@ function Analizar() {
                 >
                   {reproduciendo ? "Pausar" : "Reproducir"}
                 </button>
-                <button type="button" className={styles.boton} onClick={() => irA(Math.min(total, ply + 1))} aria-label="Jugada siguiente">
+                <button type="button" className={styles.boton} onClick={() => irA(Math.min(total, ply + 1))} disabled={ply === total} aria-label="Jugada siguiente">
                   ▶
                 </button>
-                <button type="button" className={styles.boton} onClick={() => irA(total)} aria-label="Ir al final">
+                <button type="button" className={styles.boton} onClick={() => irA(total)} disabled={ply === total} aria-label="Ir al final">
                   ⏭
                 </button>
               </div>
@@ -249,10 +273,20 @@ function Analizar() {
                 value={ply}
                 onChange={(e) => irA(Number(e.target.value))}
                 aria-label="Jugada"
+                aria-valuetext={ply === 0 ? "Posición inicial" : `${Math.ceil(ply / 2)}${ply % 2 ? "." : "…"} ${analisis.jugadas[ply - 1]}`}
                 className={propios.deslizador}
                 style={{ "--avance": `${total ? (ply / total) * 100 : 0}%` } as React.CSSProperties}
               />
-              <p className={styles.nota}>Flechas para moverte, espacio para reproducir.</p>
+              <div className={propios.estado}>
+                <strong aria-live="polite">{ply === 0 ? "Posición inicial" : `${Math.ceil(ply / 2)}${ply % 2 ? "." : "…"} ${analisis.jugadas[ply - 1]}`}</strong>
+                <span className={propios.ayudaTeclado}>← → para moverte · espacio para reproducir</span>
+                <span>{ply} / {total}</span>
+              </div>
+            </div>
+          </div>
+          <div className={`${styles.cuerpo} ${propios.cuerpoAnalisis}`}>
+            <div className={styles.tablero}>
+              <Tablero fen={posicion.fen} ultima={posicion.ultima} jaque={posicion.jaque} />
             </div>
             <div className={styles.lateral}>
               <Planilla jugadas={analisis.jugadas} curva={analisis.curva} actual={ply} momentos={momentos} onElegir={irA} />
@@ -275,7 +309,7 @@ function Analizar() {
             onElegir={irA}
             revelar={analisis.partida.url}
           />
-        </>
+        </section>
       ) : ficha ? (
         <section className={`${styles.panel} ${propios.listado}`} aria-label={`Partidas de ${ficha.usuario}`}>
           <div className={propios.perfil}>

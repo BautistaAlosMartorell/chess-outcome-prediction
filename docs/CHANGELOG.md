@@ -1,5 +1,18 @@
 # Changelog
 
+## Mantener predicciones y controles a la vista al analizar (2026-10-22)
+
+- Reunir marcador compacto, reproducción, deslizador y posición actual en una franja
+  que permanece visible bajo la cabecera al recorrer la planilla y el gráfico.
+- Ajustar el tablero a la altura disponible en escritorio y el panel a móvil;
+  medir la cabecera cuando cambia de altura para evitar superposiciones.
+- Mostrar el análisis al abrir una partida y evitar que flechas, Inicio y Fin
+  desplacen la página al cambiar de posición. Deshabilitar saltos fuera de los extremos.
+- Corregir el título de portada: permitir saltos de línea y que el texto se ajuste a
+  su columna, sin quedar tapado por la demo.
+- Validar typecheck y navegador en escritorio y móvil: misma partida de la captura,
+  cambio de probabilidades, teclado sin desplazamiento y ausencia de desborde horizontal.
+
 ## Probar el modelo de 40 columnas en la app (2026-10-22)
 
 Rama local `feat/app-en-vivo`, rebasada sobre la actualización del modelado (PR #31).

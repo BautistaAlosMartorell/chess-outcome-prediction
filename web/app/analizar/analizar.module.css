@@ -2,6 +2,10 @@
   max-width: 760px;
 }
 
+.buscador > * {
+  min-width: 0;
+}
+
 .listado {
   gap: 20px;
 }
@@ -135,7 +139,7 @@
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;
   gap: 6px;
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 .reproducir {
@@ -145,7 +149,7 @@
 /* Progress through the game: amber up to the current move. */
 .deslizador {
   width: 100%;
-  margin: 12px 0 6px;
+  margin: 6px 0;
   appearance: none;
   height: 6px;
   border-radius: 999px;
@@ -173,11 +177,87 @@
 }
 
 @media (max-width: 640px) {
+  .buscador > div {
+    flex-direction: column;
+  }
+
   .fila {
     grid-template-columns: 64px minmax(0, 1fr) auto;
   }
 
   .meta {
+    display: none;
+  }
+}
+
+/* Replay controls and the prediction move together, above every analysis view. */
+.analisis {
+  display: grid;
+  gap: var(--separacion);
+  min-width: 0;
+  scroll-margin-top: calc(var(--alto-cabecera) + 12px);
+}
+
+.visor {
+  position: sticky;
+  top: calc(var(--alto-cabecera) + 8px);
+  z-index: 8;
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--linea), 0 14px 30px rgba(0, 0, 0, 0.3);
+}
+
+.navegacion {
+  display: grid;
+  grid-template-columns: minmax(270px, 380px) minmax(120px, 1fr);
+  align-items: center;
+  gap: 8px 24px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--linea);
+}
+
+.controles button {
+  min-height: 42px;
+}
+
+.estado {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  font-variant-numeric: tabular-nums;
+}
+
+.estado strong {
+  color: var(--texto);
+}
+
+.cuerpoAnalisis {
+  grid-template-columns: minmax(280px, min(580px, calc(100dvh - var(--alto-cabecera) - 260px))) minmax(280px, 1fr);
+}
+
+@media (max-width: 900px) {
+  .cuerpoAnalisis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .navegacion {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .estado {
+    font-size: 0.75rem;
+  }
+
+  .ayudaTeclado {
     display: none;
   }
 }

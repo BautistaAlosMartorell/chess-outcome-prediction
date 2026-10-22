@@ -8,7 +8,7 @@ export type Probabilidades = { blancas: number; tablas: number; negras: number }
 
 type Props = {
   valores: Probabilidades | null;
-  tamano?: "grande" | "normal";
+  tamano?: "grande" | "normal" | "compacto";
   // Show a "▲ n" chip on the side that gained after a move.
   mostrarCambio?: boolean;
 };
@@ -40,7 +40,7 @@ export function Barra({ valores, tamano = "normal", mostrarCambio = true }: Prop
     : "Todavía no hay predicción";
 
   return (
-    <div className={`${styles.barra} ${tamano === "grande" ? styles.grande : ""}`}>
+    <div className={`${styles.barra} ${tamano === "normal" ? "" : styles[tamano]}`}>
       <div className={styles.cifras} aria-hidden="true">
         <span className={styles.lado}>
           <span className="cifra">{valores ? Math.round(blancas) : "–"}</span>

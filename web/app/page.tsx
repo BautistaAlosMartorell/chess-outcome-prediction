@@ -7,7 +7,7 @@ export default function Inicio() {
     <div className={styles.inicio}>
       <section className={styles.hero}>
         <div className={styles.texto}>
-          <h1 className={styles.titulo}>Quién gana, jugada a jugada</h1>
+          <h1 className={styles.titulo}>Quién gana, jugada a jugada</h1>
           <p className={styles.bajada}>
             Un modelo evaluado con 100.396 partidas reales de Chess.com mira el tablero y los relojes y estima, en
             cada jugada, la probabilidad de que ganen las blancas, de que sean tablas o de que ganen las negras.
