@@ -297,3 +297,27 @@
     margin: 0 auto;
   }
 }
+
+/* Notes about what the model can and can't say before the first move. */
+.aviso {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: rgba(255, 181, 71, 0.08);
+  box-shadow: inset 3px 0 0 var(--reloj), inset 0 0 0 1px rgba(255, 181, 71, 0.25);
+  animation: aparecer 300ms ease both;
+}
+
+.aviso p {
+  margin: 0;
+  max-width: 90ch;
+}
+
+.elo {
+  color: var(--texto-suave);
+}
+
+.elo strong {
+  color: var(--texto);
+}

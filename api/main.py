@@ -111,7 +111,7 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
     def salud() -> dict[str, Any]:
         modelo_actual = app.state.modelo
         return {"modelo": modelo_actual.get("familia"), "entrenado_hasta": modelo_actual.get("entrenado_hasta"),
-                "columnas": len(modelo_actual["columnas"])}
+                "columnas": len(modelo_actual["columnas"]), "rango_rating": modelo_actual.get("rango_rating")}
 
     @app.post("/predecir")
     def predecir_partida(pedido: PedidoJugar) -> dict[str, Any]:

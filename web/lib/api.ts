@@ -81,6 +81,18 @@ export function predecir(pedido: PedidoJugar): Promise<{ ritmo: Ritmo; curva: Pu
   });
 }
 
+export type Salud = {
+  modelo: string | null;
+  entrenado_hasta: string | null;
+  columnas: number;
+  // Lowest and highest prior rating seen in training (null with an older model file).
+  rango_rating: [number, number] | null;
+};
+
+export function salud(): Promise<Salud> {
+  return pedir("/salud");
+}
+
 export function traerFicha(usuario: string): Promise<Ficha> {
   return pedir(`/jugadores/${encodeURIComponent(usuario.trim())}`);
 }

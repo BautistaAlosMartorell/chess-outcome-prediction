@@ -1,14 +1,16 @@
 "use client";
 
 import { Chess, type Square } from "chess.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Curva } from "@/components/Curva";
 import { ImportarJugador } from "@/components/ImportarJugador";
 import { Marcador, type Jugador } from "@/components/Marcador";
 import styles from "@/components/Partida.module.css";
 import { Planilla } from "@/components/Planilla";
 import { Tablero, type Destino } from "@/components/Tablero";
-import { ApiError, predecir, type Ficha, type Punto, type Ritmo } from "@/lib/api";
+import { AvisoRango } from "@/components/AvisoRango";
+import { ApiError, predecir, salud, traerFicha, type Ficha, type Punto, type Ritmo } from "@/lib/api";
 import { momentosClave } from "@/lib/movimiento";
 
 const RITMOS = [
@@ -67,7 +69,17 @@ function reyEnJaque(chess: Chess): string | null {
   return null;
 }
 
-export default function Jugar() {
+export default function Pagina() {
+  // useSearchParams needs a Suspense boundary so the rest of the page can be prerendered.
+  return (
+    <Suspense fallback={null}>
+      <Jugar />
+    </Suspense>
+  );
+}
+
+function Jugar() {
+  const parametros = useSearchParams();
   const [ritmoElegido, setRitmoElegido] = useState(RITMOS[1]);
   const [fichas, setFichas] = useState<Record<Lado, Ficha | null>>({ blancas: null, negras: null });
   const [fase, setFase] = useState<Fase>("preparando");
@@ -81,6 +93,29 @@ export default function Jugar() {
   const [error, setError] = useState<string | null>(null);
   const [orientacion, setOrientacion] = useState<"white" | "black">("white");
   const [partidaId, setPartidaId] = useState(0);
+  const [rango, setRango] = useState<[number, number] | null>(null);
+
+  // The ratings the model saw in training, to warn when a game falls outside them.
+  useEffect(() => {
+    salud()
+      .then((s) => setRango(s.rango_rating))
+      .catch(() => setRango(null));
+  }, []);
+
+  // Links like /jugar?blancas=hikaru&negras=magnuscarlsen&ritmo=3+2 import both cards on their own.
+  useEffect(() => {
+    const elegido = RITMOS.find((r) => r.nombre.replace(/\s/g, "") === parametros.get("ritmo")?.replace(/\s/g, ""));
+    if (elegido) setRitmoElegido(elegido);
+    for (const lado of ["blancas", "negras"] as const) {
+      const usuario = parametros.get(lado)?.trim();
+      if (usuario) {
+        traerFicha(usuario)
+          .then((ficha) => setFichas((s) => ({ ...s, [lado]: ficha })))
+          .catch((e) => setError(e instanceof ApiError ? e.message : "No se pudo traer el usuario."));
+      }
+    }
+    // Runs once, with the link the page was opened with.
+  }, []);
 
   const chess = useRef(new Chess());
   // The ticking clock lives in refs so the interval and the move handler see the same values.
@@ -227,6 +262,11 @@ export default function Jugar() {
         punto={punto}
         final={final?.texto}
         mostrarCambio={fase !== "preparando"}
+      />
+      <AvisoRango
+        blancas={{ nombre: blancas.nombre, rating: blancas.rating }}
+        negras={{ nombre: negras.nombre, rating: negras.rating }}
+        rango={rango}
       />
       {error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.cuerpo}>

@@ -101,6 +101,11 @@ class ApiTest(unittest.TestCase):
         self.assertEqual([p["ply"] for p in body["curva"]], [0, 1, 2, 3])  # finished: no point after the last move
         self.assertEqual(self.client.get("/jugadores/ana/analisis", params={"url": "otra"}).status_code, 404)
 
+    def test_health_reports_the_rating_range_seen_in_training(self) -> None:
+        self.assertIsNone(self.client.get("/salud").json()["rango_rating"])  # model without it: no range
+        self.client.app.state.modelo["rango_rating"] = [100.0, 3500.0]
+        self.assertEqual(self.client.get("/salud").json()["rango_rating"], [100.0, 3500.0])
+
     def test_time_class_follows_chess_com(self) -> None:
         self.assertEqual([ritmo(60, 0), ritmo(180, 2), ritmo(300, 0), ritmo(600, 0)], ["bullet", "blitz", "blitz", "rapid"])
 
