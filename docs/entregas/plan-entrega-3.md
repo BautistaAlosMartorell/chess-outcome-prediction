@@ -110,11 +110,12 @@ como una evaluación nunca observada.
 | ¿Por qué el bosque? | Mejora a la logística por 0,0205 ± 0,0058; boosting por defecto no supera la regla y tiene una brecha de train/validación |
 | Una confusión concreta | Desde ply 60, 20,3 % de errores de ganador en filas decisivas; en 56,3 % el predicho iba arriba en material. 50,15 % de esos errores terminan por tiempo, frente a 40,90 % global |
 | ¿Qué no funcionó? | Balancear, estilo, matchup y las posiciones adicionales bajo la regla conjunta global/corte 0; no se dice que antes de mover no haya señal |
+| ¿Y la diferencia de rating? | Quitar rating no mejora por más que el desvío, y se dice. Sólo 185 de 80.314 partidas de train (0,23 %) tienen el rating previo de los dos lados: se descargan las partidas de 120 cuentas, no las de sus rivales. La auditoría posterior muestra que la diferencia de rating mueve la probabilidad al revés; es la mejora pendiente, sin reentrenar antes de la entrega |
 | ¿El historial vio el resultado actual? | No: sólo cierres estrictamente anteriores al inicio; agregar futuro no altera los valores pasados |
 
 ## Pruebas del artefacto y límite pendiente
 
-`python -m unittest discover -s tests` ejecuta 75 tests sin red: **74 pasan y uno falla
+`python -m unittest discover -s tests` ejecuta 94 tests sin red: **93 pasan y uno falla
 en dos subcasos**. Proporciones iniciales, menos reloj, ganador cerca del final en
 promedio y calibración por clase pasan. El test de dama ganada exige una subida de
 más de 15 puntos de probabilidad para cada color. Obtiene +9,02 y +10,34 puntos en
@@ -141,7 +142,7 @@ No reemplazan la evaluación temporal ni garantizan cada posición individual.
   La regla conjunta puede rechazar mejoras globales pequeñas por deterioros del corte 0.
 - Duración es secundaria y no tiene ajuste propio de hiperparámetros; los errores por
   tramo se leen en §10. El período de test fue reutilizado, según la nota anterior.
-- Después de mergear PR #30 con confirmación, rebasear la rama de la app sobre main.
-  Revisar el conflicto de `in_progress` en live_features y la integración de predict;
-  pasar historiales/inicios al Pipeline o contexto pre-partida válido. Actualizar
-  “Qué mira el modelo” a las 40 columnas y 100.396 partidas. Estilo quedó fuera.
+- La app (PR #31, mergeado) usa este artefacto y pasa historiales e inicios al
+  Pipeline. La auditoría posterior (ratings de ambos lados casi nunca disponibles y
+  respuesta invertida a la diferencia de rating) y su plan están en
+  [`plan-mejora-modelo-app.md`](plan-mejora-modelo-app.md); no cambian el artefacto.

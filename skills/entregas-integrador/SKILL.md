@@ -106,13 +106,16 @@ El período ya fue mirado en el 03 y en una versión anterior del 04: no es un h
 nuevo. Duración: MAE 22,934 frente a 28,357 plies, con boosting sin grilla propia.
 El artefacto pesa 132,1 MB, no se versiona; `predecir()` reproduce los cortes a 1e-9.
 
-La suite local ejecuta 75 tests: 74 pasan y el de dama ganada falla en dos subcasos
+La suite local ejecuta 94 tests: 93 pasan y el de dama ganada falla en dos subcasos
 (+9,02/+10,34 puntos frente al contrato de +15). Se conserva el fallo y se documenta;
 las otras cuatro pruebas de realismo pasan. Estas pruebas requieren el artefacto y,
 para población/calibración, los datos regenerados; sin ellos se saltean.
-Mapa y respuestas: `docs/entregas/plan-entrega-3.md`. La integración de la app queda
-para después de mergear PR #30 con confirmación; debe enviar historiales/inicios o
-contexto pre-partida válido y actualizar el texto a 40 columnas/100.396 partidas.
+Mapa y respuestas: `docs/entregas/plan-entrega-3.md`. La app (PR #31, mergeado) usa
+este artefacto con historiales e inicios. Una auditoría posterior, sin reentrenar,
+encontró que sólo 185/80.314 partidas de train tienen ambos ratings previos y que la
+diferencia de rating mueve la probabilidad al revés: plan en
+`docs/entregas/plan-mejora-modelo-app.md`. Falta, para la Entrega 4, una pieza de
+visualizaciones de hallazgos además de la app.
 
 ## Qué pide cada entrega
 
