@@ -1,0 +1,95 @@
+/* "Club de noche": a chess club at night. Pine felt, ivory and ebony pieces, the amber light
+   of a digital clock. Color encodes sides (white / draw / black), the running clock and time
+   trouble; nothing else. */
+:root {
+  --fondo: #0e2426;
+  --fondo-hondo: #0a1c1e;
+  --panel: #133236;
+  --panel-alto: #19403f;
+  --linea: #24474b;
+  --texto: #eaf2ee;
+  --texto-suave: #9fb7b1;
+
+  --blancas: #f6f1e7;
+  --negras: #0a0f10;
+  --tablas: #7fa3a0;
+  --borde-negras: #3e6366;
+
+  --reloj: #ffb547;
+  --apuro: #ff6b5b;
+
+  --casilla-clara: #dce7e1;
+  --casilla-oscura: #4f7f78;
+
+  --ancho-condensado: 75%;
+  --radio: 6px;
+  --radio-chico: 4px;
+  --separacion: clamp(16px, 3vw, 32px);
+  --rebote: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --suave: cubic-bezier(0.22, 0.8, 0.3, 1);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--texto);
+  background-color: var(--fondo);
+}
+
+body {
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* A felt-like vignette: lighter where the board sits, darker at the edges. */
+  background: radial-gradient(120% 80% at 30% 0%, #133437 0%, var(--fondo) 45%, var(--fondo-hondo) 100%) fixed;
+}
+
+/* Numbers that change (clocks, percentages) never jitter. */
+.cifra {
+  font-stretch: var(--ancho-condensado);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--reloj);
+  color: var(--negras);
+}
+
+:focus-visible {
+  outline: 2px solid var(--reloj);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

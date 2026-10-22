@@ -29,6 +29,13 @@ policy:
       bands:
       - principiante
       - intermedio
+    lideres:
+      leaderboards:
+      - live_bullet
+      - live_blitz
+      - live_rapid
+      bands:
+      - elite
   cutoff: 2026-08
   random_state: 42
   min_eligible_games: 15
@@ -39,6 +46,7 @@ policy:
     avanzado: 20
     experto: 20
     top_mundial: 20
+    elite: 20
   bands:
     principiante:
     - 0
@@ -54,15 +62,20 @@ policy:
     - 2600
     top_mundial:
     - 2600
+    - 3000
+    elite:
+    - 3000
     - 4000
 pool_sizes:
   titulados_avanzado: 10212
   titulados_alto: 4429
   paises: 79947
+  lideres: 111
 candidates_consumed:
   titulados_avanzado: 253
   titulados_alto: 25
   paises: 81
+  lideres: 25
 selected:
   principiante:
   - 1raj123
@@ -169,6 +182,27 @@ selected:
   - elpepinillo14
   - timurdushatov
   - babbelimo
+  elite:
+  - RaunakSadhwani2005
+  - ChristianArca
+  - ChessWarrior7197
+  - penguingm1
+  - legendisback1
+  - wonderfultime
+  - LPSupi
+  - Polish_fighter3000
+  - PursuitOfHappyness2
+  - TheyStoleMySanity
+  - GMKrikor
+  - Konavets
+  - Javokhir_Sindarov05
+  - LOVEVAE
+  - JingtianWu
+  - NikoTheodorou
+  - GMBrewChess
+  - GroovyKettle
+  - FabianoCaruana
+  - MichaelRoiz
 usernames:
 - 1raj123
 - 138ace
@@ -270,11 +304,32 @@ usernames:
 - elpepinillo14
 - timurdushatov
 - babbelimo
+- RaunakSadhwani2005
+- ChristianArca
+- ChessWarrior7197
+- penguingm1
+- legendisback1
+- wonderfultime
+- LPSupi
+- Polish_fighter3000
+- PursuitOfHappyness2
+- TheyStoleMySanity
+- GMKrikor
+- Konavets
+- Javokhir_Sindarov05
+- LOVEVAE
+- JingtianWu
+- NikoTheodorou
+- GMBrewChess
+- GroovyKettle
+- FabianoCaruana
+- MichaelRoiz
 skipped_before_validation:
   banda_llena:experto: 121
   banda_llena:intermedio: 3
   banda_llena:principiante: 36
   banda_llena:top_mundial: 72
+  fuera_de_bandas: 2
   sin_partidas_bullet_blitz_rapid: 7
   stats_no_disponibles: 2
 evaluated:
@@ -1340,3 +1395,215 @@ evaluated:
   eligible_games: 1000
   validated_median_elo: 1961.0
   archives_checked: 41
+- username: RaunakSadhwani2005
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3227.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3119.0
+  archives_checked: 6
+- username: lachesisQ
+  band: elite
+  accepted: false
+  reason: 'error_api:HTTPError:404 Client Error: Not Found for url: https://api.chess.com/pub/player/lachesisq/games/2026/07'
+  estimated_elo: 3221.0
+  source: ranking:live_blitz,ranking:live_rapid
+  eligible_games: 0
+  validated_median_elo: null
+  archives_checked: 0
+- username: ChristianArca
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3261.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3148.0
+  archives_checked: 5
+- username: ChessWarrior7197
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3285.0
+  source: ranking:live_blitz,ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 3136.0
+  archives_checked: 23
+- username: penguingm1
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3215.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3066.0
+  archives_checked: 3
+- username: legendisback1
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3264.0
+  source: ranking:live_blitz,ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3200.0
+  archives_checked: 6
+- username: wonderfultime
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3213.0
+  source: ranking:live_blitz,ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3194.0
+  archives_checked: 3
+- username: LPSupi
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3158.0
+  source: ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 3126.0
+  archives_checked: 5
+- username: Polish_fighter3000
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3145.0
+  source: ranking:live_blitz,ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 3227.0
+  archives_checked: 10
+- username: PursuitOfHappyness2
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3214.0
+  source: ranking:live_blitz,ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3139.0
+  archives_checked: 14
+- username: TheyStoleMySanity
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3204.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3065.5
+  archives_checked: 3
+- username: GMKrikor
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3014.0
+  source: ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 3008.0
+  archives_checked: 4
+- username: Konavets
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3234.0
+  source: ranking:live_blitz,ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3222.0
+  archives_checked: 10
+- username: lethalspider7
+  band: elite
+  accepted: false
+  reason: elo_validado_fuera_de_bandas
+  estimated_elo: 3003.0
+  source: ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 2901.0
+  archives_checked: 3
+- username: Javokhir_Sindarov05
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3210.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3153.0
+  archives_checked: 18
+- username: LOVEVAE
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3108.0
+  source: ranking:live_rapid
+  eligible_games: 1000
+  validated_median_elo: 3060.0
+  archives_checked: 30
+- username: JingtianWu
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3295.0
+  source: ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3206.0
+  archives_checked: 5
+- username: zoltanbolt_04
+  band: elite
+  accepted: false
+  reason: elo_validado_fuera_de_bandas
+  estimated_elo: 3450.0
+  source: ranking:live_bullet
+  eligible_games: 61
+  validated_median_elo: 2543.0
+  archives_checked: 1
+- username: NikoTheodorou
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3211.0
+  source: ranking:live_blitz
+  eligible_games: 1000
+  validated_median_elo: 3175.0
+  archives_checked: 8
+- username: GMBrewChess
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3411.0
+  source: ranking:live_blitz,ranking:live_bullet
+  eligible_games: 1000
+  validated_median_elo: 3231.0
+  archives_checked: 2
+- username: GroovyKettle
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3201.0
+  source: ranking:live_blitz
+  eligible_games: 1000
+  validated_median_elo: 3070.0
+  archives_checked: 11
+- username: FabianoCaruana
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3271.0
+  source: ranking:live_blitz
+  eligible_games: 1000
+  validated_median_elo: 3189.0
+  archives_checked: 15
+- username: MichaelRoiz
+  band: elite
+  accepted: true
+  reason: aceptado
+  estimated_elo: 3238.0
+  source: ranking:live_blitz
+  eligible_games: 1000
+  validated_median_elo: 3136.0
+  archives_checked: 2
+extensions:
+- bands:
+  - elite
+  players:
+    elite: 20

@@ -6,9 +6,12 @@ del DAG y por el CLI (``python -m src.pipeline``).
 - Si ya existe el archivo de selección (``player_selection.selection_path``), se lee y se
   devuelve la misma lista: todas las corridas siguientes descargan los mismos jugadores.
 - Si no existe (primera corrida), se arman los pools de candidatos definidos en
-  ``player_selection.pools`` con las listas públicas de la PubAPI (titulados y jugadores
-  por país), se barajan con una semilla fija, se valida cada candidato y se completan los
-  cupos por banda de ELO. El resultado se escribe una sola vez y queda congelado.
+  ``player_selection.pools`` con las listas públicas de la PubAPI (titulados, jugadores
+  por país y rankings), se barajan con una semilla fija, se valida cada candidato y se
+  completan los cupos por banda de ELO. El resultado se escribe una sola vez y queda
+  congelado.
+- Si existe pero el config agrega una banda que la selección no tiene, se completa sólo
+  esa banda con los pools que la alimentan, sin tocar a los jugadores ya congelados.
 
 Cada pool declara las bandas que alimenta: cuando todas sus bandas están llenas, el pool
 se deja de recorrer sin gastar requests. El avance se guarda en un checkpoint para que un
@@ -180,8 +183,8 @@ class PlayerSelector:
         if missing:
             raise ValueError(f"Bandas sin ningún pool que las alimente: {sorted(missing)}")
         for name, pool in self.pools_config.items():
-            if not pool.get("titles") and not pool.get("countries"):
-                raise ValueError(f"El pool {name} no declara 'titles' ni 'countries'")
+            if not pool.get("titles") and not pool.get("countries") and not pool.get("leaderboards"):
+                raise ValueError(f"El pool {name} no declara 'titles', 'countries' ni 'leaderboards'")
 
     def _get_json(self, url: str) -> dict[str, Any]:
         payload = self._api_get(url)
@@ -190,26 +193,34 @@ class PlayerSelector:
 
     # -- Pools de candidatos --------------------------------------------------
 
-    def _snapshot(self, name: str, url: str) -> list[str]:
-        """Return the ``players`` list of ``url``, cached as a raw JSON snapshot.
+    def _snapshot(self, name: str, url: str) -> dict[str, Any]:
+        """Return the JSON of ``url``, cached as a raw snapshot.
 
         The snapshot is written once and reused afterwards, so a retry in the middle
         of a selection works over exactly the same pools.
         """
         path = self.snapshot_dir / f"{name}.json"
         if path.exists():
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        else:
-            payload = self._get_json(url)
-            _atomic_write_text(path, json.dumps(payload, ensure_ascii=False))
-        return [str(username) for username in payload.get("players", [])]
+            return json.loads(path.read_text(encoding="utf-8"))
+        payload = self._get_json(url)
+        _atomic_write_text(path, json.dumps(payload, ensure_ascii=False))
+        return payload
 
-    def _pool_lists(self, pool: dict[str, Any]) -> list[tuple[str, str, str]]:
-        """(snapshot name, URL, source label) of every public list in a pool."""
-        lists = [(f"titled_{title}", f"{PUBAPI_ROOT}/titled/{title}", f"titulo:{title}")
+    def _pool_lists(self, pool: dict[str, Any]) -> list[tuple[str, str, str, Callable[[dict], list]]]:
+        """(snapshot name, URL, source label, username extractor) of every list in a pool."""
+        def players(payload: dict) -> list:
+            return payload.get("players", [])
+
+        lists = [(f"titled_{title}", f"{PUBAPI_ROOT}/titled/{title}", f"titulo:{title}", players)
                  for title in pool.get("titles", [])]
-        lists += [(f"country_{iso}", f"{PUBAPI_ROOT}/country/{iso}/players", f"pais:{iso}")
+        lists += [(f"country_{iso}", f"{PUBAPI_ROOT}/country/{iso}/players", f"pais:{iso}", players)
                   for iso in pool.get("countries", [])]
+        # One request serves every ranking: /leaderboards has the top 50 of each category.
+        for category in pool.get("leaderboards", []):
+            def ranked(payload: dict, category: str = category) -> list:
+                return [entry.get("username") for entry in payload.get(category, []) if entry.get("username")]
+
+            lists.append(("leaderboards", f"{PUBAPI_ROOT}/leaderboards", f"ranking:{category}", ranked))
         return lists
 
     def fetch_pools(self) -> dict[str, dict[str, str]]:
@@ -223,9 +234,9 @@ class PlayerSelector:
         for pool_name, pool in self.pools_config.items():
             sources: dict[str, set[str]] = {}
             spellings: dict[str, str] = {}
-            for snapshot_name, url, source in self._pool_lists(pool):
+            for snapshot_name, url, source, extract in self._pool_lists(pool):
                 try:
-                    players = self._snapshot(snapshot_name, url)
+                    players = [str(username) for username in extract(self._snapshot(snapshot_name, url))]
                 except (requests.RequestException, ValueError) as exc:
                     logger.warning("No se pudo obtener %s, se sigue sin esa lista: %s", url, exc)
                     continue
@@ -531,6 +542,30 @@ class PlayerSelector:
     def discard_checkpoint(self) -> None:
         self.checkpoint_path.unlink(missing_ok=True)
 
+    def extend(self, frozen: dict[str, Any], new_bands: list[str]) -> SelectionResult:
+        """Fill only ``new_bands``, with the pools that feed them, skipping frozen players.
+
+        The selector for the extension sees just those bands and pools, so the frozen
+        bands are never re-evaluated and their players keep their place.
+        """
+        sub_config = copy.deepcopy(self.config)
+        sub_policy = sub_config["player_selection"]
+        sub_policy["target_per_band"] = {band: self.target_per_band[band] for band in new_bands}
+        sub_policy["pools"] = {
+            name: {**pool, "bands": [band for band in pool["bands"] if band in new_bands]}
+            for name, pool in self.pools_config.items()
+            if set(pool["bands"]) & set(new_bands)
+        }
+        extension = PlayerSelector(sub_config, api_get=self._api_get, sleep=self._sleep)
+        taken = {_normalise_username(username) for username in frozen.get("usernames", [])}
+        pools = {
+            name: {user: source for user, source in candidates.items() if _normalise_username(user) not in taken}
+            for name, candidates in extension.fetch_pools().items()
+        }
+        result = extension.select(pools)
+        extension.discard_checkpoint()
+        return result
+
 
 def write_selection(result: SelectionResult, path: str | Path) -> Path:
     """Guarda la selección (lista congelada + manifiesto) de forma atómica."""
@@ -538,6 +573,29 @@ def write_selection(result: SelectionResult, path: str | Path) -> Path:
     payload = yaml.safe_dump(result.to_manifest(), allow_unicode=True, sort_keys=False)
     _atomic_write_text(destination, payload)
     return destination
+
+
+def _extended_manifest(frozen: dict[str, Any], result: SelectionResult, policy: dict[str, Any]) -> dict[str, Any]:
+    """The frozen manifest plus the bands filled by an extension, with an audit entry."""
+    selected = {**frozen["selected"], **result.selected}
+    usernames = list(frozen["usernames"])
+    known = {_normalise_username(username) for username in usernames}
+    usernames += [username for username in result.usernames if _normalise_username(username) not in known]
+    skipped = Counter(frozen.get("skipped_before_validation", {}))
+    skipped.update(result.skipped)
+    complete = all(len(selected.get(band, [])) == target for band, target in policy["target_per_band"].items())
+    return {
+        "status": "complete" if complete else "incomplete",
+        "policy": policy,
+        "pool_sizes": {**frozen.get("pool_sizes", {}), **result.pool_sizes},
+        "candidates_consumed": {**frozen.get("candidates_consumed", {}), **result.consumed},
+        "selected": selected,
+        "usernames": usernames,
+        "skipped_before_validation": dict(sorted(skipped.items())),
+        "evaluated": list(frozen.get("evaluated", [])) + [asdict(item) for item in result.evaluated],
+        "extensions": list(frozen.get("extensions", []))
+        + [{"bands": list(result.selected), "players": {band: len(users) for band, users in result.selected.items()}}],
+    }
 
 
 def load_selection(path: str | Path) -> list[str]:
@@ -557,14 +615,29 @@ def load_or_create_selection(
     """Devuelve la lista de jugadores a descargar, creándola sólo si no existe.
 
     La primera corrida selecciona y escribe ``player_selection.selection_path``; las
-    siguientes leen ese archivo, así que descargan exactamente los mismos jugadores.
-    Para volver a seleccionar hay que borrar el archivo a mano.
+    siguientes leen ese archivo, así que descargan exactamente los mismos jugadores. Si
+    el config suma una banda nueva, sólo esa se selecciona y se agrega al archivo. Para
+    volver a seleccionar todo hay que borrar el archivo a mano.
     """
     path = Path(config["player_selection"]["selection_path"])
     if path.exists():
-        usernames = load_selection(path)
-        logger.info("Selección congelada reutilizada (%s): %d jugadores", path, len(usernames))
-        return usernames
+        frozen = yaml.safe_load(path.read_text(encoding="utf-8"))
+        new_bands = [band for band in config["player_selection"]["target_per_band"] if band not in frozen["selected"]]
+        if not new_bands:
+            usernames = load_selection(path)
+            logger.info("Selección congelada reutilizada (%s): %d jugadores", path, len(usernames))
+            return usernames
+        # A band added to the config: fill it alone; the frozen players stay as they are.
+        logger.info("La selección congelada no tiene las bandas %s: se completan sin tocar las demás.", new_bands)
+        selector = selector or PlayerSelector(config)
+        result = selector.extend(frozen, new_bands)
+        manifest = _extended_manifest(frozen, result, selector.policy_snapshot())
+        _atomic_write_text(path, yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False))
+        logger.info(
+            "Selección extendida en %s: %d jugadores %s",
+            path, len(manifest["usernames"]), {band: len(users) for band, users in result.selected.items()},
+        )
+        return manifest["usernames"]
 
     logger.info("No existe %s: primera corrida, se seleccionan jugadores por banda.", path)
     selector = selector or PlayerSelector(config)

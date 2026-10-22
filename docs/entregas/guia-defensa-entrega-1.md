@@ -49,8 +49,8 @@ Los 20 minutos son para mostrar y explicar, **no** para instalar ni esperar desc
    online, y cuánto le falta para terminar, **antes de que empiece y a medida que avanza**?
 2. **La fuente.** La **PubAPI pública de Chess.com** (solo lectura, sin cuenta ni API key),
    consultada de forma automatizada. La primera tarea del DAG (`listar_jugadores`)
-   **selecciona sola**, en la primera corrida, ~100 cuentas repartidas en 5 bandas de ELO,
-   tomadas de las listas públicas por país y de titulados, y deja esa lista congelada y
+   **selecciona sola**, en la primera corrida, ~120 cuentas repartidas en 6 bandas de ELO,
+   tomadas de listas públicas por país, titulados y rankings, y deja esa lista congelada y
    versionada en `config/`.
 3. **Qué es una fila.** *Una fila es **una partida en un momento dado**: la partida vista
    después de 0, 5, 10, …, 120 medio-movimientos (plies), uno cada 5.* El pipeline produce dos
@@ -81,7 +81,7 @@ listar_jugadores → descarga_usuario (×N, .expand) → consolidar_descarga →
 
 | # | Tarea (task_id) | Módulo | Qué hace | Por qué está ahí |
 |---|---|---|---|---|
-| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona una sola vez** los jugadores a descargar: en la primera corrida arma tres pools de candidatos (FM/CM/NM → avanzado; GM/IM → experto y top_mundial; jugadores por país → principiante e intermedio). Los baraja con semilla fija, valida cada candidato y junta 20 por banda de ELO. Guarda el avance en un checkpoint por si se corta. Congela el resultado en `config/jugadores_seleccionados.yaml` (versionado en git), que también es el manifiesto. En las corridas siguientes solo lee ese archivo. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace que la muestra sea **reproducible y auditable**: no cambia entre corridas ni entre máquinas. |
+| 1 | `listar_jugadores` | `src/player_selection.py` | **Selecciona una sola vez** los jugadores a descargar: en la primera corrida arma cuatro pools de candidatos (FM/CM/NM → avanzado; GM/IM → experto y top_mundial; jugadores por país → principiante e intermedio; rankings → elite). Los baraja con semilla fija, valida cada candidato y junta 20 por banda de ELO. Guarda el avance en un checkpoint por si se corta. Congela el resultado en `config/jugadores_seleccionados.yaml` (versionado en git), que también es el manifiesto. Si el config suma una banda, completa sólo esa y conserva las cuentas previas; en las otras corridas sólo lee ese archivo. Es la fuente del `.expand()`. | Da el input del fan-out mapeado y hace que la muestra sea **reproducible y auditable**: no cambia entre corridas ni entre máquinas. |
 | 2 | `descarga_usuario` (**mapeada** por cuenta) | `src/download_data.py` | **Una instancia por cuenta** (el nombre visible es el username). Pide `.../games/archives`, recorre los archivos mensuales del más reciente al más viejo **salteando los posteriores a `until_month: "2026-08"`** (ventana congelada) y guarda hasta **1.000 partidas rated** (bullet/blitz/rapid) por cuenta en `data/raw/`. Si la cuenta falla (404, sin partidas, red) **no rompe el fan-out**: devuelve un estado "falló". Corre con **`max_active_tis_per_dag=3`** (3 cuentas en paralelo, para no exceder el rate-limit de Chess.com). | Es la **ingesta automatizada**, paralela por cuenta. Guarda el crudo **tal como llega** (capa bronce). |
 | 3 | `consolidar_descarga` | `src/download_data.py` | Junta los resultados mapeados y exige los mínimos de tolerancia a fallos **después** del fan-out: corta solo si baja de `min_users_ok: 80` o `min_total_games: 1500`. | Cierra el fan-out y decide si el conjunto descargado alcanza. |
 | 4 | `limpieza_y_parseo` | `src/clean_data.py` | Parsea el PGN de cada partida (headers + jugadas), **deduplica por `GameUrl`**, convierte ELOs y control de tiempo a numérico, cuenta jugadas, conserva el torneo y los horarios exactos de inicio y fin, **filtra** filas inválidas (sin resultado, sin ELO, no-rated, no-estándar, o con < 5 medio-movimientos) y ordena por `GameUrl`. | Convierte el crudo semiestructurado en una **tabla tidy**. El filtro define el universo de análisis. |
@@ -109,25 +109,25 @@ corre **antes** de exportar: si el dataset no cumple, ni siquiera se escriben lo
 ## 3. El dataset contra los 7 criterios (min 7–12) — con números
 
 Corrida oficial del **22/10/2026** (DAG completo en **Airflow 3.3**, CeleryExecutor,
-ventana congelada hasta agosto de 2026, 100 jugadores seleccionados —20 por banda de
-ELO—): **81.094 registros descargados → 80.697 partidas finales** (99,51 % de retención) y
-**1.216.417 filas de cortes**. Comandos para verificar **en vivo** sobre `df`:
+ventana congelada hasta agosto de 2026, 120 jugadores seleccionados —20 por banda de
+ELO—): **101.094 registros descargados → 100.396 partidas finales** (99,31 % de retención) y
+**1.559.622 filas de cortes**. Comandos para verificar **en vivo** sobre `df`:
 
 | # | Criterio | Qué tiene que dar | Cómo se verifica | Resultado |
 |---|---|---|---|---|
 | 1 | **Clave sin duplicados** | `True` | `df["GameUrl"].is_unique` | ✅ `True` |
-| 2 | **Volumen suficiente** | ≥ `quality.min_final_games` = **1.500** filas | `len(df)` | ✅ `80697` |
-| 3 | **Ancho suficiente** | ≥ 5 columnas útiles | `df.shape` | ✅ `(80697, 35)` |
+| 2 | **Volumen suficiente** | ≥ `quality.min_final_games` = **1.500** filas | `len(df)` | ✅ `100396` |
+| 3 | **Ancho suficiente** | ≥ 5 columnas útiles | `df.shape` | ✅ `(100396, 35)` |
 | 4 | **Mezcla de tipos** | numéricas + categóricas **+ fecha** | `df.dtypes.value_counts()` | ✅ int/float + category/object + datetime64 (las tres, fecha obligatoria) |
 | 5 | **Nulos conocidos** | solo en columnas documentadas | `df.isna().mean().sort_values(ascending=False)` | ✅ sólo `TournamentUrl` y las tres `tasa_*_hist`, las dos estructurales y documentadas (ver sección 4) |
 | 6 | **Sin columnas vacías** | ninguna 100 % nula | `df.columns[df.isna().all()]` | ✅ vacío |
 | 7 | **Columnas objetivo** | `resultado` **y** `cantidad_jugadas` sin nulos | `df[["resultado","cantidad_jugadas"]].isna().sum()` | ✅ `0` y `0` |
-| + | **Precisión de ELO** (extensión propia) | `WhiteElo`/`BlackElo` en rango plausible `[100, 4000]` | `df[["WhiteElo","BlackElo"]].agg(["min","max"])` | ✅ observado 100–3382 / 100–3399 (100 es el piso de rating de Chess.com) |
+| + | **Precisión de ELO** (extensión propia) | `WhiteElo`/`BlackElo` en rango plausible `[100, 4000]` | `df[["WhiteElo","BlackElo"]].agg(["min","max"])` | ✅ observado 100–3462 / 100–3459 (100 es el piso de rating de Chess.com) |
 | + | **Consistencia de torneo y horarios** (extensión propia) | `EsTorneo` = `TournamentUrl` presente; `StartTime` ≤ `EndTime`; tasas nulas sólo sin historial | asserts de `verificar_calidad` | ✅ |
 
 **La tabla de cortes** se valida en `construir_dataset_cortes`: clave `(GameUrl, corte_ply)`
 única, cada partida del Parquet encuentra su PGN y los plies reproducidos coinciden con
-`cantidad_jugadas` en las 80.697. Sus únicos nulos son `gasto_reciente_*` en el corte 0
+`cantidad_jugadas` en las 100.396. Sus únicos nulos son `gasto_reciente_*` en el corte 0
 (todavía no hubo jugadas).
 
 > **El criterio 2 no usa el "1.000" heredado del ejemplo de cátedra.** Exige el mínimo
@@ -161,7 +161,7 @@ proyecto: predecir antes y durante la partida.
 
 ### Cuál es la columna objetivo
 **`resultado`** — columna concreta del CSV, no una idea. En la corrida oficial: *Gana
-Blancas* 49,0 %, *Gana Negras* 44,9 %, *Empate* 6,1 %. Objetivo de regresión:
+Blancas* 48,8 %, *Gana Negras* 44,4 %, *Empate* 6,8 %. Objetivo de regresión:
 `plies_restantes` en la tabla de cortes (`cantidad_jugadas` en la base). El DAG verifica
 que `resultado` y `cantidad_jugadas` estén sin nulos (criterio 7).
 
@@ -174,7 +174,7 @@ las columnas críticas.
 
 Los nulos que quedan son **estructurales**, no faltantes: el dato no existe, y está bien
 que no exista.
-- `TournamentUrl`: nula en las 74.477 partidas que **no son de torneo** (92,3 %).
+- `TournamentUrl`: nula en las 89.256 partidas que **no son de torneo** (88,9 %).
   `verificar_calidad` comprueba que coincide exactamente con `EsTorneo = False`.
 - `tasa_blancas_hist`, `tasa_tablas_hist`, `tasa_negras_hist`: nulas en las 1.620 partidas
   cuyo matchup de apertura tenía **menos de 30 partidas previas** en ese ritmo (no había
@@ -202,7 +202,7 @@ pero queda visible, no escondida.
 `verificar_calidad` guarda el volumen de la última corrida exitosa en una **Airflow Variable**
 (`pipeline_ajedrez_volumen_baseline`) y **avisa** (no rompe) si la corrida actual se desvía > 5 %
 del baseline. Como `until_month` está congelado, el volumen debería ser estable entre corridas
-(≈ 80.697); un desvío grande señala que cambió la config, la selección o la fuente. Es observabilidad, no un
+(≈ 100.396); un desvío grande señala que cambió la config, la selección o la fuente. Es observabilidad, no un
 criterio de rechazo.
 
 ### Qué pasa si lo corrés de nuevo — ¿sale el mismo archivo?
@@ -252,10 +252,10 @@ mesa antes de que las encuentren:
    de la partida en una sola celda (`"1. e4 c5 2. Nf3 ..."`). Es el análogo exacto al
    `player_positions` del dataset canónico de la cátedra: viola "cada celda un valor".
    **Por qué se decidió así:** separar cada jugada en su propia fila explotaría el volumen
-   (~75 plies por partida) y la mayoría de esas filas no se usan; separarlas en columnas
+   (~78 plies por partida) y la mayoría de esas filas no se usan; separarlas en columnas
    daría cientos de columnas de ancho variable. La concesión es deliberada, y de
    `moves_text` + el PGN crudo derivamos valores atómicos: `cantidad_jugadas` en la tabla
-   base, y en la tabla de cortes la posición y los relojes en 6 momentos fijos de la
+   base, y en la tabla de cortes la posición y los relojes en hasta 25 momentos fijos de la
    partida (una fila por corte, no por jugada) — igual que la cátedra deriva `best_position`.
 
 2. **Fuga de información del ELO hacia `resultado` (limitación de la fuente).** Chess.com
@@ -266,11 +266,11 @@ mesa antes de que las encuentren:
    `src/rating_history.py` reconstruye el **rating previo** de cada cuenta seleccionada desde
    su propio historial. Del rival no hay historial, así que ese lado queda NaN: se conoce
    el rating previo de al menos un jugador en el 99,7 % de las partidas, pero de los dos
-   sólo en 5.
+   sólo en 271.
 
 3. **La muestra no es aleatoria (limitación de representatividad).** Los jugadores se sortean
    de las listas públicas de ocho países y de titulados, con **cupos iguales por banda de
-   ELO**. Las tres bandas altas salen de listas de titulados porque en las listas por país
+   ELO**. Las bandas avanzado, experto y top_mundial usan titulados; elite usa rankings. Las listas de titulados se usan porque en las listas por país
    casi no hay nadie de 1800 o más, y la API no publica listas por rating: queda afuera el
    amateur fuerte sin título, que es el perfil típico de 1800–2200. Entonces la distribución de niveles la fija el diseño (20 por banda) y no la
    población de Chess.com, y solo entran quienes declararon país o título. No hay cuentas
@@ -320,9 +320,9 @@ deberían poder contestar esto:
   estaba en `data/` (ignorada por git) cada integrante generó la suya y llegamos a tener
   documentos con cifras de dos datasets distintos.
 - **"¿Por qué la tabla de cortes y no una fila por jugada?"** Porque la pregunta es qué
-  tan bien se predice en distintos momentos de la partida, y 6 momentos fijos alcanzan
+  tan bien se predice en distintos momentos de la partida, y hasta 25 cortes alcanzan
   para dibujar esa curva y comparar cortes entre sí. Una fila por jugada multiplicaría el
-  volumen por ~75 con filas casi idénticas entre sí.
+  volumen por ~78 con filas casi idénticas entre sí.
 - **"¿Dónde está el rate-limiting / cómo respetás a Chess.com?"** Sesión identificada con
   `User-Agent`, requests en serie por cuenta con `request_delay` y reintentos con backoff ante
   429/5xx (`src/download_data.py`). El fan-out corre **como mucho 3 cuentas en paralelo**

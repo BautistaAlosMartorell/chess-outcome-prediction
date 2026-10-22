@@ -14,10 +14,12 @@ grupal de 5-6 personas, con cuatro entregas parciales entre septiembre y noviemb
 antes de llegar a este, y qué falta validar con datos reales de volumen.
 
 ```
-src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG, más la validación y la predicción del modelo (model_validation, predict)
+src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG, más el historial dentro del Pipeline, la validación y la predicción del modelo (history_transformer, model_validation, predict)
 dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
 notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado
 models/      modelo entrenado para la app — lo regenera el notebook 04, no se versiona
+api/         API de la app (FastAPI): sirve predecir() y consulta la PubAPI de Chess.com (dependencias en api/requirements.txt)
+web/         app de la Entrega 4 (Next.js): jugar con relojes y analizar partidas de cualquier usuario
 config/      config.yaml (bandas de ELO, ventana temporal, cortes, descarga) y jugadores_seleccionados.yaml (lista congelada, versionada)
 data/        vacío en git — se regenera corriendo el pipeline
 tests/       pruebas unitarias sin acceso de red (python -m unittest discover -s tests)
@@ -66,10 +68,16 @@ python -m src.pipeline                                       # --skip-download s
 jupyter lab notebooks/01_data_ingestion_verification.ipynb   # o Restart & Run All
 ```
 
-La primera corrida selecciona ~100 jugadores (20 por banda de ELO) desde tres pools de
+La primera corrida selecciona ~120 jugadores (20 por banda de ELO) desde cuatro pools de
 listas públicas de la PubAPI (titulados FM/CM/NM, titulados GM/IM y jugadores por
-país; ver `player_selection.pools`), congela esa lista en
+país, más rankings `/pub/leaderboards` para `elite`; ver `player_selection.pools`), congela esa lista en
 `config/jugadores_seleccionados.yaml` (versionada) y descarga hasta 1.000 partidas rated
 por jugador, recorriendo archivos mensuales en serie hasta `download.until_month`. Las
 siguientes reusan la misma lista y saltean los JSON ya descargados (idempotente). No
 borres ese archivo salvo que se quiera volver a seleccionar a propósito: cambia la muestra.
+
+Estado vigente: corrida oficial `manual__2026-10-22T18:56:28` del 22/10/2026,
+101.094 registros → 100.396 partidas (99,31 %), 35 columnas; 1.559.622 filas
+de cortes (547.555 en los seis cortes de referencia). Seis bandas de 20 cuentas:
+`top_mundial` [2600, 3000) y `elite` [3000, 4000). La extensión conserva las
+100 cuentas originales y queda auditada en `extensions` del manifiesto.

@@ -46,6 +46,7 @@ class PlayerSelectionTest(unittest.TestCase):
         config["player_selection"]["pools"] = {
             "titulados": {"titles": ["GM"], "bands": ["avanzado", "experto", "top_mundial"]},
             "paises": {"countries": ["AR"], "bands": ["principiante", "intermedio"]},
+            "lideres": {"leaderboards": ["live_blitz"], "bands": ["elite"]},
         }
         config["player_selection"]["selection_path"] = str(self.tmp / "seleccion" / "sel.yaml")
         config["player_selection"]["snapshot_dir"] = str(self.tmp / "seleccion")
@@ -80,11 +81,12 @@ class PlayerSelectionTest(unittest.TestCase):
             },
         }
 
-    def fake_api(self, players: dict[str, tuple[int, ...]], *, titled: tuple[str, ...] = ()):
+    def fake_api(self, players: dict[str, tuple[int, ...]], *, titled: tuple[str, ...] = (), ranked: tuple[str, ...] = ()):
         """Return (api_get, calls): a PubAPI stub over ``players`` and the URLs requested."""
         payloads = {
-            f"{PUBAPI_ROOT}/country/AR/players": {"players": sorted(players)},
+            f"{PUBAPI_ROOT}/country/AR/players": {"players": sorted(p for p in players if p not in ranked)},
             f"{PUBAPI_ROOT}/titled/GM": {"players": list(titled)},
+            f"{PUBAPI_ROOT}/leaderboards": {"live_blitz": [{"username": u, "score": 3300} for u in ranked], "live_bullet": []},
         }
         for username, ratings in players.items():
             payloads.update(self.player_payloads(username, ratings=ratings))
@@ -300,6 +302,47 @@ class PlayerSelectionTest(unittest.TestCase):
         with self.assertRaises(InsufficientSelectionError):
             load_or_create_selection(config, selector=self.selector(config, api_get))
         self.assertFalse(Path(config["player_selection"]["selection_path"]).exists())
+
+    def test_leaderboards_are_a_pool(self) -> None:
+        api_get, calls = self.fake_api({"Top1": (3300, 3310), "Top2": (3200, 3210)}, ranked=("Top1", "Top2"))
+        pools = self.selector(self.config_for_test(), api_get).fetch_pools()
+        self.assertEqual(pools["lideres"], {"Top1": "ranking:live_blitz", "Top2": "ranking:live_blitz"})
+        self.assertEqual(calls.count(f"{PUBAPI_ROOT}/leaderboards"), 1)
+
+    def test_new_band_extends_the_frozen_selection_without_touching_it(self) -> None:
+        players = {f"p{index}": (1300, 1310) for index in range(4)}
+        players.update({"Top1": (3300, 3310), "Top2": (3400, 3410)})
+        config = self.config_for_test({"intermedio": 2})
+        api_get, calls = self.fake_api(players, ranked=("Top1", "Top2"))
+        first = load_or_create_selection(config, selector=self.selector(config, api_get))
+
+        extended = self.config_for_test({"intermedio": 2, "elite": 1})
+        calls.clear()
+        usernames = load_or_create_selection(extended, selector=self.selector(extended, api_get))
+
+        manifest = yaml.safe_load(Path(extended["player_selection"]["selection_path"]).read_text())
+        self.assertEqual(usernames[:2], first)  # the frozen players keep their place
+        self.assertEqual(len(manifest["selected"]["elite"]), 1)
+        self.assertEqual(manifest["status"], "complete")
+        self.assertEqual(manifest["extensions"][-1]["bands"], ["elite"])
+        self.assertFalse(any("/p0" in url or "/p1" in url for url in calls))  # nobody frozen is re-validated
+        # Once extended, the next run reuses the file without any request.
+        calls.clear()
+        self.assertEqual(load_or_create_selection(extended, selector=self.selector(extended, api_get)), usernames)
+        self.assertEqual(calls, [])
+
+    def test_extension_skips_players_already_frozen(self) -> None:
+        config = self.config_for_test({"intermedio": 1})
+        api_get, _ = self.fake_api({"p0": (1300, 1310), "Top1": (3300, 3310)}, ranked=("Top1",))
+        load_or_create_selection(config, selector=self.selector(config, api_get))
+        path = Path(config["player_selection"]["selection_path"])
+        manifest = yaml.safe_load(path.read_text())
+        manifest["usernames"].append("top1")  # pretend Top1 was already selected in another band
+        path.write_text(yaml.safe_dump(manifest))
+
+        extended = self.config_for_test({"intermedio": 1, "elite": 1})
+        load_or_create_selection(extended, selector=self.selector(extended, api_get))
+        self.assertEqual(yaml.safe_load(path.read_text())["selected"]["elite"], [])
 
     def test_snapshot_is_reused_on_retry(self) -> None:
         config = self.config_for_test()

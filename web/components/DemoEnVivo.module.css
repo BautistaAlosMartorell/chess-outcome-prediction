@@ -1,0 +1,95 @@
+.demo {
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  padding: clamp(18px, 3vw, 28px);
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--panel-alto), var(--panel));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 30px 70px rgba(0, 0, 0, 0.45);
+  animation: entrar 700ms var(--suave) both 150ms;
+}
+
+@keyframes entrar {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+
+.encabezado :global(.cifra) {
+  font-size: 1.1rem;
+  color: var(--texto);
+}
+
+.envivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--apuro);
+  box-shadow: 0 0 0 0 rgba(255, 107, 91, 0.6);
+  animation: emitir 1.6s ease-out infinite;
+}
+
+@keyframes emitir {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 91, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(255, 107, 91, 0);
+  }
+}
+
+.curva {
+  width: 100%;
+  height: 96px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.fondoCurva {
+  fill: var(--fondo-hondo);
+}
+
+.blancas {
+  fill: var(--blancas);
+}
+
+.tablas {
+  fill: var(--tablas);
+}
+
+.negras {
+  fill: var(--negras);
+}
+
+.mitad {
+  stroke: var(--texto);
+  stroke-dasharray: 2 5;
+  opacity: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.pie {
+  min-height: 3em;
+  margin: 0;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}

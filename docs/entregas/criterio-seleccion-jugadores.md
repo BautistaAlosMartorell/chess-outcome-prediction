@@ -9,7 +9,7 @@ una corrida anterior, y **se hace una sola vez**: el resultado queda congelado e
 `config/jugadores_seleccionados.yaml`, **versionado en git**, y todas las corridas
 siguientes, en cualquier máquina, descargan exactamente los mismos jugadores.
 
-La lista oficial es la de la corrida del 22/10/2026: 100 jugadores, 20 por banda.
+La lista oficial es la de la corrida del 22/10/2026: 120 jugadores, 20 por banda.
 
 ## Problema que resuelve
 
@@ -29,15 +29,16 @@ Las versiones anteriores tenían dos problemas:
 ```text
 ¿Existe config/jugadores_seleccionados.yaml?
         │
-        ├── Sí  →  Se lee y se devuelve la misma lista (sin selección, sin red).
+        ├── Sí  →  Si falta una banda configurada se completa sólo esa; si no, se reutiliza sin red.
         │
         └── No  →  PRIMERA CORRIDA:
                         │
                         ↓
-        Tres pools de candidatos, cada uno con las bandas que alimenta
+        Cuatro pools de candidatos, cada uno con las bandas que alimenta
           · titulados_avanzado  FM, CM, NM                  → avanzado
           · titulados_alto      GM, IM                      → experto, top_mundial
           · paises              AR, ES, MX, US, IN, BR, DE, RU → principiante, intermedio
+          · lideres             live_bullet/live_blitz/live_rapid → elite
           (/pub/titled/{título} y /pub/country/{iso}/players; cada lista se guarda cruda
            en data/raw/seleccion/ → bronce de la selección)
                         ↓
@@ -161,7 +162,7 @@ otra instalación que corra la selección desde cero otro día obtiene otros jug
 el 22/10/2026 la lista vivía en `data/raw/seleccion/`, ignorada por git, y pasó exactamente
 eso: cada integrante tenía su propia lista y su propio dataset (llegaron a convivir cifras
 de 80.145 y 76.803 partidas en los documentos). Con la lista en `config/`, el que clona el
-repo descarga los mismos 100 jugadores sin seleccionar nada.
+repo descarga los mismos 120 jugadores sin seleccionar nada.
 
 **En Linux** el contenedor de Airflow (uid 50000) necesita permiso de escritura en
 `config/` para guardar la lista si alguna vez se vuelve a seleccionar:
@@ -185,15 +186,31 @@ Incluye:
 - el tamaño de cada pool y cuántos candidatos se consumieron de cada uno;
 - los seleccionados por banda y la lista plana `usernames`;
 - los conteos de candidatos salteados en el pre-filtro, por motivo;
-- cada candidato validado, con su banda estimada, su mediana validada y el motivo de rechazo.
+- cada candidato validado, con su banda estimada, su mediana validada y el motivo de rechazo;
+- `extensions`, con las bandas y cantidades agregadas sin reemplazar cuentas congeladas.
 
-## Resultado de la selección oficial (22/10/2026)
+## Ampliación a élite y resultado oficial (22/10/2026)
 
-- 100 jugadores, 20 por banda, sin bandas incompletas.
-- 81.094 registros descargados → 80.697 partidas finales.
-- `nivel_promedio` (banda del promedio de los dos ratings de cada partida) queda entre
-  18,4 % (`avanzado`) y 21,8 % (`intermedio`) del dataset.
-- La selección tardó unos 30 minutos; 97 de los 100 jugadores coinciden con una selección
-  local anterior hecha con los mismos snapshots y la misma semilla. Los 3 distintos se
-  explican porque la banda estimada sale del rating actual (`/stats`), que cambia con el
-  tiempo.
+El cuarto pool usa `/pub/leaderboards` (rankings `live_bullet`, `live_blitz` y
+`live_rapid`). Sus candidatos pasan la misma validación contra la ventana congelada.
+`top_mundial` cubre [2600, 3000) y `elite`, [3000, 4000). Los intervalos incluyen
+el límite inferior y excluyen el superior.
+
+`load_or_create_selection` detecta bandas ausentes en el manifiesto y selecciona
+sólo esas, excluyendo cuentas ya elegidas. `_extended_manifest` conserva la lista
+anterior y agrega una entrada en `extensions`; no vuelve a sortear los 100 originales.
+El manifiesto registra 111 candidatos únicos de rankings y 25 consumidos para completar
+los 20 de élite.
+
+Resultado de `manual__2026-10-22T18:56:28`:
+
+- 120 cuentas, seis bandas de 20, sin bandas incompletas.
+- 101.094 registros → 100.396 partidas (99,31 %).
+- `nivel_promedio`: 14,8 % (`avanzado`) a 19,8 % (`top_mundial`); `elite` aporta 15,3 %.
+- 1.559.622 filas de cortes; 547.555 en los seis cortes de referencia.
+
+El tiempo de unos 30 minutos y la coincidencia de 97/100 con la selección local del
+22/09 describían la selección original de cinco bandas, no la ampliación. Los rankings
+son otra lista pública sesgada: incorporan jugadores activos y fuertes, no una muestra
+aleatoria de todas las cuentas de ese rating. En las partidas de banda `elite` de esta
+corrida no hay rapid, limitación de cobertura que el EDA declara.

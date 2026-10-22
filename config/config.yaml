@@ -41,7 +41,11 @@ elo:
     intermedio: [1200, 1800]
     avanzado: [1800, 2200]
     experto: [2200, 2600]
-    top_mundial: [2600, 4000]
+    top_mundial: [2600, 3000]
+    # Los mejores del mundo en bullet y blitz (rankings públicos de Chess.com). Se agregó
+    # el 22/10/2026 para que el modelo vea ratings de 3000+: sin esta banda, el rating
+    # previo más alto del dataset era 3113 y para el modelo cualquier élite era "un 3100".
+    elite: [3000, 4000]
 
 # Matchup de apertura por color: primera jugada de blancas x primera respuesta de
 # negras (SAN). Taxonomía propia del equipo, NO el estándar ECO. La lista está
@@ -99,8 +103,8 @@ download:
   until_month: "2026-08"
   # Umbrales mínimos de la descarga cruda tras tolerar fallos por usuario
   # (cuenta borrada, sin partidas, red). Por debajo de esto la descarga corta con error.
-  # Con ~100 jugadores seleccionados se tolera que falle hasta ~20 %.
-  min_users_ok: 80
+  # Con ~120 jugadores seleccionados se tolera que falle hasta ~20 %.
+  min_users_ok: 96
   min_total_games: 1500
 
 # Política de selección de jugadores ejecutada por listar_jugadores en el DAG.
@@ -133,18 +137,25 @@ player_selection:
     paises:
       countries: [AR, ES, MX, US, IN, BR, DE, RU]
       bands: [principiante, intermedio]
+    # Rankings públicos (/pub/leaderboards): los 50 primeros de cada ritmo. Los de rapid
+    # rara vez validan en 3000+, pero suman candidatos que juegan los tres ritmos.
+    lideres:
+      leaderboards: [live_bullet, live_blitz, live_rapid]
+      bands: [elite]
   cutoff: "2026-08"
   random_state: 42
   min_eligible_games: 15
   max_games_per_candidate: 1000
-  # 100 jugadores, 20 por banda de ELO. Si una banda no alcanza el target, se loguea un
-  # warning y se sigue con lo conseguido.
+  # 120 jugadores, 20 por banda de ELO. Si una banda no alcanza el target, se loguea un
+  # warning y se sigue con lo conseguido. Una banda nueva (como elite) se completa sola
+  # sobre la selección congelada, sin volver a elegir a los demás.
   target_per_band:
     principiante: 20
     intermedio: 20
     avanzado: 20
     experto: 20
     top_mundial: 20
+    elite: 20
   # Lista congelada + manifiesto (candidatos evaluados y motivos de rechazo). Vive en
   # config/ y se versiona en git: es lo que define la muestra, y si quedara en data/
   # (ignorada por git) cada integrante terminaría con su propia lista y su propio dataset.

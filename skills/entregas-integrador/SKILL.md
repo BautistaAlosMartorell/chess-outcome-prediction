@@ -20,9 +20,9 @@ Unidad de análisis: la partida en un momento dado (partida × corte de plies: u
 deriva.
 
 Fuente: PubAPI pública de Chess.com (`/pub/player/{username}/games/{YYYY}/{MM}`), sin
-autenticación. Partidas reales de 100 jugadores, 20 por cada banda de ELO, seleccionados
+autenticación. Partidas reales de 120 jugadores, 20 por cada banda de ELO, seleccionados
 automáticamente por la tarea `listar_jugadores` del DAG desde las listas públicas de
-titulados y de jugadores por país. La lista queda congelada y versionada en
+titulados y de jugadores por país, más rankings para la banda `elite`. La lista queda congelada y versionada en
 `config/jugadores_seleccionados.yaml`. La API se consulta en serie mediante
 sus archivos mensuales.
 
@@ -80,23 +80,39 @@ distribución real de Chess.com, y que la banda `avanzado` se arma con titulados
 bajo porque la API no publica listas por rating. El CLI sin Docker usa la misma lista
 congelada que el DAG.
 
-**Al 22/10/2026 (Entrega 3 lista, vigente):** La pregunta pasó a ser el resultado y
-la duración **antes y durante** la partida, y la unidad de modelado la partida × corte
-(tabla `partidas_cortes.parquet`, un corte cada 5 plies del 0 al 120; el 0 es antes de
-mover). La lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`.
-Corrida oficial del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas
-(99,51 %), 35 columnas, 1.216.417 filas de cortes (435.689 en los cortes de referencia
-0/10/20/30/40/60, que usan el EDA y el notebook 03). El notebook 02 es uno solo (Parte A antes, Parte B
-durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03 es
-la exploración previa. El modelado formal está en `notebooks/04_modelado.ipynb`:
-validación cruzada temporal por partida, logística, random forest y gradient boosting, y
-el test mirado una vez. Gana el **random forest** (0,835 ± 0,017 de log-loss en
-validación, contra 0,854 de la logística y 0,923 del piso). En test le gana al piso por
-un 12 % (0,799 contra 0,909): nada antes de mover, 19 % al ply 60. Los relojes pesan; el
-rating previo, la forma reciente y el matchup no aportan. El modelo queda en
-`models/modelo_en_vivo.joblib` (no versionado) y `predecir()` (`src/predict.py`) lo
-aplica jugada a jugada para la app. Mapa consigna → notebook:
-`docs/entregas/plan-entrega-3.md`.
+**Al 22/10/2026 (Entrega 3 modelada, con un contrato de realismo pendiente; vigente):**
+La unidad de modelado es partida × corte, cada 5 plies del 0 al 120. Corrida oficial
+`manual__2026-10-22T18:56:28`: 120 cuentas (seis bandas × 20), 101.094 registros →
+100.396 partidas (99,31 %), 35 columnas, 1.559.622 cortes y 547.555 de referencia
+0/10/20/30/40/60. La extensión conserva las 100 cuentas previas; `top_mundial` es
+[2600,3000) y `elite` [3000,4000), esta última desde rankings. El manifiesto vive en
+`config/jugadores_seleccionados.yaml`. No hay rapid en las partidas de banda elite.
+
+Los notebooks 01–04 están ejecutados desde kernel limpio, con lecturas de esta corrida.
+H1 y H3 globales quedan inconclusas con la regla del EDA; H2 y H4, refutadas. El 03
+exploratorio ya mejora antes de mover: 0,880 frente a 0,895. El 04 selecciona por cinco
+folds temporales por partida: random forest 0,836 ± 0,025 frente a logística
+0,857 ± 0,027 y piso 0,938 ± 0,009. Grilla: max_features=0.3,
+min_samples_leaf=20. No se balancea. Quedan 40 columnas: PRE_GAME + LIVE + FORM;
+se conservan rating y relojes, entran diez de forma y se excluyen los cuatro grupos
+adicionales de posición, estilo y matchup bajo la regla global/corte 0.
+
+`PlayerHistoryTransformer` deriva rating y forma dentro del Pipeline con cierres
+estrictamente anteriores al inicio. La auditoría encontró 1.345 observaciones para
+las que ordenar cierres y aplicar shift no garantizaba esa disponibilidad. Se repitió
+la selección con la condición estricta. Test: log-loss 0,804 frente a 0,936 (14,09 %
+menos), 3,79 % de mejora antes de mover y 18,84 % al ply 60; recall de Empate 3,60 %.
+El período ya fue mirado en el 03 y en una versión anterior del 04: no es un holdout
+nuevo. Duración: MAE 22,934 frente a 28,357 plies, con boosting sin grilla propia.
+El artefacto pesa 132,1 MB, no se versiona; `predecir()` reproduce los cortes a 1e-9.
+
+La suite local ejecuta 75 tests: 74 pasan y el de dama ganada falla en dos subcasos
+(+9,02/+10,34 puntos frente al contrato de +15). Se conserva el fallo y se documenta;
+las otras cuatro pruebas de realismo pasan. Estas pruebas requieren el artefacto y,
+para población/calibración, los datos regenerados; sin ellos se saltean.
+Mapa y respuestas: `docs/entregas/plan-entrega-3.md`. La integración de la app queda
+para después de mergear PR #30 con confirmación; debe enviar historiales/inicios o
+contexto pre-partida válido y actualizar el texto a 40 columnas/100.396 partidas.
 
 ## Qué pide cada entrega
 

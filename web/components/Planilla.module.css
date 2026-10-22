@@ -1,0 +1,121 @@
+.planilla {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--panel);
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px 10px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--linea);
+}
+
+.ayuda {
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--texto-suave);
+}
+
+.lista {
+  position: relative;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--linea) transparent;
+}
+
+.lista table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.lista thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--texto-suave);
+  padding: 8px 10px;
+  box-shadow: 0 1px 0 var(--linea), 0 6px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.lista tbody th {
+  width: 2.6em;
+  text-align: right;
+  padding-right: 6px;
+  font-weight: 400;
+  color: var(--texto-suave);
+}
+
+.lista td {
+  padding: 2px 4px;
+}
+
+.boton {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radio-chico);
+  background: none;
+  text-align: left;
+  transition: background-color 150ms ease;
+}
+
+button.boton:hover {
+  background: var(--panel-alto);
+}
+
+.actual .boton {
+  background: var(--reloj);
+  color: var(--negras);
+}
+
+.actual .prob {
+  color: var(--negras);
+}
+
+.san {
+  font-weight: 700;
+}
+
+.salto {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--reloj);
+}
+
+.actual .salto {
+  color: var(--negras);
+}
+
+.prob {
+  margin-left: auto;
+  color: var(--texto-suave);
+  font-size: 0.8125rem;
+}
+
+.vacia {
+  padding: 18px 12px !important;
+  color: var(--texto-suave);
+}
+
+.oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

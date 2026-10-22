@@ -1,0 +1,246 @@
+.marcador {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(300px, 2.4fr) minmax(170px, 1fr);
+  align-items: end;
+  gap: clamp(16px, 2.5vw, 32px);
+  padding: clamp(16px, 2.5vw, 24px);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-alto), var(--panel));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Player plates: identity on top, the clock is the large element. */
+.marcador > * {
+  min-width: 0;
+}
+
+.placa {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.negras {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.identidad {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.negras .identidad {
+  flex-direction: row-reverse;
+}
+
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px var(--linea);
+}
+
+/* Without an avatar, a disc in the side's color stands in. */
+.pieza {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.blancas .pieza {
+  background: radial-gradient(circle at 35% 30%, #ffffff, var(--blancas) 60%, #cfc6b4);
+}
+
+.negras .pieza {
+  background: radial-gradient(circle at 35% 30%, #3a4446, var(--negras) 65%);
+  box-shadow: 0 0 0 1px var(--borde-negras);
+}
+
+.datos {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.nombre {
+  font-weight: 700;
+  font-size: 1.05rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating {
+  color: var(--texto-suave);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.forma {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.forma li {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radio-chico);
+}
+
+.formaG {
+  background: var(--blancas);
+  color: var(--negras);
+}
+
+.formaT {
+  background: var(--tablas);
+  color: var(--negras);
+}
+
+.formaP {
+  background: transparent;
+  color: var(--texto-suave);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.reloj {
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
+  line-height: 1;
+  padding: 8px 14px;
+  min-width: 5.4ch;
+  text-align: center;
+  border-radius: var(--radio);
+  background: var(--fondo-hondo);
+  color: var(--texto-suave);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  transition: background-color 250ms ease, color 250ms ease, box-shadow 250ms ease;
+}
+
+/* The running clock lights up like a digital chess clock. */
+.relojActivo {
+  background: var(--reloj);
+  color: var(--negras);
+  box-shadow: 0 0 0 1px var(--reloj), 0 0 28px rgba(255, 181, 71, 0.45);
+  animation: latido 2s ease-in-out infinite;
+}
+
+.relojApuro {
+  background: var(--apuro);
+  box-shadow: 0 0 0 1px var(--apuro), 0 0 32px rgba(255, 107, 91, 0.55);
+  animation-duration: 0.9s;
+}
+
+@keyframes latido {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+
+.centro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pie {
+  margin: 0;
+  text-align: center;
+  color: var(--texto-suave);
+  font-size: 0.95rem;
+}
+
+.pieFinal {
+  color: var(--texto);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 800px) {
+  .marcador {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .centro {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+}
+
+.compacto {
+  grid-template-columns: minmax(120px, 1fr) minmax(220px, 2.4fr) minmax(120px, 1fr);
+  gap: 16px;
+  padding: 12px 16px;
+  box-shadow: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.compacto .placa,
+.compacto .centro {
+  gap: 6px;
+}
+
+.compacto .reloj {
+  font-size: 1.8rem;
+  padding: 5px 10px;
+}
+
+.compacto .pie {
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+@media (max-width: 800px) {
+  .compacto {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .compacto .placa {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .compacto .negras {
+    flex-direction: row-reverse;
+  }
+
+  .compacto .pieza {
+    display: none;
+  }
+
+  .compacto .nombre {
+    font-size: 0.85rem;
+  }
+
+  .compacto .rating {
+    font-size: 0.7rem;
+  }
+
+  .compacto .reloj {
+    font-size: 1.4rem;
+    min-width: 4.5ch;
+    padding: 5px 6px;
+  }
+}

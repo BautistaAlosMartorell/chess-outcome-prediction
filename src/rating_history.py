@@ -2,12 +2,13 @@
 
 ``WhiteElo``/``BlackElo`` son el rating **posterior** a la partida (sección 9 del
 notebook 02: el signo del cambio de rating coincide con el resultado de esa misma
-partida en el 99,91 % de los casos), así que llevan el resultado adentro.
+partida en el 99,93 % de los casos), así que llevan el resultado adentro.
 
 El rating previo de un jugador en una partida es su rating al cierre de su partida
 anterior del mismo ``time_class``. Eso sólo se puede leer para las cuentas cuyo
 historial se descargó (las seleccionadas): del rival casi nunca hay historial, y ese
-lado queda NaN. No se imputa: un valor inventado sería peor que declararlo faltante.
+lado queda NaN. La reconstrucción no inventa un rating; si el estimador necesita
+imputación, se ajusta después y sólo con su entrenamiento.
 
 Del mismo historial sale la **forma reciente** del jugador (``reconstruct_recent_form``):
 puntaje de las últimas partidas, racha, tendencia del rating y si viene de una sesión
@@ -18,6 +19,7 @@ terminaron antes de que empiece.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -35,6 +37,11 @@ FORM_WINDOW = 10
 # Una sesión es una seguidilla de partidas con huecos menores a esto entre una y otra.
 SESSION_GAP_MINUTES = 30
 FORM_COLUMNS = ["forma_ultimas10", "racha", "tendencia_rating", "minutos_desde_anterior", "partidas_sesion"]
+# Estilo con el reloj: ventana más larga que la forma, porque una derrota por tiempo es
+# rara y con 10 partidas la tasa sería casi siempre 0 o 10 %.
+STYLE_WINDOW = 20
+STYLE_COLUMNS = ["derrotas_por_tiempo", "reloj_final"]
+_CLOCK_RE = re.compile(r"\[%clk (\d+):(\d+):(\d+(?:\.\d+)?)\]")
 
 
 def _score(result: object) -> float | None:
@@ -46,8 +53,22 @@ def _score(result: object) -> float | None:
     return 0.5 if result in DRAW_RESULTS else 0.0
 
 
+def _final_clock_fraction(game: dict, color: str) -> float | None:
+    """Reloj de ``color`` al terminar la partida, como fracción del tiempo base.
+
+    Lee las anotaciones ``%clk`` del PGN: blancas tiene las de índice par y negras las
+    impares. Sin relojes o sin tiempo base, None.
+    """
+    base = str(game.get("time_control", "")).partition("+")[0]
+    if not base.replace(".", "", 1).isdigit() or float(base) <= 0:
+        return None
+    clocks = [int(h) * 3600 + int(m) * 60 + float(s) for h, m, s in _CLOCK_RE.findall(game.get("pgn", ""))]
+    own = clocks[0::2] if color == "white" else clocks[1::2]
+    return own[-1] / float(base) if own else None
+
+
 def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
-    """Una fila por partida propia de cada cuenta descargada, con su rating posterior y su puntaje."""
+    """Una fila por partida propia de cada cuenta descargada: rating posterior, puntaje y reloj."""
     rows = []
     for username, path in raw_paths.items():
         with Path(path).open("r", encoding="utf-8") as file:
@@ -65,6 +86,9 @@ def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
                             "end_time": game.get("end_time"),
                             "rating_posterior": side.get("rating"),
                             "puntaje": _score(side.get("result")),
+                            # Chess.com's "timeout" is a loss on time ("timevsinsufficient" is a draw).
+                            "por_tiempo": side.get("result") == "timeout",
+                            "reloj_final_frac": _final_clock_fraction(game, color),
                         }
                     )
                     break
@@ -72,13 +96,22 @@ def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
     return history.sort_values(["username", "time_class", "end_time", "GameUrl"], kind="stable").reset_index(drop=True)
 
 
-def reconstruct_prior_ratings(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
+def reconstruct_prior_ratings(
+    raw_paths: Mapping[str, Path], start_times: pd.DataFrame | None = None
+) -> pd.DataFrame:
     """Rating previo de blancas y negras por ``GameUrl`` (NaN donde no hay historial).
 
     Devuelve una fila por partida con al menos un lado reconstruible y las columnas
     ``elo_blancas_previo`` y ``elo_negras_previo``. Si los dos jugadores son cuentas
-    seleccionadas, cada lado sale del historial de su propia cuenta.
+    seleccionadas, cada lado sale del historial de su propia cuenta. Para modelado,
+    pasar ``start_times``: excluye cierres iguales o posteriores al inicio actual.
+    Sin horarios conserva el diagnóstico legado de cierre anterior, que no garantiza
+    disponibilidad al inicio y no debe alimentar el modelo.
     """
+    if start_times is not None:
+        return _history_features_at_start(raw_paths, start_times, ["elo_blancas_previo", "elo_negras_previo"])
+    # Legacy diagnostic: previous closure, without a known start. Modeling must pass
+    # start_times to exclude overlapping games and equal timestamps.
     history = own_game_history(raw_paths)
     history["rating_previo"] = history.groupby(["username", "time_class"])["rating_posterior"].shift()
     known = history.dropna(subset=["rating_previo"])
@@ -137,44 +170,40 @@ def reconstruct_recent_form(raw_paths: Mapping[str, Path], start_times: pd.DataF
     - ``partidas_sesion``: partidas previas de la sesión, con huecos de menos de
       ``SESSION_GAP_MINUTES`` minutos entre una y otra (cualquier ritmo).
 
-    Todo se calcula con ``shift()`` sobre partidas ordenadas por cierre, así que la
-    partida actual nunca entra en su propia fila. Sin historial suficiente queda NaN, no 0.
+    Y el estilo con el reloj, en las ``STYLE_WINDOW`` partidas previas del mismo ritmo:
+
+    - ``derrotas_por_tiempo``: qué fracción perdió por quedarse sin reloj.
+    - ``reloj_final``: con qué fracción del tiempo base suele terminar (bajo = juega apurado).
+
+    Se consulta el historial con ``EndTime < StartTime`` mediante el mismo transformador
+    del Pipeline. Se excluyen cierres simultáneos, partidas solapadas y futuras.
+    Sin historial suficiente queda NaN, no 0.
     """
+    columns = [f"{column}_{side}" for column in FORM_COLUMNS + STYLE_COLUMNS for side in ("blancas", "negras")]
+    return _history_features_at_start(raw_paths, start_times, columns)
+
+
+def _history_features_at_start(raw_paths, start_times, columns):
+    """Compatibilidad para el EDA: el mismo transformador causal que usa el modelo."""
+    from src.history_transformer import PlayerHistoryTransformer, attach_player_histories, player_history_payloads
+
     history = own_game_history(raw_paths)
-    per_class = history.groupby(["username", "time_class"])
-    previous_score = per_class["puntaje"].shift()
-    history["forma_ultimas10"] = previous_score.groupby([history["username"], history["time_class"]]).transform(
-        lambda scores: scores.rolling(FORM_WINDOW, min_periods=FORM_WINDOW).mean()
-    )
-    streak_after = per_class["puntaje"].transform(_streak_after_each_game)
-    history["racha"] = streak_after.groupby([history["username"], history["time_class"]]).shift()
-    history["tendencia_rating"] = per_class["rating_posterior"].shift() - per_class["rating_posterior"].shift(FORM_WINDOW + 1)
-
-    # Sessions mix time classes: order each account by close time across all of them.
-    starts = start_times[["GameUrl", "StartTime"]].drop_duplicates("GameUrl")
-    start_seconds = (starts["StartTime"] - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(seconds=1)
-    start_by_url = pd.Series(start_seconds.to_numpy(), index=starts["GameUrl"])
-    by_account = history.sort_values(["username", "end_time", "GameUrl"], kind="stable")
-    # Games outside the tidy table have no StartTime: their close time is the safe stand-in.
-    start = by_account["GameUrl"].map(start_by_url).fillna(by_account["end_time"])
-    previous_end = by_account.groupby("username")["end_time"].shift()
-    gap_minutes = (start - previous_end) / 60
-    new_session = gap_minutes.isna() | (gap_minutes >= SESSION_GAP_MINUTES)
-    session_id = new_session.groupby(by_account["username"]).cumsum()
-    history["minutos_desde_anterior"] = gap_minutes
-    history["partidas_sesion"] = by_account.groupby([by_account["username"], session_id]).cumcount()
-
-    # Same pivot as reconstruct_prior_ratings: one row per (GameUrl, color) before pivoting.
-    per_side = history.drop_duplicates(["GameUrl", "color"])
-    form = per_side.pivot(index="GameUrl", columns="color", values=FORM_COLUMNS)
-    form.columns = [f"{column}_{'blancas' if color == 'white' else 'negras'}" for column, color in form.columns]
-    ordered = [f"{column}_{suffix}" for column in FORM_COLUMNS for suffix in ("blancas", "negras")]
-    form = form.reindex(columns=ordered).reset_index()
-    logger.info(
-        "Forma reciente: %d partidas con historial de 10 previas de al menos un lado.",
-        int(form[["forma_ultimas10_blancas", "forma_ultimas10_negras"]].notna().any(axis=1).sum()),
-    )
-    return form
+    accounts = history.drop_duplicates(["GameUrl", "color"]).pivot(index="GameUrl", columns="color", values="username")
+    accounts = accounts.reindex(columns=["white", "black"]).rename(columns={"white": "White", "black": "Black"})
+    rhythm = history.drop_duplicates("GameUrl").set_index("GameUrl")["time_class"]
+    accounts["TimeClass"] = rhythm
+    starts = start_times.set_index("GameUrl")["StartTime"]
+    assert starts.index.is_unique, "Un inicio por partida"
+    accounts["StartTime"] = accounts.index.map(starts)
+    # Raw games excluded from the tidy table have no observed start. Their close is
+    # a conservative diagnostic fallback, never used as a modeled game.
+    ends = history.drop_duplicates("GameUrl").set_index("GameUrl")["end_time"]
+    accounts["StartTime"] = accounts["StartTime"].fillna(pd.Series(pd.to_datetime(accounts.index.map(ends), unit="s", utc=True), index=accounts.index))
+    payloads = player_history_payloads(raw_paths, start_times)
+    inputs = attach_player_histories(accounts, payloads)
+    features = PlayerHistoryTransformer(columns).fit_transform(inputs)
+    features.index.name = "GameUrl"
+    return features.reset_index()
 
 
 def add_recent_form(df: pd.DataFrame, form: pd.DataFrame) -> pd.DataFrame:
