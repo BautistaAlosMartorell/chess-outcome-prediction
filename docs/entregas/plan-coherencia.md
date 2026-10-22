@@ -81,8 +81,8 @@ Al corregir el historial con la condición estricta, su log-loss del corte 0 es 
 contra 0,895: reemplaza el 0,879 previo a esa corrección. Las decisiones finales del
 04 y sus cifras están en `plan-entrega-3.md`: quedan 40 columnas, con forma reciente;
 log-loss 0,804 frente a 0,936 y MAE de duración 22,934 frente a 28,357.
-La suite de 75 tests conserva un fallo en dos subcasos de dama ganada (+9,02/+10,34
-puntos frente a +15 exigidos); los otros 74 tests pasan. No equivale a suite en verde.
+La suite de 94 tests conserva un fallo en dos subcasos de dama ganada (+9,02/+10,34
+puntos frente a +15 exigidos); los otros 93 tests pasan. No equivale a suite en verde.
 
 ## Verificación de coherencia
 
@@ -93,5 +93,5 @@ puntos frente a +15 exigidos); los otros 74 tests pasan. No equivale a suite en 
 - Revisar cada merge con su assert anti fan-out y el diff antes de cada commit.
 - Buscar cifras viejas fuera de registros históricos; conservar entradas previas del
   CHANGELOG. No incluir data ni modelos en Git.
-- Commitear por partes en `feat/modelado-entrega-3`. Push y merge requieren confirmación;
-  la descripción del PR #30 debe reflejar el resultado final verificable.
+- Commitear por partes, en una rama por cambio. Push y merge requieren confirmación;
+  el modelado (PR #30) y la app con el modelo de 120 cuentas (PR #31) ya están en main.

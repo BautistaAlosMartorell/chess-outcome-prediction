@@ -1,5 +1,14 @@
 # Changelog
 
+## Auditar la app y poner al día el cierre de Entrega 3 (2026-10-22)
+
+- Agregar la auditoría de predicciones de la app, el piloto de cobertura de ratings
+  previos y una referencia logística de rating; el artefacto y la app no cambian.
+- Actualizar la cuenta de tests (94: 93 pasan, dama ganada falla en dos subcasos),
+  cerrar los pendientes del PR #30 ya resueltos por el #31 y sumar a la defensa
+  la cobertura de ratings (185/80.314 partidas de train con ambos lados).
+- Recalcular la cobertura del matchup congelado sobre la corrida de 120 cuentas.
+
 ## Mantener predicciones y controles a la vista al analizar (2026-10-22)
 
 - Reunir marcador compacto, reproducción, deslizador y posición actual en una franja

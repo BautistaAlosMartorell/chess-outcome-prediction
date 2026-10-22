@@ -1,0 +1,49 @@
+# Protocolo fijado antes de entrenar candidatos de esta mejora.
+# No modifica config.yaml, la muestra oficial ni el artefacto de producción.
+version: 1
+random_state: 42
+baseline_sha256: 25051ff7bd92a11b8911c69ee0fbf0152a780b84ddf5b688e895a31d45cebe8d
+regression_period:
+  train_before: "2026-07-04T01:29:25+00:00"
+  train_requires_end_before_boundary: true
+  evaluation_start: "2026-07-04T01:29:25+00:00"
+  status: observed_exploratory_not_fresh_holdout
+selection:
+  method: temporal_game_folds
+  folds: 5
+  keep_all_cuts_of_a_game_together: true
+  exclude_games_crossing_boundaries: true
+  primary_metric: log_loss
+  secondary_metrics: [brier, classwise_calibration, macro_f1, draw_recall]
+  compare_same_games: true
+  reference_plies: [0, 20, 60]
+  rating_gap_bins: [0, 100, 200, 400]
+  stratify_by: [time_class, known_rating_level, absolute_rating_gap, history_coverage]
+  small_cell_warning_below: 100
+fresh_holdout:
+  status: not_allocated
+  requirement: "Definir fechas, exclusiones de partidas ya inspeccionadas y procedencia antes de entrenar; no declarar ciego el período observado."
+promotion:
+  require_fresh_holdout: true
+  require_temporal_cv_improvement: true
+  maximum_mean_log_loss_regression_at_reference_ply: 0.005
+  maximum_large_cell_class_calibration_gap_increase_pp: 2.0
+  require_neutral_rating_grid_non_decreasing: true
+  require_queen_gain_contract: true
+  require_api_model_parity: true
+  # Statistical uncertainty and sparse cells still require written interpretation.
+  automatic_promotion: false
+offline_pilot:
+  network_enabled: false
+  use_incidental_opponent_ratings: true
+  use_incidental_opponent_form: false
+  freshness_threshold_days: [1, 7, 30]
+  # An earlier incidental rating is a proxy, never proof of the latest account rating.
+  require_provenance_and_age: true
+diagnostic_references:
+  classifier: multinomial_logistic_regression
+  C: 1.0
+  positions: initial_only
+  sources: [own_archives, including_incidental, including_incidental_up_to_30_days]
+  include_incidental_flags: true
+  publish_as_app_model: false

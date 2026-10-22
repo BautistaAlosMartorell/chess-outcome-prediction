@@ -338,7 +338,7 @@ No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
 las de población/calibración necesitan además los Parquet y JSON locales. Si faltan,
 unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
 una dama ganada, desventaja de reloj, el ganador cerca del final y calibración por clase.
-En el artefacto vigente pasan 74 de 75 tests: el de dama ganada falla en sus dos
+En el artefacto vigente pasan 93 de 94 tests: el de dama ganada falla en sus dos
 colores (+9,02/+10,34 puntos de probabilidad frente a +15 exigidos). El fallo se
 conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
 
