@@ -68,7 +68,9 @@ def game_cut_features(
 
     Devuelve las filas de los cortes ``k`` con ``k`` estrictamente menor que la
     cantidad total de plies (en el ply ``k`` la partida sigue en curso) y esa
-    cantidad total, para validarla contra ``cantidad_jugadas``.
+    cantidad total, para validarla contra ``cantidad_jugadas``. El corte 0 es la
+    posición inicial con los relojes completos: ahí ``gasto_reciente_*`` queda NaN
+    porque todavía no hubo jugadas.
     """
     game = chess.pgn.read_game(io.StringIO(pgn))
     if game is None:
@@ -84,6 +86,11 @@ def game_cut_features(
     clocks: dict[chess.Color, list[float]] = {chess.WHITE: [base_seconds], chess.BLACK: [base_seconds]}
     clocks_complete = True
     snapshots: dict[int, dict[str, Any]] = {}
+    if 0 in cut_set:
+        # Cut 0 is the game before the first move: what is known pre-game.
+        snapshots[0] = _snapshot(
+            board, 0, checks, captures, castled, 0, clocks, base_seconds, increment_seconds,
+        )
 
     ply = 0
     for node in game.mainline():

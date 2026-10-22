@@ -157,8 +157,10 @@ class PlayerSelector:
         self.random_state: int = self.policy["random_state"]
         self.request_delay: float = config["download"]["request_delay_seconds"]
         self.selection_path = Path(self.policy["selection_path"])
-        self.snapshot_dir = self.selection_path.parent
-        self.checkpoint_path = self.selection_path.with_name(
+        # The frozen list is versioned in config/; the raw list snapshots and the
+        # checkpoint are regenerable data and stay under data/.
+        self.snapshot_dir = Path(self.policy["snapshot_dir"])
+        self.checkpoint_path = self.snapshot_dir / (
             f"{self.selection_path.stem}.parcial{self.selection_path.suffix}"
         )
         self._check_pools()
