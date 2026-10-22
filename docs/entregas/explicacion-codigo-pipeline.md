@@ -192,16 +192,18 @@ def listar_jugadores() -> list[str]:
 Esta tarea **selecciona los jugadores una sola vez y deja la lista congelada** (ver
 [`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)):
 
-- **Primera corrida:** si no existe `data/raw/seleccion/jugadores_seleccionados.yaml`,
+- **Primera corrida:** si no existe `config/jugadores_seleccionados.yaml`,
   arma tres pools con listas públicas de la PubAPI (`player_selection.pools`): FM/CM/NM para
   `avanzado`, GM/IM para `experto` y `top_mundial`, y jugadores por país para
   `principiante` e `intermedio`. Baraja cada pool con semilla fija y los recorre en ronda.
   Estima la banda de cada candidato con `/stats`, lo valida contra sus partidas hasta el
   cutoff y junta 20 por banda de ELO. Un pool con todas sus bandas llenas deja de
   consultarse. El avance se guarda en un checkpoint (`.parcial.yaml`), así que un reintento
-  retoma. Al terminar, escribe el archivo de forma atómica.
+  retoma (el checkpoint y los snapshots quedan en `data/raw/seleccion/`,
+  `player_selection.snapshot_dir`). Al terminar, escribe el archivo de forma atómica.
 - **Corridas siguientes:** lee ese archivo y devuelve la misma lista. No selecciona de
-  nuevo y no usa la red para esto.
+  nuevo y no usa la red para esto. Como el archivo está versionado en git, cualquier
+  integrante que clona el repo descarga los mismos jugadores.
 
 No hay cuentas iniciales elegidas a mano y no se lee el Parquet de una corrida anterior
 (antes eso hacía que cada corrida eligiera jugadores distintos). El archivo es también el
@@ -391,9 +393,12 @@ Esta tarea toma las rutas JSON Bronze y llama a `DataCleaner`. Ese módulo:
 | `normalize_termination()` | Elimina usernames del motivo de finalización y lo normaliza. |
 | `optimize_dtypes()` | Usa enteros compactos, categorías y fechas correctas. |
 
-La clave primaria es `GameUrl`. Es posible que dos usuarios configurados hayan jugado entre
-sí; la misma partida aparecería en los dos JSON. La deduplicación por esa URL garantiza
-que una fila siga representando una sola partida.
+La clave primaria es `GameUrl`. Es posible que dos usuarios seleccionados hayan jugado entre
+sí; la misma partida aparecería en los dos JSON (en la corrida oficial pasó 5 veces). La
+deduplicación por esa URL garantiza que una fila de la tabla base siga representando una
+sola partida. Al final, `clean()` ordena las filas por `GameUrl`: sin eso, el orden seguiría
+el de los JSON, que es distinto en el DAG y en el notebook 01, y los dos escribirían el
+mismo contenido en distinto orden.
 
 El filtro de cinco plies quita abandonos administrativos o casi inmediatos: no aportan
 señal representativa para la duración ni para el resultado de una partida jugada.
@@ -401,9 +406,10 @@ señal representativa para la duración ni para el resultado de una partida juga
 ### La excepción tidy: `moves_text`
 
 `moves_text` guarda muchas jugadas dentro de una celda. Es una concesión explícita: partir
-las jugadas en filas rompería la unidad de análisis “una fila = una partida”, y abrirlas
-en columnas tendría ancho variable. Para el modelado de duración se usa la variable atómica
-derivada `cantidad_jugadas`.
+cada jugada en su propia fila multiplicaría el volumen por ~75 con filas casi idénticas, y
+abrirlas en columnas tendría ancho variable. De ahí se derivan valores atómicos:
+`cantidad_jugadas` en la tabla base y, en la tabla de cortes (sección 12), la posición y
+los relojes en seis momentos fijos de la partida.
 
 ## 9. Parquet temporal y por qué no se usa XCom para el DataFrame
 
@@ -490,11 +496,11 @@ cumple. Es un **quality gate** o portero de calidad.
 
 | Criterio | Verificación en código | Sentido de calidad |
 |---|---|---|
-| Clave única | `df["GameUrl"].is_unique` | Una fila por partida; sin duplicación. |
+| Clave única | `df["GameUrl"].is_unique` | Una fila por partida en la tabla base; sin duplicación. |
 | Volumen | `len(df) >= quality.min_final_games` | Dataset suficiente tras limpieza. |
 | Ancho | `df.shape[1] >= 5` | Hay suficientes variables útiles. |
 | Tipos | numérico + categórico + fecha | Dataset apto para análisis y modelos. |
-| Nulos | solo columnas declaradas | Completitud conocida y documentada. |
+| Nulos | solo columnas declaradas en `nulos_documentados` (`TournamentUrl` y las tres `tasa_*_hist`, ambas estructurales) | Completitud conocida y documentada. |
 | Columnas vacías | ninguna al 100% nula | No se exporta información inexistente. |
 | Targets | `resultado` y `cantidad_jugadas` sin nulos | Objetivos modelables y completos. |
 
@@ -563,15 +569,18 @@ def construir_dataset_cortes(parquet_path: str, raw_paths: dict[str, str]) -> st
 
 Corre después de exportar y no modifica el Parquet tidy. `src/live_features.py` reproduce
 cada partida jugada a jugada con python-chess desde el PGN **crudo**, porque es el único
-lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (10,
-20, 30, 40 y 60 plies) guarda la posición y los relojes: material, jaques, capturas,
-enroques, movilidad, turno, reloj restante y tiempo gastado reciente. Resultado:
-`partidas_cortes.parquet`, con una fila por `(GameUrl, corte_ply)`.
+lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (0,
+10, 20, 30, 40 y 60 plies) guarda la posición y los relojes: material, jaques, capturas,
+enroques, movilidad, turno, reloj restante y tiempo gastado reciente. El corte 0 es la
+posición inicial con los relojes completos: es la predicción antes de empezar, y ahí
+`gasto_reciente_*` queda NaN porque todavía no hubo jugadas. Resultado:
+`partidas_cortes.parquet`, con una fila por `(GameUrl, corte_ply)`, ordenada por esa clave.
 
 La tarea falla, en vez de descartar en silencio, si una partida del tidy no tiene PGN
 crudo, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave se
 repite. Una partida sólo aporta los cortes **anteriores** a su final: en el ply *k* la
-partida tiene que seguir en curso. Tarda unos 5 minutos para las 76.803 partidas.
+partida tiene que seguir en curso. En la corrida oficial son 435.689 filas de las 80.697
+partidas, y tarda unos 5 minutos.
 
 ## 13. La construcción del grafo
 
@@ -601,11 +610,13 @@ dispara una corrida desde la UI o CLI.
 
 ## 14. Respuestas breves para la defensa
 
-**¿Qué es una fila?** Una partida individual rated, estándar y de ritmo bullet, blitz o
-rapid, donde participa una de las cuentas configuradas.
+**¿Qué es una fila?** Una partida en un momento dado (partida × corte de plies), en la
+tabla de modelado. Se deriva de la tabla base, donde una fila es una partida individual
+rated, estándar y de ritmo bullet, blitz o rapid, en la que participa una de las cuentas
+seleccionadas.
 
-**¿Cuál es la clave?** `GameUrl`, porque identifica una partida concreta. Se deduplica y
-se valida que sea única.
+**¿Cuál es la clave?** `GameUrl` en la tabla base, porque identifica una partida concreta:
+se deduplica y se valida que sea única. En la tabla de cortes, `(GameUrl, corte_ply)`.
 
 **¿Por qué no se manda el DataFrame por XCom?** Porque XCom es para metadatos pequeños;
 el DataFrame se escribe como Parquet compartido entre workers.
