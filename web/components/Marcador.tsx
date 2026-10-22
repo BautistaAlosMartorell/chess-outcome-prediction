@@ -20,6 +20,8 @@ type Props = {
   punto: Punto | null;
   // Set once the game is over: replaces the remaining-moves line.
   final?: string | null;
+  // The "▲ n" chip is for changes caused by a move, not by the setup (time control, players).
+  mostrarCambio?: boolean;
 };
 
 // Under this, the running clock turns to the time-trouble color.
@@ -71,7 +73,7 @@ function Placa({ jugador, lado, reloj, activo }: { jugador: Jugador; lado: "blan
   );
 }
 
-export function Marcador({ blancas, negras, relojes, activo, punto, final }: Props) {
+export function Marcador({ blancas, negras, relojes, activo, punto, final, mostrarCambio = true }: Props) {
   const restantes = punto?.plies_restantes;
   return (
     <section className={styles.marcador} aria-label="Marcador">
@@ -79,6 +81,7 @@ export function Marcador({ blancas, negras, relojes, activo, punto, final }: Pro
       <div className={styles.centro}>
         <Barra
           valores={punto ? { blancas: punto.gana_blancas, tablas: punto.empate, negras: punto.gana_negras } : null}
+          mostrarCambio={mostrarCambio}
         />
         <p className={`${styles.pie} ${final ? styles.pieFinal : ""}`} aria-live="polite">
           {final

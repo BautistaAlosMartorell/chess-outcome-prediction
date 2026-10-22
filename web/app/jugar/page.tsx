@@ -226,6 +226,7 @@ export default function Jugar() {
         activo={fase === "jugando" ? turno : null}
         punto={punto}
         final={final?.texto}
+        mostrarCambio={fase !== "preparando"}
       />
       {error ? <p className={styles.error}>{error}</p> : null}
       <div className={styles.cuerpo}>
