@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pandas as pd
 from sklearn.dummy import DummyClassifier
@@ -24,7 +26,7 @@ PGN = '[Event "Live Chess"]\n[Result "1-0"]\n[Termination "ana won by resignatio
 def _game(url: str, end: int, white: tuple[str, int, str], black: tuple[str, int, str], tc: str = "blitz") -> dict:
     return {
         "url": url, "end_time": end, "time_class": tc, "time_control": "180+2", "rules": "chess", "rated": True,
-        "pgn": PGN,
+        "pgn": f'[UTCDate "1970.01.01"]\n[UTCTime "{datetime.fromtimestamp(end - 50, timezone.utc):%H:%M:%S}"]\n' + PGN,
         "white": {"username": white[0], "rating": white[1], "result": white[2]},
         "black": {"username": black[0], "rating": black[1], "result": black[2]},
     }
@@ -100,6 +102,43 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(body["relojes_seg"], [179, 178, 175, 170])
         self.assertEqual([p["ply"] for p in body["curva"]], [0, 1, 2, 3])  # finished: no point after the last move
         self.assertEqual(self.client.get("/jugadores/ana/analisis", params={"url": "otra"}).status_code, 404)
+
+    def test_analysis_excludes_games_that_finished_after_the_target_started(self) -> None:
+        games = {**FakeChessCom.GAMES, "ana": [*FakeChessCom.GAMES["ana"],
+            _game("overlap", 275, ("ana", 9999, "win"), ("rival", 1000, "resigned")),
+            _game("simultaneous", 250, ("ana", 8888, "win"), ("rival", 1000, "resigned"))]}
+        self.client.app.state.cliente.GAMES = games
+        response = self.client.get("/jugadores/ana/analisis", params={"url": "g3"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["contexto"]["elo_blancas_previo"], 1520)
+
+    def test_analysis_derives_recent_form_from_earlier_games(self) -> None:
+        target = _game("g3", 300, ("ana", 9999, "resigned"), ("beto", 1490, "win"))
+        history = [_game(f"prior-{i}", 100 + i, ("ana", 1500 + i, "win"), ("rival", 1500, "resigned"))
+                   for i in range(11)]
+        self.client.app.state.cliente.GAMES = {**FakeChessCom.GAMES, "ana": [target, *history]}
+        response = self.client.get("/jugadores/ana/analisis", params={"url": "g3"})
+        self.assertEqual(response.status_code, 200)
+        context = response.json()["contexto"]
+        self.assertEqual(context["elo_blancas_previo"], 1510)
+        self.assertEqual(context["forma_ultimas10_blancas"], 1)
+        self.assertEqual(context["tendencia_rating_blancas"], 10)
+
+    def test_live_import_passes_history_and_fixed_start_to_the_model(self) -> None:
+        with patch("api.main.curva", return_value=[]) as predict:
+            response = self.client.post("/predecir", json={
+                "tiempo_base_seg": 180, "incremento_seg": 2,
+                "usuario_blancas": "ana", "inicio_partida": "1970-01-01T00:04:10Z",
+            })
+        self.assertEqual(response.status_code, 200)
+        context = predict.call_args.args[1]
+        self.assertEqual(context["StartTime"].timestamp(), 250)
+        self.assertEqual(len(context["historial_blancas"]), 4)
+        self.assertTrue(all(isinstance(row, tuple) for row in context["historial_blancas"]))
+
+    def test_missing_start_never_uses_a_rating_from_before_the_finish(self) -> None:
+        game = dict(FakeChessCom.GAMES["ana"][0], pgn=PGN)
+        self.assertIsNone(chesscom.rating_previo(FakeChessCom.GAMES["ana"], game, "ana"))
 
     def test_health_reports_the_rating_range_seen_in_training(self) -> None:
         self.assertIsNone(self.client.get("/salud").json()["rango_rating"])  # model without it: no range

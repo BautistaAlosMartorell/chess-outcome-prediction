@@ -9,7 +9,7 @@ export default function Inicio() {
         <div className={styles.texto}>
           <h1 className={styles.titulo}>Quién gana, jugada a jugada</h1>
           <p className={styles.bajada}>
-            Un modelo entrenado con 80.697 partidas reales de Chess.com mira el tablero y los relojes y estima, en
+            Un modelo evaluado con 100.396 partidas reales de Chess.com mira el tablero y los relojes y estima, en
             cada jugada, la probabilidad de que ganen las blancas, de que sean tablas o de que ganen las negras.
           </p>
           <p className={styles.aclaracion}>
@@ -41,7 +41,11 @@ export default function Inicio() {
           </div>
           <div>
             <dt>El ritmo y el nivel</dt>
-            <dd>Bullet, blitz o rapid, y el rating de cada jugador si se conoce. Antes de mover, casi no alcanza para predecir.</dd>
+            <dd>Bullet, blitz o rapid, y el rating de cada jugador si se conoce. Antes de mover, su ventaja predictiva es modesta.</dd>
+          </div>
+          <div>
+            <dt>La forma reciente</dt>
+            <dd>Resultados, racha, evolución del rating y actividad de los jugadores importados, usando sólo partidas terminadas antes de empezar.</dd>
           </div>
         </dl>
       </section>

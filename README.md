@@ -320,8 +320,13 @@ npm run dev
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
 
-La API no calcula nada por su cuenta: todo pasa por `src.predict.predecir`, la misma
-función que el notebook 04 verificó contra el camino de entrenamiento.
+La app carga el modelo nuevo de 40 columnas. Para jugadores importados envía
+observaciones individuales del historial al Pipeline; éste calcula rating y forma con
+cierres estrictamente anteriores al inicio. En partidas jugadas en la app, ese inicio
+queda fijo al pulsar Empezar. Sin historial, usa el contexto conocido y el imputador
+del modelo. Analizar aplica la misma condición al inicio UTC del PGN, sin sustituirlo
+por la hora de cierre si falta. La demo de portada también usa el artefacto nuevo.
+Todo pasa por `src.predict.predecir`, verificado contra el camino de entrenamiento.
 
 ### Tests
 

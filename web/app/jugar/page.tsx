@@ -123,6 +123,7 @@ function Jugar() {
   const relojesSeg = useRef<number[]>([]);
   const ultimoTick = useRef(0);
   const pedido = useRef(0);
+  const inicioPartida = useRef(new Date().toISOString());
 
   const ritmo = ritmoDe(ritmoElegido.base, ritmoElegido.inc);
   const turno: Lado = chess.current.turn() === "w" ? "blancas" : "negras";
@@ -139,6 +140,9 @@ function Jugar() {
           elo_blancas_previo: fichas.blancas?.ratings[ritmo] ?? null,
           elo_negras_previo: fichas.negras?.ratings[ritmo] ?? null,
           en_curso: enCurso,
+          usuario_blancas: fichas.blancas?.usuario,
+          usuario_negras: fichas.negras?.usuario,
+          inicio_partida: inicioPartida.current,
         });
         if (id === pedido.current) {
           setCurva(respuesta.curva);
@@ -185,6 +189,7 @@ function Jugar() {
   }, [fase, terminar]);
 
   function reiniciarTablero() {
+    inicioPartida.current = new Date().toISOString();
     chess.current = new Chess();
     relojesSeg.current = [];
     setFen(chess.current.fen());
@@ -200,6 +205,7 @@ function Jugar() {
     setRelojes(relojesRef.current);
     setPartidaId((n) => n + 1);
     setFase("jugando");
+    void pedirPrediccion([], true);
   }
 
   function nuevaPartida() {
@@ -323,7 +329,7 @@ function Jugar() {
               <ImportarJugador lado="Blancas" ritmo={ritmo} ficha={fichas.blancas} onFicha={(f) => setFichas((s) => ({ ...s, blancas: f }))} />
               <ImportarJugador lado="Negras" ritmo={ritmo} ficha={fichas.negras} onFicha={(f) => setFichas((s) => ({ ...s, negras: f }))} />
               <p className={styles.nota}>
-                Antes de mover, el modelo casi no puede predecir: Chess.com empareja jugadores parecidos, así que la barra
+                Antes de mover, la ventaja predictiva es modesta: Chess.com empareja jugadores parecidos, así que la barra
                 arranca cerca de las proporciones de siempre y se mueve con el material y los relojes.
               </p>
               <button type="button" className={styles.principal} onClick={empezar}>

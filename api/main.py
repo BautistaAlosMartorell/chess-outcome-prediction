@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import io
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import chess
 import chess.pgn
 from fastapi import FastAPI, HTTPException, Query
@@ -24,7 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from api import chesscom
-from src.predict import MODEL_PATH, RESULT_ORDER, cargar_modelo, predecir
+from src.predict import MODEL_PATH, RESULT_ORDER, PRE_GAME, FORM, cargar_modelo, predecir, model_input_frame
+from src.history_transformer import PlayerHistoryTransformer
 from src.utils import load_config
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -78,6 +81,9 @@ class PedidoJugar(BaseModel):
     elo_blancas_previo: float | None = None
     elo_negras_previo: float | None = None
     en_curso: bool = True
+    usuario_blancas: str | None = None
+    usuario_negras: str | None = None
+    inicio_partida: datetime | None = None
 
 
 def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComClient | None = None) -> FastAPI:
@@ -113,6 +119,12 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
         return {"modelo": modelo_actual.get("familia"), "entrenado_hasta": modelo_actual.get("entrenado_hasta"),
                 "columnas": len(modelo_actual["columnas"]), "rango_rating": modelo_actual.get("rango_rating")}
 
+    def observaciones(usuario: str, games=None):
+        try:
+            return chesscom.historial(games if games is not None else app.state.cliente.partidas(usuario), usuario)
+        except (chesscom.JugadorNoEncontrado, OSError):
+            return ()
+
     @app.post("/predecir")
     def predecir_partida(pedido: PedidoJugar) -> dict[str, Any]:
         if pedido.relojes_seg is not None and len(pedido.relojes_seg) != len(pedido.jugadas):
@@ -125,6 +137,11 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             "elo_blancas_previo": pedido.elo_blancas_previo,
             "elo_negras_previo": pedido.elo_negras_previo,
         }
+        contexto["StartTime"] = pedido.inicio_partida or datetime.now(timezone.utc)
+        for side in ("blancas", "negras"):
+            usuario = getattr(pedido, f"usuario_{side}")
+            if usuario:
+                contexto[f"historial_{side}"] = observaciones(usuario)
         pgn = pgn_de_jugadas(pedido.jugadas, pedido.relojes_seg)
         return {"ritmo": contexto["TimeClass"], "curva": curva(pgn, contexto, app.state.modelo, pedido.en_curso)}
 
@@ -150,14 +167,18 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             raise HTTPException(404, "Esa partida no está entre las últimas del usuario")
         base, increment = chesscom.control_de_tiempo(game)
         contexto = {"TimeClass": game["time_class"], "tiempo_base_seg": base, "incremento_seg": increment,
-                    "EsTorneo": "tournament" in game}
+                    "EsTorneo": "tournament" in game, "StartTime": chesscom.inicio(game)}
         for color, side in (("white", "blancas"), ("black", "negras")):
             player = game[color]["username"]
-            try:
-                history = games if player.lower() == usuario.lower() else cliente.partidas(player)
-            except (chesscom.JugadorNoEncontrado, OSError):
-                history = []  # a closed or unreachable account: its prior rating stays unknown
-            contexto[f"elo_{side}_previo"] = chesscom.rating_previo(history, game, player)
+            contexto[f"historial_{side}"] = observaciones(player, games if player.lower() == usuario.lower() else None)
+
+        # Return only the derived pre-game context; raw history stays on the server.
+        columns = PRE_GAME + FORM
+        derived = PlayerHistoryTransformer(columns).fit_transform(
+            model_input_frame(pd.DataFrame([contexto]), columns)
+        ).iloc[0]
+        public_context = {key: (None if pd.isna(value) else float(value))
+                          for key, value in derived.items() if key not in PRE_GAME[:4]}
 
         parsed = chess.pgn.read_game(io.StringIO(game["pgn"]))
         jugadas, relojes, board = [], [], parsed.board()
@@ -167,7 +188,7 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             relojes.append(node.clock())
         return {
             "partida": chesscom.resumen(game),
-            "contexto": contexto,
+            "contexto": public_context,
             "final": parsed.headers.get("Termination"),
             "jugadas": jugadas,
             "relojes_seg": relojes,

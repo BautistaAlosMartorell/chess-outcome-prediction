@@ -1,5 +1,20 @@
 # Changelog
 
+## Probar el modelo de 40 columnas en la app (2026-10-22)
+
+Rama local `feat/app-en-vivo`, rebasada sobre la actualización del modelado (PR #31).
+
+- Conectar el historial propio de los jugadores importados al mismo transformador
+  causal del modelo. Usar el inicio UTC en análisis y fijar el inicio de las partidas
+  locales al empezar; excluir cierres simultáneos y posteriores. Sin inicio conocido,
+  no inferir rating previo desde la hora de cierre.
+- Actualizar portada y demo al artefacto de 40 columnas y 100.396 partidas evaluadas.
+- Verificar 35 tests de API, predicción, features e historial; typecheck de la web.
+  Comprobar en navegador una jugada y el cambio de probabilidades, e importar y
+  analizar una partida real de Hikaru con rating y forma causal para ambos lados.
+- Mantener documentado el fallo del contrato de dama del artefacto de Entrega 3;
+  esta integración no modifica ni reentrena el modelo.
+
 ## Recalcular modelado e historial con 120 cuentas (2026-10-22)
 
 Rama `feat/modelado-entrega-3`, continuación del PR #30.

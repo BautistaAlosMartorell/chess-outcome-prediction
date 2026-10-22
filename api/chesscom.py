@@ -12,13 +12,17 @@ jugador en ese ritmo, igual que en ``src/rating_history.py``.
 
 from __future__ import annotations
 
+import io
+import math
 import time
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from typing import Any
 
+import chess.pgn
 import requests
 
-from src.rating_history import DRAW_RESULTS
+from src.rating_history import DRAW_RESULTS, _score, _final_clock_fraction
 
 BASE_URL = "https://api.chess.com/pub/player"
 RITMOS = ("bullet", "blitz", "rapid")
@@ -110,17 +114,48 @@ def control_de_tiempo(game: dict[str, Any]) -> tuple[float, float]:
     return float(base), float(increment or 0)
 
 
-def rating_previo(partidas: Iterable[dict[str, Any]], game: dict[str, Any], usuario: str) -> float | None:
-    """Rating de ``usuario`` al cerrar su partida anterior del mismo ritmo (None si no está)."""
-    previas = [
-        g for g in partidas
-        if g.get("time_class") == game.get("time_class") and g.get("end_time", 0) < game.get("end_time", 0)
-        and color_de(g, usuario) is not None
-    ]
-    if not previas:
+def inicio(game: dict[str, Any]) -> datetime | None:
+    """Inicio UTC del PGN; si falta, no se infiere desde el cierre."""
+    headers = chess.pgn.read_headers(io.StringIO(game.get("pgn", "")))
+    if headers is None:
         return None
-    anterior = max(previas, key=lambda g: g.get("end_time", 0))
-    return float(anterior[color_de(anterior, usuario)]["rating"])
+    date, clock = headers.get("UTCDate"), headers.get("UTCTime")
+    try:
+        return datetime.strptime(f"{date} {clock}", "%Y.%m.%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def historial(partidas: Iterable[dict[str, Any]], usuario: str) -> tuple:
+    """Observaciones individuales en el formato del Pipeline, sin ventanas externas."""
+    rows = []
+    seen = set()
+    for game in partidas:
+        color = color_de(game, usuario)
+        if color is None or game.get("url") in seen:
+            continue
+        try:
+            rating, end = float(game[color]["rating"]), float(game["end_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not math.isfinite(rating) or not math.isfinite(end):
+            continue
+        seen.add(game.get("url"))
+        start = inicio(game)
+        rows.append((end, game["time_class"], rating, _score(game[color].get("result")),
+                     game[color].get("result") == "timeout", _final_clock_fraction(game, color),
+                     start.timestamp() if start is not None else end, game.get("url", "")))
+    return tuple(sorted(rows, key=lambda row: (row[0], row[-1])))
+
+
+def rating_previo(partidas: Iterable[dict[str, Any]], game: dict[str, Any], usuario: str) -> float | None:
+    """Último rating con cierre estrictamente anterior al inicio actual."""
+    start = inicio(game)
+    if start is None:
+        return None
+    previous = [row for row in historial(partidas, usuario)
+                if row[1] == game.get("time_class") and row[0] < start.timestamp()]
+    return previous[-1][2] if previous else None
 
 
 def ficha(usuario: str, perfil: dict[str, Any], estadisticas: dict[str, Any],

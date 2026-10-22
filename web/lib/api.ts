@@ -71,6 +71,9 @@ export type PedidoJugar = {
   elo_blancas_previo: number | null;
   elo_negras_previo: number | null;
   en_curso: boolean;
+  usuario_blancas?: string;
+  usuario_negras?: string;
+  inicio_partida?: string;
 };
 
 export function predecir(pedido: PedidoJugar): Promise<{ ritmo: Ritmo; curva: Punto[] }> {
