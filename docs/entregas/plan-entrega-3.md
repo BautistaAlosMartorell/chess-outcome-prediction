@@ -10,7 +10,8 @@ escribió el 22/10/2026 contrastando la consigna de la cátedra contra lo que ya
 `data/processed/partidas_cortes.parquet` ya es el dataset de entrenamiento: una fila por
 `(GameUrl, corte_ply)` con lo que un observador veía en ese momento (material, jaques,
 capturas, enroques, movilidad, relojes) y los targets `resultado` y `plies_restantes`.
-Son 336.001 filas de 76.331 partidas. El contexto fijo de la partida (ritmo, control de
+Son 435.689 filas de 80.697 partidas, en los cortes 0 (antes de mover), 10, 20, 30, 40 y
+60. El contexto fijo de la partida (ritmo, control de
 tiempo, torneo, rating previo) se une desde el Parquet tidy por `GameUrl`.
 
 Lo que **no** está es el modelado que pide la consigna. `notebooks/03_prediccion_en_vivo.ipynb`
@@ -40,7 +41,7 @@ señal, pero no alcanza para aprobar.
 
 ## Decisiones a tomar antes del primer modelo
 
-### 1. Objetivo principal: `resultado` en cada corte
+### 1. Objetivo principal: `resultado` en cada corte, del 0 (antes de empezar) al 60
 
 Clasificación de 3 clases (Gana Blancas / Empate / Gana Negras). `plies_restantes`
 (regresión, MAE en plies) queda como segundo objetivo **si hay tiempo**: misma
@@ -51,7 +52,9 @@ validación, con `DummyRegressor(strategy="median")`, `LinearRegression` y HGB.
 La consigna dice que el modelo elegido es el que usa la app de la Entrega 4, y la app
 necesita **un** artefacto. Se entrena un solo pipeline con todas las filas y `corte_ply`
 como feature, y se **reporta** la métrica por corte (la curva de nb03 sigue siendo el
-gráfico central). La alternativa, un modelo por corte, son cinco artefactos y cinco
+gráfico central). El corte 0 es la predicción antes de empezar: la pregunta "antes y
+durante" se responde con una sola curva. La alternativa, un modelo por corte, son seis
+artefactos y seis
 tablas de comparación: más trabajo para la misma pregunta.
 
 ### 3. Métrica: log-loss principal, F1 macro y recall de Empate como secundarias
@@ -67,7 +70,7 @@ orden alfabético de etiqueta (`PROBA_ORDER`). Usar `model.classes_` siempre.
 
 ### 4. Validación: temporal y por partida
 
-Las filas se repiten por partida (5 cortes) y por jugador (hasta 1.000 partidas), y el
+Las filas se repiten por partida (hasta 6 cortes) y por jugador (hasta 1.000 partidas), y el
 uso es predecir partidas **futuras**. Entonces:
 
 - **Test:** el mismo corte temporal de nb03 (percentil 80 de `StartTime`): train = partidas
@@ -149,7 +152,7 @@ Para la Entrega 3 eso cuenta como test gastado. Qué hacer:
 
 - Función `predecir(pgn_parcial)` en `src/`: calcula las features con
   `game_cut_features()` en el ply actual y llama al pipeline guardado.
-- Hoy los cortes son fijos (10/20/30/40/60). Un modelo con `corte_ply` como columna se
+- Hoy los cortes son fijos (0/10/20/30/40/60). Un modelo con `corte_ply` como columna se
   puede **evaluar** en cualquier ply, pero sólo vio esos cinco valores. Si la app tiene que
   predecir en el ply 47, conviene densificar los cortes en `live_prediction.cortes_ply`
   (por ejemplo, cada 5 plies) y volver a correr el DAG. Decidirlo antes de entrenar el
@@ -176,7 +179,7 @@ Para la Entrega 3 eso cuenta como test gastado. Qué hacer:
 | ¿Por qué ese modelo y no uno más complejo? | nb04 §4, media ± desvío |
 | Una confusión concreta | nb04 §9 |
 | La columna que más pesa, ¿no es fuga? | Balance de material y relojes: se calculan sólo con jugadas hasta el corte, y hay un test que lo garantiza (`tests/test_live_features.py`) |
-| ¿Qué probaron que no anduvo? | Matchup de apertura y sus tasas históricas; modelo pre-partida sin rating del rival |
+| ¿Qué probaron que no anduvo? | Matchup de apertura y sus tasas históricas; la predicción en el corte 0 (antes de empezar), que sin el rating del rival no le gana al piso |
 
 ## Limitaciones a declarar
 
