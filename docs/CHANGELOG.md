@@ -1,5 +1,32 @@
 # Changelog
 
+## Recalcular modelado e historial con 120 cuentas (2026-10-22)
+
+Rama `feat/modelado-entrega-3`, continuación del PR #30.
+
+- Agregar la sexta banda `elite` [3000,4000) desde rankings, manteniendo las 100
+  cuentas anteriores mediante extensiones del manifiesto. `top_mundial`: [2600,3000).
+- Corrida oficial `manual__2026-10-22T18:56:28`: 101.094 registros → 100.396 partidas
+  (99,31 %), 35 columnas, 1.559.622 cortes; 547.555 de referencia. Sin rapid en elite.
+- Implementar cuatro grupos adicionales de calidad de posición y estilo de reloj
+  como candidatos; la validación final no los selecciona.
+- Llevar rating, forma y estilo a `PlayerHistoryTransformer` dentro del Pipeline.
+  Exigir `EndTime < StartTime`: 1.345 observaciones propias no cumplían la suposición
+  del cierre anterior. Repetir CV, grilla y ablaciones con la corrección.
+- Ejecutar 01–04 desde kernel limpio y actualizar lecturas, hipótesis, defensas,
+  diagnóstico de columnas, selección, hoja de datos y mapa de la Entrega 3.
+- Random forest final de 40 columnas (PRE_GAME + LIVE + FORM), sin balancear:
+  log-loss de test 0,804 frente a 0,936 (14,09 % menos); mejora 3,79 % en corte 0 y
+  18,84 % al ply 60. Se conserva rating y entra forma; no entra matchup.
+- Duración: boosting, MAE 22,934 frente a 28,357 plies (19,13 % menos).
+  Artefacto local 132,1 MB; ejecución del 04: 37,3 minutos.
+- Declarar que el período de test fue observado en el 03 y en una corrida anterior
+  del 04; la selección corregida usa CV, sin presentarlo como un holdout nuevo.
+- Agregar tests de ventanas causales, serialización, integración y cinco contratos
+  de realismo. La suite ejecuta 75 tests: 74 pasan; el de dama ganada falla en sus
+  dos colores (+9,02/+10,34 puntos frente a +15 exigidos). Se documenta sin bajar
+  el umbral ni ajustar el modelo sobre los ejemplos. Las otras cuatro pruebas pasan.
+
 ## Modelado de la Entrega 3 y forma reciente del jugador (2026-10-22)
 
 Branches `feat/forma-reciente-jugador` (PR #29) y `feat/modelado-entrega-3`.

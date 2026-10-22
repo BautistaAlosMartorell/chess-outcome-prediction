@@ -63,7 +63,8 @@ estados históricos fechados de la skill de entregas se conservan como registro.
 - No hay rapid en las partidas de banda `elite`. No se completa ese hueco con ceros ni
   se afirma un orden de tres ritmos que la muestra no permite evaluar.
 - `shift()` por cierre no garantizaba `EndTime < StartTime`. El transformador del 04
-  excluye cierres iguales, solapamientos y futuro; la sección 2 cuantifica la anomalía.
+  excluye cierres iguales, solapamientos y futuro; la sección 2 encuentra 1.345
+  observaciones propias cuyo cierre anterior no estaba disponible al inicio actual.
   El diagnóstico parcial del 02 conserva el rating posterior del rival para estudiar
   fuga, mientras que el modelado deja NaN donde no tiene historial.
 - En Linux el uid 50000 necesita permiso sobre config para guardar una selección nueva.
@@ -78,7 +79,10 @@ cero; bullet y blitz siguen siendo inciertos.
 El 03 ahora supera modestamente al piso antes de mover, también sobre población común.
 Al corregir el historial con la condición estricta, su log-loss del corte 0 es 0,880
 contra 0,895: reemplaza el 0,879 previo a esa corrección. Las decisiones finales del
-04 y sus cifras están en `plan-entrega-3.md`.
+04 y sus cifras están en `plan-entrega-3.md`: quedan 40 columnas, con forma reciente;
+log-loss 0,804 frente a 0,936 y MAE de duración 22,934 frente a 28,357.
+La suite de 75 tests conserva un fallo en dos subcasos de dama ganada (+9,02/+10,34
+puntos frente a +15 exigidos); los otros 74 tests pasan. No equivale a suite en verde.
 
 ## Verificación de coherencia
 

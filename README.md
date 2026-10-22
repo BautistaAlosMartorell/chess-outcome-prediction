@@ -302,6 +302,15 @@ No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
 las de población/calibración necesitan además los Parquet y JSON locales. Si faltan,
 unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
 una dama ganada, desventaja de reloj, el ganador cerca del final y calibración por clase.
+En el artefacto vigente pasan 74 de 75 tests: el de dama ganada falla en sus dos
+colores (+9,02/+10,34 puntos de probabilidad frente a +15 exigidos). El fallo se
+conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
+
+El modelo final del 04 es un random forest de 40 columnas (`PRE_GAME + LIVE + FORM`),
+con historial causal dentro del Pipeline. En test: log-loss 0,804 frente a 0,936 del
+piso (14,09 % menos); duración: MAE 22,934 frente a 28,357 plies. El período de test
+ya fue observado en la exploración y en una versión previa del 04; las decisiones
+actuales se toman por CV temporal, sin presentarlo como un holdout nuevo.
 
 ## Artefactos generados
 

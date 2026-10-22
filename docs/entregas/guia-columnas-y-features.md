@@ -959,6 +959,13 @@ al imputador, que aprende su estadística sólo con el train correspondiente.
 La importancia por permutación del 04 se mide después de derivar el historial,
 ante el resto del Pipeline ya ajustado, para poder interpretar esas columnas.
 
+**Selección final de la corrida vigente del 04:** 40 columnas (`PRE_GAME + LIVE + FORM`).
+Se conservan rating y relojes, entran las diez columnas de forma reciente y quedan
+fuera los cuatro grupos adicionales de posición, estilo y matchup. Rating y forma
+se derivan dentro de `PlayerHistoryTransformer`, con cierre estrictamente anterior
+al inicio. Las diferencias pareadas y el veto por corte 0 están en
+[el mapa de Entrega 3](plan-entrega-3.md).
+
 ## 9. Diagnóstico cuantitativo de las 100.396 partidas
 
 Medidas sobre el Parquet de la corrida `manual__2026-10-22T18:56:28`.
