@@ -3,7 +3,7 @@
 # Airflow 3.3 (la versión que dicta la cátedra). La imagen base ya trae los
 # providers standard, celery y fab, así que no hay que agregarlos a requirements.
 ARG AIRFLOW_VERSION=3.3.0
-FROM apache/airflow:${AIRFLOW_VERSION}
+FROM docker.io/apache/airflow:${AIRFLOW_VERSION}
 
 # Install project dependencies as the airflow user (no root needed for pip)
 COPY requirements.txt /project/requirements.txt
