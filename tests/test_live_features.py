@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.live_features import build_cut_dataset, game_cut_features
-from src.rating_history import add_prior_ratings, reconstruct_prior_ratings
+from src.rating_history import add_prior_ratings, add_recent_form, reconstruct_prior_ratings, reconstruct_recent_form
 
 HEADERS = '[Event "Live Chess"]\n[White "W"]\n[Black "B"]\n[Result "1-0"]\n[TimeControl "180+2"]\n\n'
 
@@ -113,13 +113,18 @@ class LiveFeaturesTest(unittest.TestCase):
 
 class RatingHistoryTest(unittest.TestCase):
     @staticmethod
-    def _game(url: str, end: int, white: tuple[str, int], black: tuple[str, int], tc: str = "blitz") -> dict:
+    def _game(
+        url: str, end: int, white: tuple[str, int], black: tuple[str, int], tc: str = "blitz", winner: str | None = None
+    ) -> dict:
+        results = {"white": "agreed", "black": "agreed"}
+        if winner is not None:
+            results = {winner: "win", ("black" if winner == "white" else "white"): "resigned"}
         return {
             "url": url,
             "end_time": end,
             "time_class": tc,
-            "white": {"username": white[0], "rating": white[1]},
-            "black": {"username": black[0], "rating": black[1]},
+            "white": {"username": white[0], "rating": white[1], "result": results["white"]},
+            "black": {"username": black[0], "rating": black[1], "result": results["black"]},
         }
 
     def test_prior_rating_is_the_rating_after_the_previous_own_game(self) -> None:
@@ -151,6 +156,60 @@ class RatingHistoryTest(unittest.TestCase):
         self.assertEqual(len(merged), 3)
         self.assertEqual(merged.set_index("GameUrl").loc["g3", "diferencia_elo_previo"], 1502 - 1480)
 
+
+    def _recent_form(self, games: list[dict], starts: dict[str, int]) -> pd.DataFrame:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "alice.json"
+            path.write_text(json.dumps({"games": games}))
+            start_times = pd.DataFrame(
+                {"GameUrl": list(starts), "StartTime": pd.to_datetime(list(starts.values()), unit="s", utc=True)}
+            )
+            return reconstruct_recent_form({"alice": path}, start_times).set_index("GameUrl")
+
+    @staticmethod
+    def _alice_games(outcomes: str, step: int = 600) -> list[dict]:
+        """Alice plays white every ``step`` seconds; 'W' win, 'L' loss, 'D' draw."""
+        winners = {"W": "white", "L": "black", "D": None}
+        return [
+            RatingHistoryTest._game(f"a{i}", (i + 1) * step, ("Alice", 1500 + i), ("x", 1500), winner=winners[o])
+            for i, o in enumerate(outcomes)
+        ]
+
+    def test_recent_form_only_looks_at_earlier_games(self) -> None:
+        games = self._alice_games("WWWLLWWWDLW")  # a10 has exactly 10 games before it
+        starts = {g["url"]: g["end_time"] - 300 for g in games}
+        form = self._recent_form(games, starts)
+        self.assertAlmostEqual(form.loc["a10", "forma_ultimas10_blancas"], 6.5 / 10)  # a0..a9, a10 excluded
+        self.assertTrue(pd.isna(form.loc["a9", "forma_ultimas10_blancas"]))  # only 9 before: NaN, not 0
+        self.assertTrue(pd.isna(form.loc["a10", "tendencia_rating_blancas"]))  # needs 11 games before
+        self.assertTrue(pd.isna(form.loc["a0", "racha_blancas"]))
+        self.assertTrue(form["forma_ultimas10_negras"].isna().all())  # opponent: no history
+
+        # A future game, whatever its result, must not change the past rows.
+        future = games + [self._game("a11", 99_999, ("Alice", 1400), ("x", 1500), winner="black")]
+        later = self._recent_form(future, {**starts, "a11": 99_000})
+        pd.testing.assert_frame_equal(later.drop(index="a11"), form)
+        self.assertEqual(later.loc["a11", "tendencia_rating_blancas"], 1510 - 1500)  # after a10 vs after a0
+
+    def test_streak_counts_wins_and_losses_and_resets_on_draws(self) -> None:
+        games = self._alice_games("WWLLLDW")
+        form = self._recent_form(games, {g["url"]: g["end_time"] - 300 for g in games})
+        racha = form["racha_blancas"]
+        self.assertEqual(racha[["a1", "a2", "a3", "a5", "a6"]].tolist(), [1, 2, -1, -3, 0])
+
+    def test_session_restarts_after_a_long_gap(self) -> None:
+        games = self._alice_games("WWW") + [
+            self._game("a3", 1800 + 3 * 3600, ("Alice", 1503), ("x", 1500), winner="white")
+        ]
+        starts = {"a0": 300, "a1": 900, "a2": 1500, "a3": 1500 + 3 * 3600}
+        form = self._recent_form(games, starts)
+        self.assertEqual(form["partidas_sesion_blancas"].tolist(), [0, 1, 2, 0])
+        self.assertEqual(form.loc["a1", "minutos_desde_anterior_blancas"], 5)  # ended 600, started 900
+        self.assertTrue(pd.isna(form.loc["a0", "minutos_desde_anterior_blancas"]))
+
+        merged = add_recent_form(pd.DataFrame({"GameUrl": ["a1", "a3", "zz"]}), form.reset_index())
+        self.assertEqual(len(merged), 3)
+        self.assertTrue(pd.isna(merged.loc[2, "racha_blancas"]))  # unknown game: NaN
 
 if __name__ == "__main__":
     unittest.main()
