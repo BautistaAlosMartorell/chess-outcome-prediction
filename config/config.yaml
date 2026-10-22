@@ -76,11 +76,17 @@ matchup_apertura:
 
 # Predicción en vivo: cortes fijos en medio-movimientos (plies). Una partida aporta una
 # fila por cada corte estrictamente menor que su cantidad_jugadas. 0 = antes de la
-# primera jugada (la predicción pre-partida es el primer punto de la misma curva);
+# primera jugada (la predicción pre-partida es el primer punto de la misma curva).
+# cortes_ply: uno cada 5 plies hasta el 120 (~ percentil 90 de la duración en la corrida
+# del 22/10/2026), para que el modelo aprenda la curva completa y la app pueda predecir
+# en cualquier jugada.
+# cortes_referencia: subconjunto que usan el EDA (notebook 02, Parte B) y el notebook 03.
 # 10 ~ mediana de profundidad de la línea ECO; 40 y 60 ~ cuartil 1 y mediana de la
-# duración.
+# duración. Las features de un corte sólo dependen de esa partida hasta ese ply, así que
+# filtrar a estos cortes reproduce exactamente la tabla anterior.
 live_prediction:
-  cortes_ply: [0, 10, 20, 30, 40, 60]
+  cortes_ply: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120]
+  cortes_referencia: [0, 10, 20, 30, 40, 60]
 
 download:
   timeout_seconds: 60
