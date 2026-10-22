@@ -85,7 +85,9 @@ def cargar_modelo(path: Path | str = MODEL_PATH) -> dict[str, Any]:
     return joblib.load(path)
 
 
-def predecir(pgn: str, contexto: Mapping[str, Any], modelo: Mapping[str, Any]) -> pd.DataFrame:
+def predecir(
+    pgn: str, contexto: Mapping[str, Any], modelo: Mapping[str, Any], en_curso: bool = False
+) -> pd.DataFrame:
     """Probabilidad de cada resultado en cada ply de la partida (0 = antes de mover).
 
     ``contexto`` trae lo que se sabía antes de empezar: ``TimeClass``, ``tiempo_base_seg``
@@ -99,15 +101,17 @@ def predecir(pgn: str, contexto: Mapping[str, Any], modelo: Mapping[str, Any]) -
     ``plies_restantes`` (regresor).
 
     Devuelve una fila por ply en el que la partida sigue en curso: en una partida
-    terminada, todos los plies anteriores al final. El modelo se entrenó con cortes hasta
-    el ply 120; más allá, extrapola.
+    terminada, todos los plies anteriores al final. Con ``en_curso=True`` (una partida
+    que se está jugando) también la posición actual, después de la última jugada. El
+    modelo se entrenó con cortes hasta el ply 120; más allá, extrapola.
     """
     game = chess.pgn.read_game(io.StringIO(pgn))
     if game is None:
         raise ValueError("PGN ilegible")
     plies = sum(1 for _ in game.mainline_moves())
     rows, _ = game_cut_features(
-        pgn, range(plies), float(contexto["tiempo_base_seg"]), float(contexto["incremento_seg"])
+        pgn, range(plies + 1), float(contexto["tiempo_base_seg"]), float(contexto["incremento_seg"]),
+        in_progress=en_curso,
     )
     frame = pd.DataFrame(rows)
     for key, value in contexto.items():

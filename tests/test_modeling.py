@@ -77,6 +77,11 @@ class PredecirTest(unittest.TestCase):
         result = predecir(_pgn(MOVES), context, {"resultado": classifier, "columnas": columns})
         self.assertTrue(result["Gana Blancas"].eq(1).all())
         self.assertTrue(result["Empate"].eq(0).all())
+    def test_game_in_progress_also_predicts_the_current_position(self) -> None:
+        finished = predecir(_pgn(MOVES), self.CONTEXT, self._model())
+        live = predecir(_pgn(MOVES), self.CONTEXT, self._model(), en_curso=True)
+        self.assertEqual(live["ply"].tolist(), list(range(len(MOVES) + 1)))  # ply 22: after the last move
+        pd.testing.assert_frame_equal(live.iloc[:-1], finished)  # earlier plies do not change
 
     def test_model_frame_types_and_missing_columns(self) -> None:
         frame = model_frame(

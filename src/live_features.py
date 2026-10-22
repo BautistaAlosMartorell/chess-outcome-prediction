@@ -102,6 +102,7 @@ def game_cut_features(
     cuts: Iterable[int],
     base_seconds: float,
     increment_seconds: float,
+    in_progress: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     """Features de posición y reloj en cada corte alcanzado por la partida.
 
@@ -110,6 +111,10 @@ def game_cut_features(
     cantidad total, para validarla contra ``cantidad_jugadas``. El corte 0 es la
     posición inicial con los relojes completos: ahí ``gasto_reciente_*`` queda NaN
     porque todavía no hubo jugadas.
+
+    ``in_progress=True`` es para una partida que todavía se está jugando (la app):
+    la posición después de la última jugada también es un corte en curso, así que
+    se incluye si está en ``cuts``.
     """
     game = chess.pgn.read_game(io.StringIO(pgn))
     if game is None:
@@ -155,7 +160,7 @@ def game_cut_features(
                 clocks if clocks_complete else None, base_seconds, increment_seconds,
             )
 
-    rows = [snapshots[k] for k in sorted(snapshots) if k < ply]
+    rows = [snapshots[k] for k in sorted(snapshots) if k < ply or (in_progress and k == ply)]
     return rows, ply
 
 
