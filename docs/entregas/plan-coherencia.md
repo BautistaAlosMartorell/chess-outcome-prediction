@@ -6,7 +6,7 @@ antes de la Entrega 3 (28/10).
 
 ## El problema
 
-1. **Dos datasets en el repo.** La lista "congelada" de jugadores vivía en `data/`, que no
+1. **Dos datasets en el repo, y ninguno queda.** La lista "congelada" de jugadores vivía en `data/`, que no
    entra a git, y cada integrante generó la suya. Por eso unos documentos citan la corrida
    del 22/09 (80.521 registros → 80.145 partidas) y otros la del 26/09 (77.229 → 76.803).
    - 80.145: README (criterio 5 y "Corrida validada"), `guia-defensa-entrega-1.md`,
@@ -26,7 +26,7 @@ antes de la Entrega 3 (28/10).
 
 | Decisión | Valor |
 |---|---|
-| Dataset oficial | La selección de jugadores de la corrida del 26/09 (76.803 partidas) |
+| Dataset oficial | Una corrida **nueva**, con una selección de jugadores nueva. Ninguna de las dos anteriores (80.145 ni 76.803): todas las cifras se rehacen sobre esta |
 | Dónde vive la lista | `config/jugadores_seleccionados.yaml`, versionada en git. Snapshots y checkpoint siguen en `data/raw/seleccion/` (`player_selection.snapshot_dir`) |
 | Documentos de entregas pasadas | Se actualizan todos; nada queda congelado |
 | Cortes | `[0, 10, 20, 30, 40, 60]`. El 0 es la partida antes de la primera jugada |
@@ -47,21 +47,23 @@ sigue teniendo una partida por fila (tidy, Entrega 1); la tabla de cortes se der
 
 ## Fase 0 · Corrida oficial (bloquea todo lo demás)
 
-1. Copiar la lista de la corrida del 26/09 a `config/jugadores_seleccionados.yaml`. Si el
-   archivo no está, `listar_jugadores` **selecciona una lista nueva** sin fallar.
+1. Sin `config/jugadores_seleccionados.yaml`, `listar_jugadores` selecciona una lista
+   nueva y la escribe ahí. Reusa los snapshots de las listas públicas que ya están en
+   `data/raw/seleccion/` (del 22/09).
 2. `docker compose build` (la imagen vieja no tiene `python-chess`), `docker compose up -d`,
    disparar `pipeline_ajedrez_chesscom`.
 3. Verificar:
 
    | Qué | Esperado |
    |---|---|
-   | Registros descargados | 77.229 |
-   | Partidas finales | 76.803 |
+   | Jugadores seleccionados | 100, 20 por banda (si una banda no llena, se documenta) |
    | Columnas del Parquet | 35 |
-   | Filas de `partidas_cortes.parquet` | 412.804 (336.001 + 76.803 del corte 0) |
+   | Filas de `partidas_cortes.parquet` | filas de los cortes 10–60 + una por partida en el corte 0 (todas tienen ≥ 5 plies) |
+   | `verificar_calidad` | en verde |
 
-4. Si algo no coincide, se investiga y se escribe antes de tocar un documento (causa más
-   probable: partidas o cuentas borradas en Chess.com desde el 26/09).
+4. Commitear `config/jugadores_seleccionados.yaml`: desde ahí todos corren con esa lista.
+5. Correr el DAG una segunda vez sin borrar nada tiene que dar exactamente los mismos
+   números (prueba de reproducibilidad para la defensa).
 
 ## Fase 1 · Hoja de datos vigente
 
