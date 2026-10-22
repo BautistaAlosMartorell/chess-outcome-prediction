@@ -9,6 +9,9 @@ data/processed/*
 **/data/*.parquet
 **/cache/
 
+# Modelo entrenado: lo regenera notebooks/04_modelado.ipynb
+models/
+
 # Jupyter
 .ipynb_checkpoints/
 
