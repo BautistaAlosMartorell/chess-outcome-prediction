@@ -1,4 +1,7 @@
+"use client";
+
 import type { Punto } from "@/lib/api";
+import { Barra } from "./Barra";
 import styles from "./Marcador.module.css";
 
 export type Jugador = {
@@ -15,9 +18,12 @@ type Props = {
   relojes: { blancas: number | null; negras: number | null };
   activo: "blancas" | "negras" | null;
   punto: Punto | null;
-  // Set once the game is over: replaces the prediction text.
+  // Set once the game is over: replaces the remaining-moves line.
   final?: string | null;
 };
+
+// Under this, the running clock turns to the time-trouble color.
+const APURO_MS = 20_000;
 
 export function formatoReloj(ms: number | null): string {
   if (ms === null) return "–";
@@ -28,28 +34,37 @@ export function formatoReloj(ms: number | null): string {
   return `${minutes}:${rest.toString().padStart(2, "0")}`;
 }
 
-function porcentaje(p: number): number {
-  return Math.round(p * 100);
-}
+const NOMBRE_RESULTADO = { G: "Ganó", P: "Perdió", T: "Tablas" } as const;
 
 function Placa({ jugador, lado, reloj, activo }: { jugador: Jugador; lado: "blancas" | "negras"; reloj: number | null; activo: boolean }) {
+  const apuro = reloj !== null && reloj < APURO_MS;
   return (
     <div className={`${styles.placa} ${styles[lado]}`}>
       <div className={styles.identidad}>
-        <span className={styles.ficha} aria-hidden="true" />
-        <span className={styles.nombre}>{jugador.nombre}</span>
-        {jugador.rating ? <span className={styles.rating}>{jugador.rating}</span> : null}
+        {jugador.avatar ? (
+          // Chess.com serves avatars from its CDN at any size: a plain img is enough.
+          <img className={styles.avatar} src={jugador.avatar} alt="" width={36} height={36} />
+        ) : (
+          <span className={styles.pieza} aria-hidden="true" />
+        )}
+        <div className={styles.datos}>
+          <span className={styles.nombre}>{jugador.nombre}</span>
+          <span className={styles.rating}>{jugador.rating ? `${jugador.rating}` : "Sin rating"}</span>
+        </div>
       </div>
       {jugador.forma && jugador.forma.length > 0 ? (
         <ol className={styles.forma} aria-label="Últimas partidas, de la más reciente a la más vieja">
           {jugador.forma.slice(0, 5).map((r, i) => (
-            <li key={i} className={styles[`forma${r}`]} title={{ G: "Ganó", P: "Perdió", T: "Tablas" }[r]}>
+            <li key={i} className={styles[`forma${r}`]} title={NOMBRE_RESULTADO[r]}>
               {r}
             </li>
           ))}
         </ol>
       ) : null}
-      <div className={`cifra ${styles.reloj} ${activo ? styles.relojActivo : ""}`} aria-live="off">
+      <div
+        className={`cifra ${styles.reloj} ${activo ? styles.relojActivo : ""} ${activo && apuro ? styles.relojApuro : ""}`}
+        aria-label={`Reloj de ${lado}: ${formatoReloj(reloj)}`}
+      >
         {formatoReloj(reloj)}
       </div>
     </div>
@@ -57,31 +72,15 @@ function Placa({ jugador, lado, reloj, activo }: { jugador: Jugador; lado: "blan
 }
 
 export function Marcador({ blancas, negras, relojes, activo, punto, final }: Props) {
-  const pb = punto ? porcentaje(punto.gana_blancas) : null;
-  const pt = punto ? porcentaje(punto.empate) : null;
-  const pn = punto ? porcentaje(punto.gana_negras) : null;
-  const descripcion = punto
-    ? `Blancas ${pb} %, tablas ${pt} %, negras ${pn} %`
-    : "Todavía no hay predicción";
   const restantes = punto?.plies_restantes;
-
   return (
     <section className={styles.marcador} aria-label="Marcador">
       <Placa jugador={blancas} lado="blancas" reloj={relojes.blancas} activo={activo === "blancas"} />
       <div className={styles.centro}>
-        <div className={styles.cifras} aria-hidden="true">
-          <span className="cifra">{pb ?? "–"}</span>
-          <span className={styles.cifraTablas}>
-            <span className="cifra">{pt ?? "–"}</span> tablas
-          </span>
-          <span className="cifra">{pn ?? "–"}</span>
-        </div>
-        <div className={styles.franja} role="img" aria-label={descripcion}>
-          <div className={styles.segBlancas} style={{ flexBasis: `${punto ? punto.gana_blancas * 100 : 50}%` }} />
-          <div className={styles.segTablas} style={{ flexBasis: `${punto ? punto.empate * 100 : 0}%` }} />
-          <div className={styles.segNegras} style={{ flexBasis: `${punto ? punto.gana_negras * 100 : 50}%` }} />
-        </div>
-        <p className={styles.pie} aria-live="polite">
+        <Barra
+          valores={punto ? { blancas: punto.gana_blancas, tablas: punto.empate, negras: punto.gana_negras } : null}
+        />
+        <p className={`${styles.pie} ${final ? styles.pieFinal : ""}`} aria-live="polite">
           {final
             ? final
             : restantes !== undefined

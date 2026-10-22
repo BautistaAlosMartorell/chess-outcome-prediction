@@ -1,18 +1,24 @@
 .marcador {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(280px, 2.2fr) minmax(150px, 1fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(300px, 2.4fr) minmax(170px, 1fr);
   align-items: end;
-  gap: 20px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid var(--tinta);
+  gap: clamp(16px, 2.5vw, 32px);
+  padding: clamp(16px, 2.5vw, 24px);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-alto), var(--panel));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px rgba(0, 0, 0, 0.35);
 }
 
 /* Player plates: identity on top, the clock is the large element. */
+.marcador > * {
+  min-width: 0;
+}
+
 .placa {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -23,51 +29,70 @@
 
 .identidad {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .negras .identidad {
   flex-direction: row-reverse;
 }
 
-.ficha {
+.avatar {
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  border: 1.5px solid var(--tinta);
-  align-self: center;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px var(--linea);
 }
 
-.blancas .ficha {
-  background: var(--blancas);
+/* Without an avatar, a disc in the side's color stands in. */
+.pieza {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
 }
 
-.negras .ficha {
-  background: var(--negras);
+.blancas .pieza {
+  background: radial-gradient(circle at 35% 30%, #ffffff, var(--blancas) 60%, #cfc6b4);
+}
+
+.negras .pieza {
+  background: radial-gradient(circle at 35% 30%, #3a4446, var(--negras) 65%);
+  box-shadow: 0 0 0 1px var(--borde-negras);
+}
+
+.datos {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
 }
 
 .nombre {
   font-weight: 700;
+  font-size: 1.05rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .rating {
-  color: var(--tinta-suave);
+  color: var(--texto-suave);
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
 .forma {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
@@ -76,100 +101,82 @@
   height: 20px;
   display: grid;
   place-items: center;
-  border-radius: 2px;
-  border: 1px solid var(--linea);
+  border-radius: var(--radio-chico);
 }
 
 .formaG {
-  background: var(--tinta);
-  color: var(--fondo);
-  border-color: var(--tinta) !important;
+  background: var(--blancas);
+  color: var(--negras);
 }
 
 .formaT {
   background: var(--tablas);
-  color: var(--tinta);
+  color: var(--negras);
 }
 
 .formaP {
-  color: var(--tinta-suave);
+  background: transparent;
+  color: var(--texto-suave);
+  box-shadow: inset 0 0 0 1px var(--linea);
 }
 
 .reloj {
-  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
   line-height: 1;
-  padding: 6px 10px;
-  border-radius: var(--radio);
-  border: 1.5px solid var(--tinta);
-  background: var(--blancas);
+  padding: 8px 14px;
   min-width: 5.4ch;
   text-align: center;
+  border-radius: var(--radio);
+  background: var(--fondo-hondo);
+  color: var(--texto-suave);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  transition: background-color 250ms ease, color 250ms ease, box-shadow 250ms ease;
 }
 
+/* The running clock lights up like a digital chess clock. */
 .relojActivo {
-  background: var(--reloj-activo);
+  background: var(--reloj);
+  color: var(--negras);
+  box-shadow: 0 0 0 1px var(--reloj), 0 0 28px rgba(255, 181, 71, 0.45);
+  animation: latido 2s ease-in-out infinite;
 }
 
-/* The bar: the one bold element. */
+.relojApuro {
+  background: var(--apuro);
+  box-shadow: 0 0 0 1px var(--apuro), 0 0 32px rgba(255, 107, 91, 0.55);
+  animation-duration: 0.9s;
+}
+
+@keyframes latido {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+
 .centro {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.cifras {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: clamp(2.6rem, 7vw, 4.25rem);
-  line-height: 0.9;
-}
-
-.cifraTablas {
-  font-size: 1rem;
-  color: var(--tinta-suave);
-}
-
-.cifraTablas :global(.cifra) {
-  font-size: 1.5rem;
-  color: var(--tinta);
-}
-
-.franja {
-  display: flex;
-  height: 28px;
-  border: 1.5px solid var(--tinta);
-  border-radius: var(--radio);
-  overflow: hidden;
-  background: var(--tinta);
-  gap: 2px;
-}
-
-.franja > div {
-  flex-grow: 0;
-  flex-shrink: 1;
-  transition: flex-basis 450ms cubic-bezier(0.3, 0.7, 0.2, 1);
-}
-
-.segBlancas {
-  background: var(--blancas);
-}
-
-.segTablas {
-  background: var(--tablas);
-}
-
-.segNegras {
-  background: var(--negras);
+  gap: 10px;
 }
 
 .pie {
   margin: 0;
   text-align: center;
-  color: var(--tinta-suave);
+  color: var(--texto-suave);
+  font-size: 0.95rem;
 }
 
-@media (max-width: 760px) {
+.pieFinal {
+  color: var(--texto);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 800px) {
   .marcador {
     grid-template-columns: 1fr 1fr;
   }

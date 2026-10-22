@@ -1,5 +1,9 @@
 .figura {
   margin: 0;
+  padding: clamp(16px, 2.5vw, 24px);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
 }
 
 .titulo {
@@ -8,18 +12,21 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px 16px;
-  margin-bottom: 8px;
-  font-weight: 600;
+  margin-bottom: 10px;
+  font-weight: 700;
+  font-size: 1.05rem;
 }
 
 .leyenda {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
   font-weight: 400;
-  color: var(--tinta-suave);
+  font-size: 0.875rem;
+  color: var(--texto-suave);
 }
 
 .leyenda li {
@@ -29,10 +36,16 @@
 }
 
 .muestra {
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--tinta);
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.muestraMomento {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--reloj);
 }
 
 .lienzo {
@@ -41,7 +54,10 @@
 
 .lienzo svg {
   display: block;
+  width: 100%;
+  height: auto;
   touch-action: none;
+  overflow: visible;
 }
 
 .clicable {
@@ -49,7 +65,11 @@
 }
 
 .vacio {
-  fill: var(--fondo);
+  fill: var(--fondo-hondo);
+}
+
+.banda {
+  transition: d 300ms var(--suave);
 }
 
 .bandaBlancas {
@@ -67,58 +87,96 @@
   background: var(--negras);
 }
 
+/* Reveal once, left to right, when a game opens. */
+.revelado {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: revelar 1.1s var(--suave) both;
+}
+
+@keyframes revelar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .mitad {
-  stroke: var(--tinta-suave);
+  stroke: var(--texto);
   stroke-width: 1;
-  stroke-dasharray: 3 4;
-  opacity: 0.6;
+  stroke-dasharray: 2 5;
+  opacity: 0.4;
 }
 
 .marco {
   fill: none;
-  stroke: var(--tinta);
+  stroke: var(--linea);
   stroke-width: 1.5;
 }
 
 .ejeY {
   font-size: 12px;
-  fill: var(--tinta-suave);
+  fill: var(--texto-suave);
   text-anchor: end;
 }
 
 .ejeX {
   font-size: 12px;
-  fill: var(--tinta-suave);
+  fill: var(--texto-suave);
   text-anchor: middle;
 }
 
 .etiqueta {
   font-size: 13px;
-  fill: var(--tinta);
+  fill: var(--texto);
+}
+
+.momento line {
+  stroke: var(--reloj);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.momento circle {
+  fill: var(--reloj);
 }
 
 .actual {
-  stroke: var(--reloj-activo);
+  stroke: var(--reloj);
   stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(255, 181, 71, 0.6));
 }
 
 .guia {
-  stroke: var(--tinta);
+  stroke: var(--texto);
   stroke-width: 1;
+  opacity: 0.8;
 }
 
 .tooltip {
   position: absolute;
   pointer-events: none;
   display: grid;
-  gap: 2px;
-  min-width: 150px;
-  padding: 8px 10px;
-  background: var(--blancas);
-  border: 1.5px solid var(--tinta);
+  gap: 3px;
+  min-width: 180px;
+  padding: 10px 12px;
+  background: var(--fondo-hondo);
   border-radius: var(--radio);
+  box-shadow: 0 0 0 1px var(--linea), 0 12px 30px rgba(0, 0, 0, 0.5);
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
+}
+
+.tooltip i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 4px;
+  box-shadow: 0 0 0 1px var(--linea);
 }
 
 .vacioTexto {
@@ -127,12 +185,12 @@
   display: grid;
   place-items: center;
   margin: 0;
-  color: var(--tinta-suave);
+  color: var(--texto-suave);
 }
 
 .ejeTitulo {
-  margin: 0;
+  margin: 4px 0 0;
   text-align: center;
   font-size: 0.8125rem;
-  color: var(--tinta-suave);
+  color: var(--texto-suave);
 }

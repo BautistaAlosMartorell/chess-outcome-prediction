@@ -32,10 +32,36 @@ export function ImportarJugador({ lado, ritmo, ficha, onFicha }: Props) {
     }
   }
 
+  if (ficha) {
+    const rating = ficha.ratings[ritmo];
+    const ultimas = ficha.forma[ritmo].ultimas.slice(0, 5);
+    return (
+      <div className={styles.grupo}>
+        <span className={styles.etiqueta}>{lado}</span>
+        <div className={styles.ficha}>
+          {ficha.avatar ? <img src={ficha.avatar} alt="" /> : null}
+          <div className={styles.fichaDatos}>
+            <strong>
+              {ficha.titulo ? `${ficha.titulo} ` : ""}
+              {ficha.usuario}
+            </strong>
+            <span className={styles.nota}>
+              {rating ? `${rating} en ${ritmo}` : `Sin rating en ${ritmo}`}
+              {ultimas.length ? `. Últimas: ${ultimas.join(" ")}` : ""}
+            </span>
+          </div>
+          <button type="button" className={styles.quitar} onClick={() => onFicha(null)}>
+            Quitar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form className={styles.grupo} onSubmit={traer}>
-      <label htmlFor={`usuario-${lado}`}>
-        {lado}: usuario de Chess.com <span className={styles.nota}>(opcional)</span>
+      <label htmlFor={`usuario-${lado}`} className={styles.etiqueta}>
+        {lado} <span className={styles.nota}>(usuario de Chess.com, opcional)</span>
       </label>
       <div className={styles.campo}>
         <input
@@ -47,23 +73,10 @@ export function ImportarJugador({ lado, ritmo, ficha, onFicha }: Props) {
           spellCheck={false}
         />
         <button type="submit" className={styles.boton} disabled={cargando || !usuario.trim()}>
-          {cargando ? "Trayendo…" : "Traer"}
+          {cargando ? "Trayendo…" : "Traer ficha"}
         </button>
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
-      {ficha ? (
-        <p className={styles.nota}>
-          {ficha.usuario}
-          {ficha.ratings[ritmo] ? `, ${ficha.ratings[ritmo]} en ${ritmo}` : `, sin rating en ${ritmo}`}
-          {ficha.forma[ritmo].ultimas.length
-            ? `. Últimas: ${ficha.forma[ritmo].ultimas.slice(0, 5).join(" ")}`
-            : ""}
-          .{" "}
-          <button type="button" className={styles.nota} onClick={() => onFicha(null)} style={{ border: "none", background: "none", textDecoration: "underline", padding: 0 }}>
-            Quitar
-          </button>
-        </p>
-      ) : null}
     </form>
   );
 }
