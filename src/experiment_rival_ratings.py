@@ -4,7 +4,7 @@ Reproduce la partición, la muestra de CV, los cinco folds temporales y el bosqu
 notebook 04, y evalúa variantes de columnas con la regla del 04. No modifica el dataset,
 el notebook ni el artefacto de la app: escribe sólo en ``models/experiments/``.
 
-Ejecutar desde la raíz: python -m src.experiment_rival_ratings [--variants A] [--skip-grid]
+Ejecutar desde la raíz: python -m src.experiment_rival_ratings [--variants A B C D] [--skip-grid]
 """
 
 from __future__ import annotations
@@ -23,7 +23,9 @@ from sklearn.metrics import log_loss
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from src.history_transformer import HISTORY_INPUTS, PlayerHistoryTransformer, attach_player_histories, player_history_payloads
+from src.history_transformer import (
+    RATING_AGE, RATING_RELATIVE, PlayerHistoryTransformer, attach_player_histories, player_history_payloads,
+)
 from src.live_features import game_cut_features
 from src.model_validation import temporal_game_folds
 from src.player_selection import load_selection
@@ -39,11 +41,15 @@ FINAL_COLUMNS = BASE_COLUMNS + FORM
 # Grid best of notebook 04 §5 (sklearn std, ddof=0): the harness must reproduce it.
 NOTEBOOK_GRID = dict(log_loss=0.8301, sd=0.0231, tolerance=0.001)
 
-# Variants of the plan's phase 3. Later phases add B, C and D here.
+# Variants of the plan's phase 3: columns and whether histories include rival ratings.
 VARIANTS = {
-    "grilla_04": BASE_COLUMNS,  # harness check only: the 30 columns the 04 grid used
-    "A": FINAL_COLUMNS,         # current app forest (40 columns)
+    "grilla_04": (BASE_COLUMNS, False),               # harness check: the 30 columns of the 04 grid
+    "A": (FINAL_COLUMNS, False),                      # current app forest (40 columns)
+    "B": (FINAL_COLUMNS + RATING_AGE, True),          # + rival ratings and rating age
+    "C": (FINAL_COLUMNS + RATING_AGE + RATING_RELATIVE, True),  # + difference and mean
+    "D": None,                                        # best of B/C without pauses and session
 }
+PAUSES = [f"{c}_{side}" for c in ("minutos_desde_anterior", "partidas_sesion") for side in ("blancas", "negras")]
 
 # Control grid (plan, phase 3): initial position, both ratings known, empty form.
 GRID_MEANS = [1200, 1800, 2400, 3000]
@@ -68,19 +74,22 @@ def make_forest(columns: list[str], random_state: int) -> Pipeline:
     return Pipeline([("historial", PlayerHistoryTransformer(columns)), ("prep", prep), ("modelo", forest)])
 
 
-def load_data(root: Path, config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Games with raw histories and the cut table joined with fixed context (04, cell 4)."""
+def load_data(root: Path, config: dict, with_rivals: bool):
+    """Games, the cut table joined with fixed context (04, cell 4) and both history sets."""
     games = pd.read_parquet(root / config["paths"]["clean_parquet"])
     cuts = pd.read_parquet(root / config["paths"]["cortes_parquet"])
     usernames = load_selection(root / config["player_selection"]["selection_path"])
     template = config["chess_com"]["raw_filename_template"]
     raw_paths = {u: root / config["paths"]["raw_dir"] / template.format(username=u) for u in usernames}
-    games = attach_player_histories(games, player_history_payloads(raw_paths, games[["GameUrl", "StartTime"]]))
-    context = ["GameUrl", "StartTime", "EndTime", *PRE_GAME, *FORM, *HISTORY_INPUTS[1:]]
+    starts = games[["GameUrl", "StartTime"]]
+    histories = {False: player_history_payloads(raw_paths, starts)}
+    if with_rivals:
+        histories[True] = player_history_payloads(raw_paths, starts, rivales=True)
+    context = ["GameUrl", "StartTime", "EndTime", "White", "Black", *PRE_GAME, *FORM]
     count = len(cuts)
     data = cuts.merge(games.reindex(columns=context), on="GameUrl", how="left", validate="many_to_one")
     assert len(data) == count, "Fan-out detectado al unir el contexto de la partida"
-    return games, data
+    return games, data, histories
 
 
 def split(games: pd.DataFrame, data: pd.DataFrame, random_state: int):
@@ -98,7 +107,7 @@ def split(games: pd.DataFrame, data: pd.DataFrame, random_state: int):
     return boundary, train, cv_data, folds
 
 
-def cross_validate_variant(columns: list[str], cv_data: pd.DataFrame, folds, random_state: int) -> dict:
+def cross_validate_variant(columns: list[str], cv_data: pd.DataFrame, folds, random_state: int, rivals: bool) -> dict:
     """Global and cut-0 log-loss per fold, as the 04 scorers compute them."""
     x = model_input_frame(cv_data, columns)
     y = cv_data["resultado"].astype(str).to_numpy()
@@ -116,7 +125,7 @@ def cross_validate_variant(columns: list[str], cv_data: pd.DataFrame, folds, ran
             seconds=time.perf_counter() - started,
         ))
         print(f"  fold {k}: {per_fold[-1]['log_loss']:.4f} (corte 0 {per_fold[-1]['log_loss_corte0']:.4f})", flush=True)
-    result = dict(columns=columns, n_columns=len(columns), folds=per_fold)
+    result = dict(columns=columns, n_columns=len(columns), rivales=rivals, folds=per_fold)
     for metric in ["log_loss", "log_loss_corte0"]:
         values = np.array([f[metric] for f in per_fold])
         result[metric] = dict(mean=float(values.mean()), sd=float(values.std(ddof=1)), sd_sklearn=float(values.std(ddof=0)))
@@ -134,9 +143,9 @@ def paired(candidate: dict, reference: dict) -> dict:
     return out
 
 
-def grid_coverage(games: pd.DataFrame, train: pd.DataFrame) -> dict:
+def grid_coverage(games: pd.DataFrame, train: pd.DataFrame, histories: dict) -> dict:
     """Train games per (rhythm, mean) with a known prior rating near that mean."""
-    train_games = games[games["GameUrl"].isin(set(train["GameUrl"]))]
+    train_games = attach_player_histories(games[games["GameUrl"].isin(set(train["GameUrl"]))], histories)
     known = PlayerHistoryTransformer(["elo_blancas_previo", "elo_negras_previo"]).fit_transform(train_games)
     known["TimeClass"] = train_games["TimeClass"].astype(str).to_numpy()
     coverage = {}
@@ -191,6 +200,8 @@ def print_summary(results: dict) -> None:
         g, c0 = diff["log_loss"], diff["log_loss_corte0"]
         print(f"{name} − A: global {g['mean']:+.4f} ± {g['sd']:.4f}, corte 0 {c0['mean']:+.4f} ± {c0['sd']:.4f}"
               f" → {'gana' if diff['gana_con_regla_04'] else 'no gana'}")
+    if "D_parte_de" in results:
+        print(f"D parte de {results['D_parte_de']} (la de menor log-loss entre B y C)")
     if "harness_check" in results:
         h = results["harness_check"]
         print(f"Chequeo del arnés: {h['log_loss']:.4f} ± {h['sd_sklearn']:.4f} frente a "
@@ -209,8 +220,19 @@ def run(root: Path, output: Path, variants: list[str], with_grid: bool) -> dict:
     random_state = config["processing"]["random_state"]
     started = time.perf_counter()
     print("Cargando datos e historiales...", flush=True)
-    games, data = load_data(root, config)
+    names = [n for n in VARIANTS if n in variants]  # fixed order: D needs B and C
+    if "D" in names and not {"B", "C"} <= set(names):
+        raise ValueError("D se arma con la mejor entre B y C: correr también B y C")
+    games, data, histories = load_data(root, config, with_rivals=any(n in ("B", "C", "D") for n in names))
     boundary, train, cv_data, folds = split(games, data, random_state)
+    attached = {}
+
+    def with_histories(frame: pd.DataFrame, rivals: bool) -> pd.DataFrame:
+        # One CV copy per history set, reused by every variant that needs it.
+        if rivals not in attached:
+            attached[rivals] = attach_player_histories(frame, histories[rivals])
+        return attached[rivals]
+
     print(f"Train: {train['GameUrl'].nunique():,} partidas · CV: {cv_data['GameUrl'].nunique():,} partidas, "
           f"{len(cv_data):,} filas · corte {boundary}", flush=True)
     results = dict(
@@ -220,9 +242,19 @@ def run(root: Path, output: Path, variants: list[str], with_grid: bool) -> dict:
                     for f, v in folds],
         variants={},
     )
-    for name in variants:
-        print(f"CV: {name} ({len(VARIANTS[name])} columnas)", flush=True)
-        results["variants"][name] = cross_validate_variant(VARIANTS[name], cv_data, folds, random_state)
+    specs = {}
+    for name in names:
+        if name == "D":
+            best = min(["B", "C"], key=lambda n: results["variants"][n]["log_loss"]["mean"])
+            columns, rivals = VARIANTS[best]
+            specs[name] = ([c for c in columns if c not in PAUSES], rivals)
+            results["D_parte_de"] = best
+        else:
+            specs[name] = VARIANTS[name]
+        columns, rivals = specs[name]
+        print(f"CV: {name} ({len(columns)} columnas, rivales={rivals})", flush=True)
+        results["variants"][name] = cross_validate_variant(
+            columns, with_histories(cv_data, rivals), folds, random_state, rivals)
     if "grilla_04" in results["variants"]:
         r = results["variants"]["grilla_04"]["log_loss"]
         results["harness_check"] = dict(log_loss=r["mean"], sd_sklearn=r["sd_sklearn"], expected=NOTEBOOK_GRID,
@@ -231,16 +263,19 @@ def run(root: Path, output: Path, variants: list[str], with_grid: bool) -> dict:
         results["paired_vs_A"] = {name: paired(r, results["variants"]["A"])
                                   for name, r in results["variants"].items() if name not in ("A", "grilla_04")}
     if with_grid:
-        coverage = grid_coverage(games, train)
+        attached.clear()  # free the CV copies before fitting on all of train
+        # Coverage describes who plays at each level: use every rating observation available.
+        coverage = grid_coverage(games, train, histories[max(histories)])
         results["control_grid"] = {}
-        for name in variants:
+        for name in names:
             if name == "grilla_04":
                 continue
+            columns, rivals = specs[name]
             print(f"Entrenando {name} con todo train para la grilla de control...", flush=True)
-            x = model_input_frame(train, VARIANTS[name])
-            model = make_forest(VARIANTS[name], random_state).fit(x, train["resultado"].astype(str).to_numpy())
-            results["control_grid"][name] = control_grid(model, VARIANTS[name], coverage)
-            del model
+            x = model_input_frame(attach_player_histories(train, histories[rivals]), columns)
+            model = make_forest(columns, random_state).fit(x, train["resultado"].astype(str).to_numpy())
+            results["control_grid"][name] = control_grid(model, columns, coverage)
+            del model, x
     results["seconds"] = time.perf_counter() - started
     output.mkdir(parents=True, exist_ok=True)
     (output / "metrics.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -251,7 +286,7 @@ def run(root: Path, output: Path, variants: list[str], with_grid: bool) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--variants", nargs="+", default=list(VARIANTS), choices=list(VARIANTS))
+    parser.add_argument("--variants", nargs="+", default=["grilla_04", "A", "B", "C", "D"], choices=list(VARIANTS))
     parser.add_argument("--skip-grid", action="store_true", help="no entrenar con todo train ni evaluar la grilla de control")
     parser.add_argument("--output-dir", type=Path, default=Path("models/experiments/rival_ratings"))
     args = parser.parse_args()
