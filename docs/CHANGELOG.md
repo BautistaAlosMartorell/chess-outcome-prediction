@@ -1,5 +1,48 @@
 # Changelog
 
+## Corrida oficial, corte 0 y coherencia entre etapas (2026-10-22)
+
+Branches `feat/corte-cero-y-lista-versionada` (PR #26) y `docs/coherencia-etapas`.
+
+### Qué
+
+- **Corrida oficial nueva**, con una selección de jugadores nueva: 81.094 registros →
+  80.697 partidas, 35 columnas, 435.689 filas de cortes. Reemplaza a las dos corridas
+  que convivían en los documentos (80.145 y 76.803 partidas). Las entradas anteriores de
+  este changelog conservan las cifras de su fecha.
+- La lista de jugadores pasa de `data/raw/seleccion/` (ignorada por git) a
+  `config/jugadores_seleccionados.yaml`, versionada. Los snapshots y el checkpoint quedan
+  en `data/raw/seleccion/` (`player_selection.snapshot_dir`).
+- **Corte 0** en la tabla de cortes (la partida antes de la primera jugada): la
+  predicción pre-partida es el primer punto de la curva en vivo.
+- `clean()` y `build_cut_dataset()` ordenan las filas por clave: el DAG y el notebook 01
+  escriben exactamente el mismo archivo (antes, mismo contenido en distinto orden).
+- **Un solo notebook 02**: Parte A (antes de la partida, las hipótesis originales) y
+  Parte B (durante la partida, las de `02_1`, que se fusionó y se borró), más el anexo de
+  matchmaking.
+- La pregunta del proyecto pasa a ser el resultado **antes y durante** la partida, y la
+  unidad de modelado la partida × corte. README, AGENTS, skills, guías de las tres
+  entregas y notebooks 01, 02 y 03 reescritos con las cifras de la corrida oficial.
+
+### Qué cambió en los resultados con el dataset nuevo
+
+- H3 (notebook 02): `principiante` ya no llega a verde (η² 0,130). La decisión pasa de
+  "confirmada en niveles bajos" a "inconclusa en niveles bajos, refutada en medios y
+  altos".
+- Anexo de matchmaking: en rapid, el intervalo bootstrap por jugador ahora excluye el 0.
+- Notebook 03: en el corte 0 ningún modelo le gana al piso (log-loss 0,867 contra 0,864);
+  al ply 60, 0,738 contra 0,913.
+- La lista congelada de matchups cubre el 79,71 % en la corrida oficial (80,39 % cuando
+  se eligió). Se documenta y no se cambia.
+
+### Validación
+
+- 50 tests en verde, con uno nuevo para el corte 0 y otro para el orden de filas.
+- DAG completo en verde dos veces; el Parquet y la muestra CSV del notebook 01 son
+  idénticos a los del DAG.
+- Las salidas de las dos partes del notebook 02 fusionado coinciden con las de los
+  notebooks separados.
+
 ## Dataset de predicción en vivo por cortes y notebook 03 (2026-09-26)
 
 Branch `feat/dataset-prediccion-en-vivo` (sobre `feat/historico-matchup-apertura`, con

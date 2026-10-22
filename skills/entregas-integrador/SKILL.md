@@ -61,7 +61,7 @@ partida (fuga de información hacia `resultado`, no sólo un matiz), y la muestr
 concentrada en 8 jugadores de nivel club a élite mundial, no es representativa de
 "ajedrez online" en general.
 
-**Al 22/09/2026 (Entrega 2 lista):** La lista fija de 8 cuentas se reemplazó por la tarea
+**Al 22/09/2026 (Entrega 2 lista, superada por la del 22/10):** La lista fija de 8 cuentas se reemplazó por la tarea
 `listar_jugadores` del DAG (`src/player_selection.py`), que ya no depende de ninguna cuenta
 inicial ni del Parquet previo: sortea candidatos de las listas públicas de la PubAPI
 (titulados FM/CM/NM para `avanzado`, GM/IM para `experto` y `top_mundial`, jugadores de
@@ -78,6 +78,17 @@ del rating posterior, que el equilibrio entre bandas es una decisión de muestre
 distribución real de Chess.com, y que la banda `avanzado` se arma con titulados de nivel
 bajo porque la API no publica listas por rating. El CLI sin Docker usa la misma lista
 congelada que el DAG.
+
+**Al 22/10/2026 (preparando la Entrega 3, vigente):** La pregunta pasó a ser el resultado y
+la duración **antes y durante** la partida, y la unidad de modelado la partida × corte
+(tabla `partidas_cortes.parquet`, cortes 0/10/20/30/40/60; el 0 es antes de mover). La
+lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`. Corrida oficial
+del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas (99,51 %), 35
+columnas, 435.689 filas de cortes. El notebook 02 es uno solo (Parte A antes, Parte B
+durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03
+muestra que antes de empezar ningún modelo le gana al piso y que desde el ply 30 el
+modelo en vivo sí (log-loss 0,738 contra 0,913 al ply 60). Falta el modelado formal de
+la Entrega 3: `docs/entregas/plan-entrega-3.md`.
 
 ## Qué pide cada entrega
 
