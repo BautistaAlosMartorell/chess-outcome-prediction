@@ -54,12 +54,13 @@ La primera tarea del DAG (`listar_jugadores`) arma la lista de jugadores a desca
 versiona en git**:
 
 1. **Primera corrida:** si no existe `config/jugadores_seleccionados.yaml`,
-   arma tres pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
+   arma cuatro pools de candidatos con listas públicas de la PubAPI. Cada pool alimenta
    ciertas bandas:
    - FM, CM y NM (`/pub/titled/{título}`) para `avanzado`;
    - GM e IM para `experto` y `top_mundial`;
    - jugadores de AR, ES, MX, US, IN, BR, DE y RU (`/pub/country/{iso}/players`) para
-     `principiante` e `intermedio`.
+     `principiante` e `intermedio`;
+   - rankings `live_bullet`, `live_blitz` y `live_rapid` de `/pub/leaderboards` para `elite` [3000, 4000). `top_mundial` queda en [2600, 3000).
 
    Baraja cada pool con semilla fija (`random_state: 42`) y los recorre en ronda. Estima la
    banda de cada candidato con `/pub/player/{u}/stats` y lo valida contra sus partidas
@@ -67,17 +68,17 @@ versiona en git**:
    dentro de la banda). La banda final la decide la mediana validada, no la estimación, así
    que un jugador validado en otra banda abierta entra ahí igual. Cuando todas las bandas de
    un pool se llenan, ese pool deja de consultarse. Se usan solo títulos abiertos: llenar
-   una banda con listas exclusivas de un género (WFM, WCM) habría sesgado la muestra. Se detiene al juntar 20 jugadores en cada una de las 5 bandas. El avance se
+   una banda con listas exclusivas de un género (WFM, WCM) habría sesgado la muestra. Se detiene al juntar 20 jugadores en cada una de las 6 bandas. El avance se
    guarda en un checkpoint, así que si la tarea se corta, retoma desde ahí.
-2. **Corridas siguientes:** lee ese archivo y devuelve exactamente la misma lista, sin
+2. **Corridas siguientes:** si se agregó una banda, completa sólo esa y registra la ampliación en `extensions`, conservando las cuentas congeladas. La lista vigente amplió las 100 originales a 120. Si no falta ninguna banda, lee ese archivo y devuelve exactamente la misma lista, sin
    volver a seleccionar. Como la descarga es idempotente, se reusa el bronce ya bajado y
    sale el mismo dataset.
 
 No hay cuentas iniciales elegidas a mano ni dependencia del Parquet de una corrida
 anterior. El archivo de selección también es el manifiesto auditable: incluye la política,
 los candidatos evaluados y los motivos de rechazo. Los snapshots crudos de las listas por
-país y por título quedan en `data/raw/seleccion/` (regenerables, fuera de git). Por qué hay
-tres pools y qué se midió para definirlos está en el doc del criterio de selección. Para
+país, por título y de rankings quedan en `data/raw/seleccion/` (regenerables, fuera de git). El documento del criterio de selección explica
+los tres pools originales y el cuarto de élite, con las mediciones que los motivaron. Para
 volver a seleccionar hay que borrarlo a propósito.
 
 **Por qué la lista está en `config/` y no en `data/`.** Hasta el 22/10/2026 vivía en
@@ -99,11 +100,15 @@ En consecuencia, `WhiteElo`, `BlackElo` y todo lo derivado de ellos (`diferencia
 `resultado`: el signo del cambio de rating coincide con el resultado en el 99,9 % de las
 partidas (notebook 02, sección 9). **No entran al modelo.**
 
-**Cómo se resolvió.** `src/rating_history.py` reconstruye el **rating previo**: el de cada
+**Cómo se resolvió.** El transformador `PlayerHistoryTransformer` de
+`src/history_transformer.py`, dentro del Pipeline del notebook 04, reconstruye el **rating previo** de cada
 cuenta seleccionada al cierre de su partida anterior del mismo ritmo, leído de su propio
-historial. Sólo se puede reconstruir el lado de la cuenta seleccionada (≈ 50 % de blancas y
-50 % de negras, al menos un lado en el 99,7 % de las partidas): del rival no se descargó el
-historial, así que ese lado queda NaN, sin imputar. Es la principal limitación de la
+historial, con cierre estrictamente anterior al inicio actual. El orden por cierre
+con `shift()` solo no garantizaba esa condición; la sección 2 del 04 cuantifica y
+corrige los solapamientos. Sólo se puede reconstruir el lado de la cuenta seleccionada (≈ 50 % de blancas y
+50 % de negras, al menos un lado en el 99,7 % de las partidas): del rival normalmente no se descargó el
+historial, así que ese lado llega como NaN al preprocesamiento. El bosque imputa
+con estadísticas aprendidas sólo en su train y un indicador de faltante. Es la principal limitación de la
 predicción antes de la partida.
 
 ### Limitación de la muestra
@@ -127,7 +132,7 @@ no sobre "ajedrez online" en general.
 | 2 | Unidad alineada | La pregunta es sobre la partida en un momento dado, y la tabla de cortes es exactamente eso. |
 | 3 | Algo modelable | `resultado` en cada corte es el target de clasificación y `plies_restantes`, el de regresión. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
-| 5 | Volumen | La corrida oficial produjo 80.697 partidas y 1.216.417 filas de cortes. |
+| 5 | Volumen | La corrida oficial produjo 100.396 partidas y 1.559.622 filas de cortes. |
 | 6 | Columnas informativas | Hay rating previo, color, apertura, ritmo, relojes, material y posición en cada corte, resultado y fecha. |
 | 7 | Documentación | Chess.com publica endpoints, campos, códigos de respuesta y reglas de uso. |
 
@@ -151,7 +156,8 @@ src/download_data.py                       descarga idempotente por cuenta (el D
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
 src/live_features.py                       dataset de predicción en vivo: una fila por partida y corte de plies (python-chess)
-src/rating_history.py                      rating previo y forma reciente antes de la partida, reconstruidos desde el historial propio de cada cuenta
+src/rating_history.py                      lectura de historiales y helpers del EDA
+src/history_transformer.py                 rating previo, forma y estilo dentro del Pipeline, con cierre estrictamente anterior al inicio
 src/model_validation.py                    validación cruzada temporal por partida (las filas de una partida no se separan)
 src/predict.py                             columnas del modelo y predecir(): probabilidades jugada a jugada para la app
 src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
@@ -160,6 +166,8 @@ tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 tests/test_player_selection.py             pruebas del selector de jugadores
 tests/test_live_features.py                pruebas del dataset en vivo (incluida la de no mirar jugadas futuras), del rating previo y de la forma reciente
 tests/test_modeling.py                     pruebas del splitter temporal por partida y de predecir()
+tests/test_history_transformer.py           ventanas, temporalidad y serialización del historial del Pipeline
+tests/test_model_realism.py                 comportamiento y calibración del artefacto final (si existe localmente)
 models/                                    modelo entrenado (lo regenera el notebook 04), ignorado por Git
 ```
 
@@ -217,7 +225,8 @@ por `GameUrl`.
 | `resultado`, `plies_restantes` | Targets: resultado final y plies que faltan desde el corte. |
 | `material_*`, `balance_material`, `material_no_peon_frac` | Material de cada bando (peón 1, caballo/alfil 3, torre 5, dama 9), su diferencia y la fracción de material sin peones que queda. |
 | `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
-| `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte. |
+| `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte (`movilidad`: jugadas legales del bando que mueve). |
+| `material_colgado_*`, `ataques_al_rey_*`, `peones_pasados_*`, `movilidad_*` | Calidad de la posición de cada bando: puntos de piezas atacadas y sin defensor, ataques rivales sobre la casilla del rey y sus vecinas, peones pasados y jugadas posibles (le toque mover o no). |
 | `reloj_*_seg`, `reloj_frac_*`, `diferencia_reloj_seg` | Reloj restante de cada bando, en segundos y como fracción del tiempo base. |
 | `gasto_reciente_*_seg` | Segundos gastados en las últimas 5 jugadas propias. NaN en el corte 0 (todavía no hubo jugadas). |
 
@@ -281,13 +290,18 @@ También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que eje
 pipeline completo con la misma lista congelada que el DAG y verifica el dataset. Los
 notebooks 02, 03 y 04 consumen lo que produce el DAG (las dos tablas de
 `data/processed/` y los JSON crudos). Todos deben ejecutarse con **Restart & Run All**,
-en ese orden. El 04 tarda unos 20 minutos y deja el modelo para la app en `models/`.
+en ese orden. El 04 requiere decenas de minutos (ver el tiempo medido en su última celda) y deja el modelo para la app en `models/`.
 
 ### Tests
 
 ```bash
 python -m unittest discover -s tests
 ```
+
+No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
+las de población/calibración necesitan además los Parquet y JSON locales. Si faltan,
+unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
+una dama ganada, desventaja de reloj, el ganador cerca del final y calibración por clase.
 
 ## Artefactos generados
 
@@ -299,19 +313,19 @@ python -m unittest discover -s tests
   `src.predict.cargar_modelo()` y se usa con `predecir()`)
 
 Corrida oficial del 22/10/2026 (DAG completo en Airflow, ventana congelada hasta agosto
-de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
+de 2026, DAG `manual__2026-10-22T18:56:28`, 120 jugadores seleccionados —20 por banda de ELO—):
 
-- 81.094 registros descargados.
-- 80.697 partidas finales (99,51 % de retención; 397 descartadas por las reglas de
+- 101.094 registros descargados.
+- 100.396 partidas finales (99,31 % de retención; 698 descartadas por las reglas de
   deduplicación, alcance y calidad del pipeline).
 - 35 columnas. Los únicos nulos son estructurales y están documentados: `TournamentUrl`
   (partidas que no son de torneo) y las tres `tasa_*_hist` (1.620 partidas sin historial
   suficiente del matchup).
-- Las cinco bandas de ELO quedan entre 18,4 % y 21,8 % del dataset.
-- Tabla de cortes: 1.216.417 filas, un corte cada 5 plies del 0 al 120 (corte 0: 80.697 ·
-  60: 51.266 · 120: 8.204). Filtrada a los cortes de referencia que usan el EDA y el
-  notebook 03 son 435.689 filas (corte 0: 80.697 · 10: 80.099 · 20: 78.456 · 30: 75.383 ·
-  40: 69.788 · 60: 51.266).
+- Las seis bandas de ELO quedan entre 14,8 % y 19,8 % del dataset.
+- Tabla de cortes: 1.559.622 filas, un corte cada 5 plies del 0 al 120 (corte 0: 100.396 ·
+  60: 66.413 · 120: 12.323). Filtrada a los cortes de referencia que usan el EDA y el
+  notebook 03 son 547.555 filas (corte 0: 100.396 · 10: 99.762 · 20: 98.026 · 30: 94.671 ·
+  40: 88.287 · 60: 66.413).
 
 Los archivos de `data/` no se versionan: la corrida oficial se regenera ejecutando el DAG
 de Airflow. Con la lista de jugadores versionada en `config/` y la ventana temporal
@@ -322,7 +336,7 @@ congelada, volver a correrlo en cualquier máquina reproduce ese mismo dataset.
 Casos encontrados inspeccionando el Parquet final directamente —no sólo el resumen— y
 documentados para que no se confundan con errores del pipeline durante el EDA:
 
-- **56 partidas con `Date` = 2026-09-01** (0,07% del dataset), un día después del tope
+- **93 partidas con `Date` = 2026-09-01** (0,093 % del dataset), un día después del tope
   `download.until_month: "2026-08"`. No es un bug del filtro: la ventana congelada decide
   qué archivo mensual bajar por su URL (`.../games/2026/08`), no por la fecha individual.
   El patrón aparece en varias cuentas y confirma un límite horario del archivo mensual de
@@ -331,7 +345,7 @@ documentados para que no se confundan con errores del pipeline durante el EDA:
   errores de parseo: Chess.com permite controles personalizados y esas filas corresponden a
   partidas reales con ese ritmo puntual.
 
-Además, tres usernames seleccionados aparecen en 1.001 filas del dataset final, una más que
+Además, las cuentas seleccionadas aparecen hasta en 1.204 filas del dataset final, por encima de
 `max_games_per_user` (1000). No es un error: el tope se aplica a la descarga *de esa
 cuenta*, pero una partida también puede entrar a través de la descarga de su oponente si
 ambos fueron seleccionados. La deduplicación por `GameUrl` evita contarla dos veces, aunque

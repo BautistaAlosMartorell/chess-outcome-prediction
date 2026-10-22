@@ -193,14 +193,15 @@ Esta tarea **selecciona los jugadores una sola vez y deja la lista congelada** (
 [`criterio-seleccion-jugadores.md`](criterio-seleccion-jugadores.md)):
 
 - **Primera corrida:** si no existe `config/jugadores_seleccionados.yaml`,
-  arma tres pools con listas públicas de la PubAPI (`player_selection.pools`): FM/CM/NM para
+  arma cuatro pools con listas públicas de la PubAPI (`player_selection.pools`): FM/CM/NM para
   `avanzado`, GM/IM para `experto` y `top_mundial`, y jugadores por país para
-  `principiante` e `intermedio`. Baraja cada pool con semilla fija y los recorre en ronda.
+  `principiante` e `intermedio`, más `/pub/leaderboards` para `elite`. Baraja cada pool con semilla fija y los recorre en ronda.
   Estima la banda de cada candidato con `/stats`, lo valida contra sus partidas hasta el
   cutoff y junta 20 por banda de ELO. Un pool con todas sus bandas llenas deja de
   consultarse. El avance se guarda en un checkpoint (`.parcial.yaml`), así que un reintento
   retoma (el checkpoint y los snapshots quedan en `data/raw/seleccion/`,
   `player_selection.snapshot_dir`). Al terminar, escribe el archivo de forma atómica.
+- **Ampliación:** si el config suma una banda, se selecciona sólo esa; `extensions` registra la extensión y conserva los jugadores ya congelados. Así se pasó de 100 a 120 cuentas.
 - **Corridas siguientes:** lee ese archivo y devuelve la misma lista. No selecciona de
   nuevo y no usa la red para esto. Como el archivo está versionado en git, cualquier
   integrante que clona el repo descarga los mismos jugadores.
@@ -355,7 +356,7 @@ min_users_ok: 80
 min_total_games: 1500
 ```
 
-Si hay menos de 80 cuentas exitosas (de ~100 seleccionadas) o menos de 1.500 partidas crudas, lanza un error y
+Si hay menos de 80 cuentas exitosas (de 120 seleccionadas) o menos de 1.500 partidas crudas, lanza un error y
 el DAG queda en rojo. Si aprueba, devuelve solo las rutas Bronze exitosas.
 
 La decisión ocurre **después** del fan-out porque antes no se conoce el estado global. Es
@@ -394,7 +395,7 @@ Esta tarea toma las rutas JSON Bronze y llama a `DataCleaner`. Ese módulo:
 | `optimize_dtypes()` | Usa enteros compactos, categorías y fechas correctas. |
 
 La clave primaria es `GameUrl`. Es posible que dos usuarios seleccionados hayan jugado entre
-sí; la misma partida aparecería en los dos JSON (en la corrida oficial pasó 5 veces). La
+sí; la misma partida aparecería en los dos JSON (en la corrida oficial pasó 273 veces). La
 deduplicación por esa URL garantiza que una fila de la tabla base siga representando una
 sola partida. Al final, `clean()` ordena las filas por `GameUrl`: sin eso, el orden seguiría
 el de los JSON, que es distinto en el DAG y en el notebook 01, y los dos escribirían el
@@ -406,7 +407,7 @@ señal representativa para la duración ni para el resultado de una partida juga
 ### La excepción tidy: `moves_text`
 
 `moves_text` guarda muchas jugadas dentro de una celda. Es una concesión explícita: partir
-cada jugada en su propia fila multiplicaría el volumen por ~75 con filas casi idénticas, y
+cada jugada en su propia fila multiplicaría el volumen por ~78 con filas casi idénticas, y
 abrirlas en columnas tendría ancho variable. De ahí se derivan valores atómicos:
 `cantidad_jugadas` en la tabla base y, en la tabla de cortes (sección 12), la posición y
 los relojes cada 5 plies de la partida.
@@ -504,14 +505,14 @@ cumple. Es un **quality gate** o portero de calidad.
 | Columnas vacías | ninguna al 100% nula | No se exporta información inexistente. |
 | Targets | `resultado` y `cantidad_jugadas` sin nulos | Objetivos modelables y completos. |
 
-Además valida que `WhiteElo` y `BlackElo` estén entre 100 y 3.600. Es una verificación
+Además valida que `WhiteElo` y `BlackElo` estén entre 100 y 4.000. Es una verificación
 extra de precisión: ratings negativos, cero o absurdamente altos señalarían corrupción o
 un error de parseo.
 
 El criterio de volumen usa el mínimo explícito `quality.min_final_games` (hoy **1.500**),
 no un porcentaje de la descarga. Son contratos distintos: `download.min_total_games`
 (también 1.500) es el piso de la **descarga cruda**, mientras que `quality.min_final_games`
-es el piso del dataset **limpio y analizable**. La limpieza retiene ~99,85 %, así que el
+es el piso del dataset **limpio y analizable**. La limpieza retiene ~99,31 %, así que el
 final queda cómodamente por encima del mínimo.
 
 Por último guarda un baseline de volumen en una Variable de Airflow. Si el volumen cambia
@@ -571,7 +572,10 @@ Corre después de exportar y no modifica el Parquet tidy. `src/live_features.py`
 cada partida jugada a jugada con python-chess desde el PGN **crudo**, porque es el único
 lugar donde quedan los relojes `%clk`. En cada corte de `live_prediction.cortes_ply` (uno
 cada 5 plies, del 0 al 120) guarda la posición y los relojes: material, jaques, capturas,
-enroques, movilidad, turno, reloj restante y tiempo gastado reciente. El corte 0 es la
+enroques, movilidad, turno, reloj restante y tiempo gastado reciente. Además, por bando,
+cuatro medidas de la calidad de la posición que el conteo de material no ve: el material
+colgado (piezas atacadas y sin defensor), los ataques sobre la zona del rey, los peones
+pasados y la movilidad (jugadas posibles, le toque mover o no). El corte 0 es la
 posición inicial con los relojes completos: es la predicción antes de empezar, y ahí
 `gasto_reciente_*` queda NaN porque todavía no hubo jugadas. Resultado:
 `partidas_cortes.parquet`, con una fila por `(GameUrl, corte_ply)`, ordenada por esa clave.
@@ -579,9 +583,9 @@ posición inicial con los relojes completos: es la predicción antes de empezar,
 La tarea falla, en vez de descartar en silencio, si una partida del tidy no tiene PGN
 crudo, si los plies reproducidos no coinciden con `cantidad_jugadas` o si la clave se
 repite. Una partida sólo aporta los cortes **anteriores** a su final: en el ply *k* la
-partida tiene que seguir en curso. En la corrida oficial son 1.216.417 filas de las
-80.697 partidas, y tarda unos 7 minutos. El EDA y el notebook 03 usan sólo los cortes de
-`live_prediction.cortes_referencia` (0, 10, 20, 30, 40 y 60: 435.689 filas).
+partida tiene que seguir en curso. En la corrida oficial son 1.559.622 filas de las
+100.396 partidas, y su duración depende del volumen y del hardware. El EDA y el notebook 03 usan sólo los cortes de
+`live_prediction.cortes_referencia` (0, 10, 20, 30, 40 y 60: 547.555 filas).
 
 ## 13. La construcción del grafo
 
@@ -643,3 +647,16 @@ es una muestra para inspección y el JSON es su resumen de calidad.
 **¿Qué no se debe usar para modelar `resultado`?** `es_sorpresa`, porque usa el resultado
 para calcularse. Los ELO también requieren cuidado porque Chess.com los informa después de
 la partida.
+
+## 15. Historial en el modelo de la Entrega 3
+
+`src/history_transformer.py` implementa `PlayerHistoryTransformer` (`BaseEstimator` +
+`TransformerMixin`), primer paso de los pipelines del notebook 04. Recibe observaciones
+individuales del historial y el inicio actual; calcula rating previo, forma y estilo
+usando únicamente `end_time < StartTime`. No guarda los historiales ni el objetivo
+en el estimador ajustado. Después vienen imputación/codificación y modelo.
+
+El orden por cierre con `shift()` no bastaba: había cierres iguales o posteriores al
+inicio siguiente. La sección 2 del notebook 04 cuantifica la anomalía; los tests cubren
+solapamientos, igualdad de timestamps y agregado de partidas futuras. Los helpers del
+EDA reutilizan ese transformador cuando reciben los horarios de inicio.
