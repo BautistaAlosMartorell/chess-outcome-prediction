@@ -1,5 +1,56 @@
 # Changelog
 
+## Modelado de la Entrega 3 y forma reciente del jugador (2026-10-22)
+
+Branches `feat/forma-reciente-jugador` (PR #29) y `feat/modelado-entrega-3`.
+
+### Qué
+
+- `src/rating_history.py`: **forma reciente** de cada jugador antes de la partida
+  (puntaje de las últimas 10 partidas del mismo ritmo, racha, tendencia del rating,
+  minutos desde la anterior y partidas de la sesión), con la misma regla anti-fuga que el
+  rating previo. Del rival queda NaN.
+- `src/model_validation.py`: validación cruzada temporal **por partida** (`TimeSeriesSplit`
+  sobre partidas ordenadas por inicio, expandido a sus cortes), para pasarle a
+  `cross_validate` y `GridSearchCV` como `cv=`.
+- `src/predict.py`: las columnas del modelo (las importan el notebook y la app) y
+  `predecir()`, que recalcula las features en cada ply y devuelve la probabilidad de cada
+  resultado y los plies restantes.
+- `notebooks/04_modelado.ipynb`: el modelado que pide la consigna (transcripta en
+  `docs/entregas/consigna-entrega-3.md`), con un solo modelo para todos los cortes:
+  - piso, logística, random forest y gradient boosting;
+  - contraste de validaciones (al azar, por partida y por jugador);
+  - grilla del elegido;
+  - `class_weight`;
+  - columnas probadas;
+  - test una vez, con la matriz de confusión y la importancia por permutación;
+  - plies intermedios;
+  - duración restante.
+
+  Guarda el modelo en `models/modelo_en_vivo.joblib`, que no se versiona.
+- `docs/entregas/plan-entrega-3.md` pasa de plan a mapa consigna → notebook.
+
+### Resultados
+
+- **Modelo elegido: random forest**, con 0,835 ± 0,017 de log-loss en validación contra
+  0,854 ± 0,018 de la logística: le gana por 0,019 ± 0,0035 pedazo a pedazo. El gradient
+  boosting con valores por defecto memoriza y queda último. Ajustado (`max_features=0.3`,
+  `min_samples_leaf=20`): 0,829 ± 0,016.
+- **Test:** log-loss 0,799 contra 0,909 del piso (−12 %). Antes de mover empata con el
+  piso; al ply 60 lo mejora un 19 %, y al 120, un 40 %.
+- **Validación al azar:** da 0,011 mejor que por partida (la fuga por compartir cortes).
+  Con jugadores nuevos, casi igual que por partida.
+- **Columnas:** los relojes son el grupo que más aporta (+0,036 sin ellos). El rating
+  previo, la forma reciente y el matchup no mueven el número más allá del ruido.
+- **Duración restante:** MAE de 21 plies contra 26 de la mediana.
+
+### Validación
+
+- 58 tests en verde, entre ellos el splitter (ninguna partida de los dos lados, validación
+  siempre posterior), `predecir()` y la forma reciente sin fuga.
+- En el notebook, `predecir()` reproduce exactamente las predicciones del camino de
+  entrenamiento en los plies de corte.
+
 ## Cortes cada 5 plies (2026-10-22)
 
 Branch `feat/cortes-densos`.

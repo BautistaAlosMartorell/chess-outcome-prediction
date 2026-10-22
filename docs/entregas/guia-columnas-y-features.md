@@ -827,6 +827,9 @@ Predictores candidatos (todos existen antes de la primera jugada)
   TimeClass
   EsTorneo
 
+Forma reciente, probada y descartada en el notebook 04 (src/rating_history.py)
+  forma_ultimas10_*, racha_*, tendencia_rating_*, minutos_desde_anterior_*, partidas_sesion_*
+
 Partición y auditoría, no predictores automáticos
   GameUrl
   StartTime
@@ -835,7 +838,12 @@ Partición y auditoría, no predictores automáticos
 Es el corte 0 de la tabla de cortes (8.5): la posición inicial con los relojes completos.
 Los ratings del Parquet son posteriores a la partida y no entran; el rating previo se
 reconstruye y sólo se conoce de un lado. En el notebook 03, con estas variables ningún
-modelo le gana al piso de frecuencias.
+modelo le gana al piso de frecuencias, y el notebook 04 lo confirma con validación
+cruzada: en el corte 0 el random forest empata con el `DummyClassifier`. La forma reciente
+de cada jugador (puntaje de las últimas 10 partidas, racha, tendencia del rating, minutos
+desde la partida anterior y partidas de la sesión) mejora la log-loss del corte 0 en
+0,005, menos que el desvío entre pedazos, y no entró al modelo. Se calcula como el rating
+previo: sólo con partidas propias terminadas antes de que empiece la actual.
 
 ### 8.2 Resultado durante la partida (cortes 10 a 60)
 
@@ -847,7 +855,7 @@ Todo lo del corte 0
 
 `familia_apertura`, `ECO` y `Opening` no entran: Chess.com los asigna mirando la línea
 completa. La comparación entre cortes mide cuánto aporta ver más partida; la ablación con y
-sin matchup, cuánto aporta la apertura (en el notebook 03: nada).
+sin matchup, cuánto aporta la apertura (en los notebooks 03 y 04: nada).
 
 ### 8.3 Duración restante
 
@@ -860,7 +868,10 @@ Predictores candidatos
 ```
 
 En el notebook 03 el modelo le gana a la mediana por ritmo por poco: entre 2,1 % (corte 0)
-y 10,7 % (ply 60) menos error absoluto.
+y 10,7 % (ply 60) menos error absoluto. En el notebook 04, con un solo modelo para todos
+los cortes, un gradient boosting con pérdida de error absoluto erra por 21 plies en
+promedio contra 26 de la mediana: subestima las partidas largas y sobreestima las que
+están por terminar.
 
 ### 8.4 Dataset descriptivo para una aplicación
 
@@ -921,7 +932,9 @@ incrementos) y `gasto_reciente_*` es negativo en 4 filas (se agregó tiempo en p
 incremento). Se conservan. `gasto_reciente_*` es NaN en el corte 0 (no hubo jugadas) y
 `matchup_apertura` no existe todavía en ese corte. Para comparar entre cortes hay que usar la población común
 (partidas que llegan al último corte): cada corte describe partidas de distinta duración.
-Los resultados están en `notebooks/03_prediccion_en_vivo.ipynb`.
+La exploración está en `notebooks/03_prediccion_en_vivo.ipynb`, y el modelado formal, en
+`notebooks/04_modelado.ipynb`: un solo modelo con `corte_ply` como columna, que entra con
+las 30 columnas de `PRE_GAME + LIVE` (`src/predict.py`).
 
 ## 9. Diagnóstico cuantitativo de las 80.697 partidas
 

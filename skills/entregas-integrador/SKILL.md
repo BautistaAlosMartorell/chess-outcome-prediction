@@ -80,17 +80,23 @@ distribución real de Chess.com, y que la banda `avanzado` se arma con titulados
 bajo porque la API no publica listas por rating. El CLI sin Docker usa la misma lista
 congelada que el DAG.
 
-**Al 22/10/2026 (preparando la Entrega 3, vigente):** La pregunta pasó a ser el resultado y
+**Al 22/10/2026 (Entrega 3 lista, vigente):** La pregunta pasó a ser el resultado y
 la duración **antes y durante** la partida, y la unidad de modelado la partida × corte
 (tabla `partidas_cortes.parquet`, un corte cada 5 plies del 0 al 120; el 0 es antes de
 mover). La lista de jugadores se versiona en `config/jugadores_seleccionados.yaml`.
 Corrida oficial del 22/10/2026: 100 jugadores, 81.094 registros → 80.697 partidas
 (99,51 %), 35 columnas, 1.216.417 filas de cortes (435.689 en los cortes de referencia
 0/10/20/30/40/60, que usan el EDA y el notebook 03). El notebook 02 es uno solo (Parte A antes, Parte B
-durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03
-muestra que antes de empezar ningún modelo le gana al piso y que desde el ply 30 el
-modelo en vivo sí (log-loss 0,738 contra 0,913 al ply 60). Falta el modelado formal de
-la Entrega 3: `docs/entregas/plan-entrega-3.md`.
+durante, anexo de matchmaking con la respuesta del ELO máximo: ±200). El notebook 03 es
+la exploración previa. El modelado formal está en `notebooks/04_modelado.ipynb`:
+validación cruzada temporal por partida, logística, random forest y gradient boosting, y
+el test mirado una vez. Gana el **random forest** (0,835 ± 0,017 de log-loss en
+validación, contra 0,854 de la logística y 0,923 del piso). En test le gana al piso por
+un 12 % (0,799 contra 0,909): nada antes de mover, 19 % al ply 60. Los relojes pesan; el
+rating previo, la forma reciente y el matchup no aportan. El modelo queda en
+`models/modelo_en_vivo.joblib` (no versionado) y `predecir()` (`src/predict.py`) lo
+aplica jugada a jugada para la app. Mapa consigna → notebook:
+`docs/entregas/plan-entrega-3.md`.
 
 ## Qué pide cada entrega
 

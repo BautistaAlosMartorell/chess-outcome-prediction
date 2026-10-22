@@ -146,16 +146,21 @@ Dockerfile                                 imagen de Airflow con las dependencia
 notebooks/01_data_ingestion_verification.ipynb     Entrega 1: pipeline narrado y verificación
 notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil y fugas, cuatro hipótesis antes de la partida (Parte A) y cuatro durante, sobre la tabla de cortes (Parte B), + anexo de matchmaking
 notebooks/03_prediccion_en_vivo.ipynb              Entrega 3 (exploración): curva por corte, desbalance de Empate y matchup de apertura
+notebooks/04_modelado.ipynb                        Entrega 3: modelado formal (piso, tres familias con CV temporal por partida, grilla, ablación, test una vez) y modelo guardado para la app
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
 src/live_features.py                       dataset de predicción en vivo: una fila por partida y corte de plies (python-chess)
-src/rating_history.py                      rating previo a la partida, reconstruido desde el historial propio de cada cuenta
+src/rating_history.py                      rating previo y forma reciente antes de la partida, reconstruidos desde el historial propio de cada cuenta
+src/model_validation.py                    validación cruzada temporal por partida (las filas de una partida no se separan)
+src/predict.py                             columnas del modelo y predecir(): probabilidades jugada a jugada para la app
 src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
 tests/test_player_selection.py             pruebas del selector de jugadores
-tests/test_live_features.py                pruebas del dataset en vivo (incluida la de no mirar jugadas futuras) y del rating previo
+tests/test_live_features.py                pruebas del dataset en vivo (incluida la de no mirar jugadas futuras), del rating previo y de la forma reciente
+tests/test_modeling.py                     pruebas del splitter temporal por partida y de predecir()
+models/                                    modelo entrenado (lo regenera el notebook 04), ignorado por Git
 ```
 
 ## Diccionario de datos
@@ -274,8 +279,9 @@ python3 -m venv .venv
 
 También puede abrirse `notebooks/01_data_ingestion_verification.ipynb`, que ejecuta el
 pipeline completo con la misma lista congelada que el DAG y verifica el dataset. Los
-notebooks 02 y 03 consumen lo que produce el DAG (las dos tablas de
-`data/processed/`). Todos deben ejecutarse con **Restart & Run All**, en ese orden.
+notebooks 02, 03 y 04 consumen lo que produce el DAG (las dos tablas de
+`data/processed/` y los JSON crudos). Todos deben ejecutarse con **Restart & Run All**,
+en ese orden. El 04 tarda unos 20 minutos y deja el modelo para la app en `models/`.
 
 ### Tests
 
@@ -289,6 +295,8 @@ python -m unittest discover -s tests
 - `data/processed/partidas_ajedrez_clean_sample.csv`
 - `data/processed/data_summary.json`
 - `data/processed/partidas_cortes.parquet`
+- `models/modelo_en_vivo.joblib` (lo genera `notebooks/04_modelado.ipynb`; se carga con
+  `src.predict.cargar_modelo()` y se usa con `predecir()`)
 
 Corrida oficial del 22/10/2026 (DAG completo en Airflow, ventana congelada hasta agosto
 de 2026, 100 jugadores seleccionados —20 por banda de ELO—):
