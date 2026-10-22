@@ -16,7 +16,11 @@ Las implementaciones que materializan estas columnas están en:
 
 - `src/clean_data.py`: extracción del JSON y del PGN, limpieza y primeras derivaciones.
 - `src/feature_engineering.py`: features analíticas de rating, modalidad y apertura.
-- `config/config.yaml`: bandas de rating y universo de modalidades permitido.
+- `src/live_features.py`: la tabla de cortes (`partidas_cortes.parquet`, sección 8.5), una
+  fila por partida y corte, que es la que se modela.
+- `src/rating_history.py`: el rating previo a la partida, que reemplaza al rating posterior
+  del Parquet.
+- `config/config.yaml`: bandas de rating, universo de modalidades, cortes y matchups.
 
 ---
 
@@ -211,7 +215,7 @@ de un desafío directo. Para eso está `TournamentUrl`/`EsTorneo`.
 **Transformación.** Se parsea con formato `YYYY.MM.DD`. Una fecha inválida se convierte
 en `NaT` y la fila se descarta porque la fecha es un campo crítico.
 
-**Granularidad.** Sólo día, sin hora. En la corrida validada coincide en el 100 % de las
+**Granularidad.** Sólo día, sin hora. En la corrida oficial coincide en el 100 % de las
 filas con el día UTC de `StartTime`, así que es el **día UTC de inicio** (no el día local
 del jugador). No alcanza para ordenar causalmente dos partidas del mismo día: para eso se
 usan `StartTime` y `EndTime`.
@@ -222,7 +226,7 @@ separación cronológica entre entrenamiento y prueba.
 **Modelado.** No entra automáticamente como fecha cruda. Primero debe existir una hipótesis
 temporal. Aunque no sea predictor, debe conservarse para hacer una validación temporal.
 
-**Anomalía conocida.** La corrida validada contiene 56 partidas con
+**Anomalía conocida.** La corrida oficial contiene 56 partidas con
 `Date = 2026-09-01` (0,07% del dataset) dentro de archivos mensuales de agosto. El patrón
 aparece en varias cuentas y corresponde al límite horario UTC de Chess.com.
 `download.until_month: "2026-08"` limita qué archivo mensual se consulta, pero no
@@ -237,7 +241,7 @@ garantiza estrictamente que todos sus PGN tengan fecha anterior al 1 de septiemb
 **Para qué sirve.** Perfiles por jugador, auditoría de la muestra y análisis de color.
 
 **Modelado.** En un modelo general puede hacer que el algoritmo memorice identidades y
-patrones de la red de jugadores muestreada. La corrida validada contiene 53.761 usuarios
+patrones de la red de jugadores muestreada. La corrida oficial contiene 54.251 usuarios
 distintos, no sólo las 100 cuentas seleccionadas, porque cada partida también incorpora al
 oponente real. Sólo debe usarse en un producto explícitamente personalizado y con una
 partición que impida que el mismo jugador contamine entrenamiento y evaluación.
@@ -323,9 +327,10 @@ al presentar un gráfico; no requiere otra columna en el dataset.
 frecuentes y fuente de `familia_apertura`.
 
 **Modelado.** Sólo está disponible después de que se jugaron los primeros movimientos. No
-puede entrar en un modelo estrictamente pre-partida. En un modelo post-apertura tiene 454
-categorías observadas, por lo que necesita manejo de categorías raras y validación fuera de
-muestra.
+puede entrar en el corte 0. Y tampoco en los cortes siguientes: Chess.com lo asigna mirando
+la línea completa (mediana de 10 plies, hasta 40), así que en un corte temprano revelaría
+jugadas futuras. Tiene 459 categorías observadas. La apertura entra al modelo por
+`matchup_apertura`.
 
 ### `Opening`
 
@@ -344,7 +349,7 @@ https://www.chess.com/openings/Sicilian-Defense-Delayed-Alapin-Variation-3...Nf6
 **Para qué sirve.** Es mucho más comprensible para el usuario que `B50` y permite explicar
 resultados por apertura concreta.
 
-**Limitación.** Tiene 6.796 valores distintos en 80.145 filas. Muchas etiquetas incluyen
+**Limitación.** Tiene 6.831 valores distintos en 80.697 filas. Muchas etiquetas incluyen
 variaciones y números de movimiento, por lo que los grupos pueden ser muy pequeños.
 
 **Modelado.** No se recomienda en un baseline. Una asociación aparente alta puede surgir
@@ -610,9 +615,10 @@ otro o ausente → Desconocida
 **Para qué sirve.** Reducir 457 códigos ECO a cinco grupos principales, obtener tamaños de
 grupo razonables y comunicar patrones generales.
 
-**Modelado.** Sólo post-apertura. En la corrida validada su asociación con
-`cantidad_jugadas` fue débil (`eta² = 0,007`). Sale del baseline pre-partida y queda como
-experimento separado: comparar modelos con y sin apertura fuera de muestra.
+**Modelado.** No entra en ningún corte. En la corrida oficial su asociación con
+`cantidad_jugadas` fue débil (`eta² = 0,008`, H4 refutada), y el ECO de Chess.com se asigna
+mirando la línea completa, así que en un corte temprano revelaría jugadas futuras. La
+apertura entra al modelo por `matchup_apertura`, que sólo usa los plies 1 y 2.
 
 ### `matchup_apertura`
 
@@ -624,10 +630,13 @@ primera respuesta de negras en notación SAN, unidas con un guion (`e4-e5`, `d4-
 categórica con 18 niveles.
 
 **Es una taxonomía nueva definida por el equipo, no el estándar ECO.** La lista son las 17
-combinaciones más frecuentes de la corrida del 26/09/2026: juntas cubren el 80,39 % de las
-76.803 partidas, la menos frecuente tiene 760 y ninguna baja de 96 dentro de un mismo
-`TimeClass`. De las 290 combinaciones observadas, 190 tienen menos de 30 partidas, pero
-suman sólo 1.350 (1,76 %): la fragmentación está en la cola y queda en `otra` (19,6 %). La
+combinaciones más frecuentes de una corrida anterior (26/09/2026), donde juntas cubrían el
+80,39 % de las partidas. Sobre la corrida oficial del 22/10 cubren el **79,71 %** de las
+80.697 partidas: la menos frecuente tiene 740 y ninguna baja de 46 dentro de un mismo
+`TimeClass`, así que el mínimo de 30 se sigue cumpliendo, aunque la cobertura quedó
+apenas debajo del 80 % con que se eligió. De las 299 combinaciones observadas, 196 tienen
+menos de 30 partidas, pero suman sólo 1.343 (1,66 %): la fragmentación está en la cola y
+queda en `otra` (20,3 %). La
 lista se congela y no se recalcula por corrida, porque si cambiara, la categoría de una
 misma partida cambiaría al entrar datos nuevos. Sesgo declarado: se eligió mirando la
 frecuencia del dataset completo, no los resultados.
@@ -635,11 +644,11 @@ frecuencia del dataset completo, no los resultados.
 **Por qué no `familia_apertura`.** `familia_apertura` es un único valor por partida, así
 que no permite un "blancas vs negras". Además, Chess.com asigna el ECO mirando la línea
 completa jugada (mediana de 10 plies, hasta 40), mientras que `matchup_apertura` sólo
-necesita los plies 1 y 2. Tampoco sirve el repertorio por jugador: 41.066 de los 50.326
+necesita los plies 1 y 2. Tampoco sirve el repertorio por jugador: 44.692 de los 54.251
 jugadores aparecen una sola vez en la muestra.
 
-**Modelado.** Se conoce en el ply 2. Es feature **en vivo o post-apertura**, nunca
-pre-partida.
+**Modelado.** Se conoce en el ply 2. Es feature **en vivo**, desde el corte 10; nunca en el
+corte 0.
 
 ### `n_previas_matchup`, `historial_suficiente`, `tasa_blancas_hist`, `tasa_tablas_hist`, `tasa_negras_hist`
 
@@ -660,10 +669,10 @@ feature pasada.
 **Umbral y faltantes.** Con menos de 30 previas
 (`matchup_apertura.min_partidas_previas`), `historial_suficiente = False` y las tres tasas
 quedan **NaN**. No se imputan: es missingness real, porque no había historia que mirar. En
-la corrida validada son 1.620 partidas (2,1 %), exactamente las 30 primeras de cada uno de
+la corrida oficial son 1.620 partidas (2,0 %), exactamente las 30 primeras de cada uno de
 los 54 grupos (18 matchups × 3 ritmos). Se concentran en los años viejos de la muestra
-(316 en 2014, 267 en 2016, ninguna en 2026) y afectan más a rapid (2,96 %) y bullet
-(2,70 %) que a blitz (1,40 %). Están declaradas en `nulos_documentados` del DAG, que
+(328 en 2014, 223 en 2016, ninguna en 2026) y afectan más a rapid (4,05 %) y bullet
+(2,46 %) que a blitz (1,19 %). Están declaradas en `nulos_documentados` del DAG, que
 además verifica que las tasas sólo falten cuando `historial_suficiente = False`.
 
 **Variante sin NaN.** Para modelos que no aceptan faltantes,
@@ -675,8 +684,9 @@ y siempre va acompañada de `historial_suficiente`.
 **Qué representa y qué no.** Es la tasa **de la muestra** (100 jugadores seleccionados y
 sus rivales), no la de Chess.com. Además arrastra el drift temporal de la muestra. La
 señal esperada es débil: la victoria blanca varía poco entre familias de apertura (entre
-48,4 % y 49,8 %). Entra a la Entrega 3 como experimento con ablación (modelo con y sin),
-no como feature garantizada.
+48,4 % y 50,3 %). Se probó con ablación en el notebook 03 (modelo con y sin) y no aporta:
+±0,004 de log-loss según el corte, con calibración plana. Queda documentada como
+resultado negativo.
 
 ### `EsTorneo`
 
@@ -687,10 +697,10 @@ para que no pueda contradecir a `TournamentUrl`; el DAG lo verifica.
 
 **Para qué sirve.** Separar las partidas de torneo del resto al estudiar el límite de ±200
 del emparejamiento automático, y como candidata a feature: el mecanismo de emparejamiento
-cambia la distribución de `diferencia_elo`. 6.261 partidas (8,2 %) en la corrida validada.
+cambia la distribución de `diferencia_elo`. 6.220 partidas (7,7 %) en la corrida oficial.
 
-**Modelado.** Se conoce antes de empezar la partida, así que no tiene fuga. Candidata
-pre-partida para la Entrega 3.
+**Modelado.** Se conoce antes de empezar la partida, así que no tiene fuga. Es una de las
+variables de contexto del notebook 03, en todos los cortes.
 
 ### Columnas derivadas descartadas
 
@@ -795,7 +805,8 @@ Un jugador o entrenador puede recibir valor de:
 
 Pero deben distinguirse dos productos:
 
-1. **Predicción pre-partida:** sólo usa información disponible antes de comenzar.
+1. **Predicción antes y durante la partida:** en cada corte sólo usa información disponible
+   en ese momento (el corte 0 es antes de comenzar).
 2. **Análisis post-partida:** puede usar apertura, movimientos, resultado y terminación para
    explicar lo ocurrido.
 
@@ -803,54 +814,53 @@ Pero deben distinguirse dos productos:
 
 ## 8. Tablas oro recomendadas
 
-### 8.1 Resultado pre-partida
+### 8.1 Resultado antes de empezar (corte 0)
 
 ```text
 Target
   resultado
 
-Predictores candidatos
-  diferencia_elo_pre
-  elo_promedio_pre
+Predictores candidatos (todos existen antes de la primera jugada)
+  elo_blancas_previo, elo_negras_previo   (src/rating_history.py; NaN del lado sin historial)
   tiempo_base_seg
   incremento_seg
   TimeClass
+  EsTorneo
 
 Partición y auditoría, no predictores automáticos
   GameUrl
-  Date
+  StartTime
 ```
 
-El sufijo `_pre` es importante: los ratings actuales son posteriores y deben reconstruirse
-o mantenerse con una advertencia explícita.
+Es el corte 0 de la tabla de cortes (8.5): la posición inicial con los relojes completos.
+Los ratings del Parquet son posteriores a la partida y no entran; el rating previo se
+reconstruye y sólo se conoce de un lado. En el notebook 03, con estas variables ningún
+modelo le gana al piso de frecuencias.
 
-### 8.2 Resultado post-apertura
+### 8.2 Resultado durante la partida (cortes 10 a 60)
 
 ```text
-Todo el escenario pre-partida
-+ familia_apertura
-o ECO agrupado
-o matchup_apertura + tasa_*_hist + historial_suficiente (se conocen en el ply 2)
+Todo lo del corte 0
++ posición y relojes en el corte (tabla de cortes, 8.5)
++ matchup_apertura + tasa_*_hist + historial_suficiente (se conocen en el ply 2)
 ```
 
-La comparación entre ambos escenarios mide cuánta información marginal aporta conocer la
-apertura después de las primeras jugadas.
+`familia_apertura`, `ECO` y `Opening` no entran: Chess.com los asigna mirando la línea
+completa. La comparación entre cortes mide cuánto aporta ver más partida; la ablación con y
+sin matchup, cuánto aporta la apertura (en el notebook 03: nada).
 
-### 8.3 Longitud pre-partida
+### 8.3 Duración restante
 
 ```text
 Target
-  cantidad_plies
+  plies_restantes   (cantidad_jugadas − corte_ply)
 
 Predictores candidatos
-  abs_diferencia_elo_pre
-  elo_promedio_pre
-  tiempo_base_seg
-  incremento_seg
-  TimeClass
+  los mismos de 8.1 en el corte 0, y los de 8.2 en los demás cortes
 ```
 
-Puede construirse un segundo escenario post-apertura agregando apertura o familia.
+En el notebook 03 el modelo le gana a la mediana por ritmo por poco: entre 2,1 % (corte 0)
+y 10,7 % (ply 60) menos error absoluto.
 
 ### 8.4 Dataset descriptivo para una aplicación
 
@@ -870,8 +880,9 @@ predictores pre-partida.
 
 Tabla derivada `data/processed/partidas_cortes.parquet`, **no** una columna más del tidy:
 una fila por `(GameUrl, corte_ply)`, con cortes en `config.yaml → live_prediction.cortes_ply`
-(10, 20, 30, 40 y 60 plies). Una partida aporta una fila por cada corte estrictamente menor
-que su `cantidad_jugadas`: 336.001 filas de 76.331 partidas en la corrida validada. El
+(0, 10, 20, 30, 40 y 60 plies). El corte 0 es la posición inicial, antes de la primera
+jugada. Una partida aporta una fila por cada corte estrictamente menor que su
+`cantidad_jugadas`: 435.689 filas de las 80.697 partidas en la corrida oficial. El
 contexto de la partida se une desde el tidy por `GameUrl` (muchos a uno, con assert de
 conteo), así que no se duplica en disco.
 
@@ -902,13 +913,14 @@ Prohibidas (fuga)
   accuracies del JSON crudo         (análisis posterior a la partida)
 ```
 
-Anomalías conocidas: `reloj_frac_*` supera 1 en el 5,45 % de las filas (acumulación de
+Anomalías conocidas: `reloj_frac_*` supera 1 en el 4,52 % de las filas (acumulación de
 incrementos) y `gasto_reciente_*` es negativo en 4 filas (se agregó tiempo en partidas sin
-incremento). Se conservan. Para comparar entre cortes hay que usar la población común
+incremento). Se conservan. `gasto_reciente_*` es NaN en el corte 0 (no hubo jugadas) y
+`matchup_apertura` no existe todavía en ese corte. Para comparar entre cortes hay que usar la población común
 (partidas que llegan al último corte): cada corte describe partidas de distinta duración.
 Los resultados están en `notebooks/03_prediccion_en_vivo.ipynb`.
 
-## 9. Diagnóstico cuantitativo de las 80.145 partidas
+## 9. Diagnóstico cuantitativo de las 80.697 partidas
 
 Estos números son un **screening inicial**, no la selección definitiva de features. Siguen
 la idea de que el número sostiene una decisión y el gráfico explica su forma.
@@ -918,17 +930,17 @@ la idea de que el número sostiene una decisión y el gráfico explica su forma.
 | `diferencia_elo` y `resultado` | V de Cramér sobre bandas de diferencia | 0,234 | Zona amarilla: señal relevante, no suficiente por sí sola. |
 | `elo_promedio` y `cantidad_jugadas` | Pearson / Spearman | 0,230 / 0,225 | Asociación positiva modesta y consistente. |
 | `TimeClass` y `cantidad_jugadas` | η² | 0,009 | Rojo según el semáforo de la materia. |
-| `TimeControl` y `cantidad_jugadas` | η² | 0,029 | Rojo; el control exacto explica poca variación global. |
-| `familia_apertura` y `cantidad_jugadas` | η² | 0,007 | Rojo; las familias explican muy poca variación global. |
-| `Termination` y `cantidad_jugadas` | η² | 0,193 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
+| `TimeControl` y `cantidad_jugadas` | η² | 0,028 | Rojo; el control exacto explica poca variación global. |
+| `familia_apertura` y `cantidad_jugadas` | η² | 0,008 | Rojo; las familias explican muy poca variación global. |
+| `Termination` y `cantidad_jugadas` | η² | 0,195 | Asociación fuerte pero inutilizable pre-partida por fuga temporal. |
 
 Promedios de longitud observados:
 
 | Modalidad | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Bullet | 21.387 | 74,90 | 71 |
-| Blitz | 45.403 | 77,34 | 73 |
-| Rapid | 13.355 | 68,58 | 64 |
+| Bullet | 21.916 | 74,70 | 71 |
+| Blitz | 45.461 | 77,40 | 73 |
+| Rapid | 13.320 | 68,51 | 64 |
 
 Que Blitz tenga una media mayor no significa que la modalidad cause partidas más largas.
 Las categorías están mezcladas con diferencias de jugador, rating, fecha y selección de
@@ -938,70 +950,43 @@ Promedios de longitud por familia:
 
 | Familia | Partidas | Media de plies | Mediana de plies |
 |---|---:|---:|---:|
-| Flanco | 21.506 | 77,40 | 74 |
-| Semiabierta | 25.359 | 75,19 | 71 |
-| Abierta | 19.119 | 70,80 | 66 |
-| Cerrada | 10.624 | 76,83 | 72 |
-| India | 3.537 | 81,45 | 76 |
+| Flanco | 21.463 | 77,54 | 74 |
+| Semiabierta | 25.829 | 75,02 | 71 |
+| Abierta | 19.122 | 70,70 | 66 |
+| Cerrada | 10.648 | 76,80 | 71 |
+| India | 3.635 | 81,60 | 77 |
 
 Las diferencias visuales o de medias deben acompañarse con tamaño de efecto y control de
 posibles terceras variables antes de transformarse en una conclusión.
 
 ---
 
-## 10. Hipótesis sugeridas para Entrega 2
+## 10. Hipótesis de la Entrega 2: cómo quedaron
 
-Las hipótesis deben escribirse antes de calcular sus medidas definitivas.
+Las hipótesis se escribieron antes de calcular sus medidas. Los resultados están en
+`notebooks/02_eda_hipotesis.ipynb`, y la guía de defensa de la Entrega 2 las recorre ficha
+por ficha.
 
-### H1 — Diferencia de rating y resultado
+**Parte A — antes de la partida** (una fila por partida):
 
-**Afirmación.** A mayor diferencia de rating a favor de blancas, mayor proporción de
-victorias blancas; a menor diferencia, mayor proporción de victorias negras.
+| Hipótesis | Resultado | Decisión |
+|---|---|---|
+| H1 · diferencia de ELO → resultado | η² = 0,091 (0,062 con el rating previo reconstruido) | Inconclusa |
+| H2 · partidas parejas → más largas | Pearson −0,027, Spearman 0,030 | Refutada |
+| H3 · bullet termina más por tiempo | η² = 0,068; 0,130 en principiante a 0,021 en experto | Refutada en niveles medios y altos, inconclusa en los bajos |
+| H4 · aperturas cerradas → más largas | separación = 0,054 | Refutada |
 
-**Qué esperamos ver.** Una transición ordenada de resultados al recorrer bandas de
-`diferencia_elo`.
+**Parte B — durante la partida** (tabla de cortes, población común de 51.266 partidas):
 
-**Medida y gráfico.** Proporciones por banda; gráfico de barras apiladas. Como apoyo,
-comparar la distribución de la diferencia entre resultados.
+| Hipótesis | Resultado | Decisión |
+|---|---|---|
+| H1′ · el material separa el resultado, cada vez más | η² 0,000 (ply 10) a 0,118 (ply 60) | Parcialmente confirmada |
+| H2′ · el reloj aporta más allá del material | η² 0,086 en el ply 60; 0,092 controlando por material | Entra, modulada por el ritmo |
+| H3′ · con menos piezas falta menos | Spearman del material −0,155 (signo al revés) | Refutada para el material |
+| H4′ · ventaja de las blancas | 4,1 pp, igual en los tres ritmos | Confirmada; no cambia con el ritmo |
 
-**Posibles controles justificados.** Nivel promedio y `TimeClass`.
-
-### H2 — Partidas parejas y longitud
-
-**Afirmación.** Las partidas con menor `abs_diferencia_elo` tienden a durar más.
-
-**Qué esperamos ver.** Asociación negativa entre brecha absoluta y cantidad de plies.
-
-**Medida y gráfico.** Pearson y Spearman; scatter suavizado o boxplots por bandas.
-
-### H3 — Ritmo y forma de terminación
-
-**Afirmación.** Las partidas Bullet terminan por tiempo en mayor proporción que Blitz y
-Rapid.
-
-**Qué esperamos ver.** Mayor proporción de `Termination = time` en Bullet.
-
-**Medida y gráfico.** Composición porcentual y barras normalizadas.
-
-### H4 — Familia de apertura y longitud
-
-**Afirmación.** Las aperturas cerradas producen partidas más largas que las semiabiertas.
-
-**Qué esperamos ver.** Separación positiva de `cantidad_jugadas` entre ambos grupos.
-
-**Medida y gráfico.** Separación estandarizada y boxplot. Si queda amarilla, controlar nivel
-promedio o `TimeClass`, con un máximo de dos movimientos analíticos.
-
-### H5 — Apertura como información marginal
-
-**Afirmación.** Agregar apertura a las variables pre-partida mejora la predicción de
-resultado o longitud fuera de muestra.
-
-**Qué esperamos ver.** Mejora consistente de métricas entre un modelo base y el mismo modelo
-con apertura.
-
-**Decisión.** La apertura entra sólo si mejora validación fuera de muestra y el escenario se
-presenta explícitamente como post-apertura.
+La hipótesis de la apertura como información marginal (con y sin matchup) se probó en el
+notebook 03 y no aporta.
 
 ---
 
