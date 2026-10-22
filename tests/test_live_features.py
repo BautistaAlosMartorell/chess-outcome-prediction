@@ -240,5 +240,22 @@ class RatingHistoryTest(unittest.TestCase):
         self.assertEqual(len(merged), 3)
         self.assertTrue(pd.isna(merged.loc[2, "racha_blancas"]))  # unknown game: NaN
 
+    def test_clock_style_uses_only_earlier_games(self) -> None:
+        games = []
+        for i in range(12):
+            lost_on_time = i % 4 == 0  # games 0, 4, 8: lost on time
+            game = self._game(f"t{i}", (i + 1) * 600, ("Alice", 1500), ("x", 1500), winner=None if lost_on_time else "white")
+            if lost_on_time:
+                game["white"]["result"], game["black"]["result"] = "timeout", "win"
+            game["time_control"] = "180"
+            # White ends with 90 s of 180 (half its time); black's clock comes second.
+            game["pgn"] = "1. e4 {[%clk 0:02:59]} 1... e5 {[%clk 0:02:58]} 2. Nf3 {[%clk 0:01:30]} 2... Nc6 {[%clk 0:00:10]}"
+            games.append(game)
+        form = self._recent_form(games, {g["url"]: g["end_time"] - 300 for g in games})
+        self.assertTrue(pd.isna(form.loc["t9", "derrotas_por_tiempo_blancas"]))  # only 9 earlier games
+        self.assertAlmostEqual(form.loc["t10", "derrotas_por_tiempo_blancas"], 3 / 10)  # t0..t9, not t10
+        self.assertAlmostEqual(form.loc["t11", "reloj_final_blancas"], 0.5)
+        self.assertTrue(form["reloj_final_negras"].isna().all())  # the opponent has no history
+
 if __name__ == "__main__":
     unittest.main()

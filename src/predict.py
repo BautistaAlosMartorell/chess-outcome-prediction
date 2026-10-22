@@ -19,7 +19,7 @@ import joblib
 import pandas as pd
 
 from src.live_features import game_cut_features
-from src.rating_history import FORM_COLUMNS
+from src.rating_history import FORM_COLUMNS, STYLE_COLUMNS
 
 RESULT_ORDER = ["Gana Blancas", "Empate", "Gana Negras"]
 MODEL_PATH = Path("models/modelo_en_vivo.joblib")
@@ -29,6 +29,8 @@ MODEL_PATH = Path("models/modelo_en_vivo.joblib")
 PRE_GAME = ["TimeClass", "tiempo_base_seg", "incremento_seg", "EsTorneo", "elo_blancas_previo", "elo_negras_previo"]
 # Forma reciente de cada lado (src/rating_history.py), con la misma regla anti-fuga.
 FORM = [f"{column}_{side}" for column in FORM_COLUMNS for side in ("blancas", "negras")]
+# Estilo con el reloj de cada lado (src/rating_history.py): pierde por tiempo, juega apurado.
+STYLE = [f"{column}_{side}" for column in STYLE_COLUMNS for side in ("blancas", "negras")]
 CLOCKS = [
     "reloj_blancas_seg", "reloj_negras_seg", "reloj_frac_blancas", "reloj_frac_negras", "diferencia_reloj_seg",
     "gasto_reciente_blancas_seg", "gasto_reciente_negras_seg",

@@ -18,6 +18,7 @@ terminaron antes de que empiece.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -35,6 +36,11 @@ FORM_WINDOW = 10
 # Una sesión es una seguidilla de partidas con huecos menores a esto entre una y otra.
 SESSION_GAP_MINUTES = 30
 FORM_COLUMNS = ["forma_ultimas10", "racha", "tendencia_rating", "minutos_desde_anterior", "partidas_sesion"]
+# Estilo con el reloj: ventana más larga que la forma, porque una derrota por tiempo es
+# rara y con 10 partidas la tasa sería casi siempre 0 o 10 %.
+STYLE_WINDOW = 20
+STYLE_COLUMNS = ["derrotas_por_tiempo", "reloj_final"]
+_CLOCK_RE = re.compile(r"\[%clk (\d+):(\d+):(\d+(?:\.\d+)?)\]")
 
 
 def _score(result: object) -> float | None:
@@ -46,8 +52,22 @@ def _score(result: object) -> float | None:
     return 0.5 if result in DRAW_RESULTS else 0.0
 
 
+def _final_clock_fraction(game: dict, color: str) -> float | None:
+    """Reloj de ``color`` al terminar la partida, como fracción del tiempo base.
+
+    Lee las anotaciones ``%clk`` del PGN: blancas tiene las de índice par y negras las
+    impares. Sin relojes o sin tiempo base, None.
+    """
+    base = str(game.get("time_control", "")).partition("+")[0]
+    if not base.replace(".", "", 1).isdigit() or float(base) <= 0:
+        return None
+    clocks = [int(h) * 3600 + int(m) * 60 + float(s) for h, m, s in _CLOCK_RE.findall(game.get("pgn", ""))]
+    own = clocks[0::2] if color == "white" else clocks[1::2]
+    return own[-1] / float(base) if own else None
+
+
 def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
-    """Una fila por partida propia de cada cuenta descargada, con su rating posterior y su puntaje."""
+    """Una fila por partida propia de cada cuenta descargada: rating posterior, puntaje y reloj."""
     rows = []
     for username, path in raw_paths.items():
         with Path(path).open("r", encoding="utf-8") as file:
@@ -65,6 +85,9 @@ def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
                             "end_time": game.get("end_time"),
                             "rating_posterior": side.get("rating"),
                             "puntaje": _score(side.get("result")),
+                            # Chess.com's "timeout" is a loss on time ("timevsinsufficient" is a draw).
+                            "por_tiempo": side.get("result") == "timeout",
+                            "reloj_final_frac": _final_clock_fraction(game, color),
                         }
                     )
                     break
@@ -137,6 +160,11 @@ def reconstruct_recent_form(raw_paths: Mapping[str, Path], start_times: pd.DataF
     - ``partidas_sesion``: partidas previas de la sesión, con huecos de menos de
       ``SESSION_GAP_MINUTES`` minutos entre una y otra (cualquier ritmo).
 
+    Y el estilo con el reloj, en las ``STYLE_WINDOW`` partidas previas del mismo ritmo:
+
+    - ``derrotas_por_tiempo``: qué fracción perdió por quedarse sin reloj.
+    - ``reloj_final``: con qué fracción del tiempo base suele terminar (bajo = juega apurado).
+
     Todo se calcula con ``shift()`` sobre partidas ordenadas por cierre, así que la
     partida actual nunca entra en su propia fila. Sin historial suficiente queda NaN, no 0.
     """
@@ -149,6 +177,11 @@ def reconstruct_recent_form(raw_paths: Mapping[str, Path], start_times: pd.DataF
     streak_after = per_class["puntaje"].transform(_streak_after_each_game)
     history["racha"] = streak_after.groupby([history["username"], history["time_class"]]).shift()
     history["tendencia_rating"] = per_class["rating_posterior"].shift() - per_class["rating_posterior"].shift(FORM_WINDOW + 1)
+    for column, source in (("derrotas_por_tiempo", "por_tiempo"), ("reloj_final", "reloj_final_frac")):
+        previous = per_class[source].shift().astype("float64")
+        history[column] = previous.groupby([history["username"], history["time_class"]]).transform(
+            lambda values: values.rolling(STYLE_WINDOW, min_periods=FORM_WINDOW).mean()
+        )
 
     # Sessions mix time classes: order each account by close time across all of them.
     starts = start_times[["GameUrl", "StartTime"]].drop_duplicates("GameUrl")
@@ -166,9 +199,9 @@ def reconstruct_recent_form(raw_paths: Mapping[str, Path], start_times: pd.DataF
 
     # Same pivot as reconstruct_prior_ratings: one row per (GameUrl, color) before pivoting.
     per_side = history.drop_duplicates(["GameUrl", "color"])
-    form = per_side.pivot(index="GameUrl", columns="color", values=FORM_COLUMNS)
+    form = per_side.pivot(index="GameUrl", columns="color", values=FORM_COLUMNS + STYLE_COLUMNS)
     form.columns = [f"{column}_{'blancas' if color == 'white' else 'negras'}" for column, color in form.columns]
-    ordered = [f"{column}_{suffix}" for column in FORM_COLUMNS for suffix in ("blancas", "negras")]
+    ordered = [f"{column}_{suffix}" for column in FORM_COLUMNS + STYLE_COLUMNS for suffix in ("blancas", "negras")]
     form = form.reindex(columns=ordered).reset_index()
     logger.info(
         "Forma reciente: %d partidas con historial de 10 previas de al menos un lado.",
