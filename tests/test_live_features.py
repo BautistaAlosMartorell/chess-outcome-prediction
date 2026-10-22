@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.live_features import build_cut_dataset, game_cut_features
+import chess
+
+from src.live_features import (
+    _hanging_material, _king_attacks, _passed_pawns, _side_mobility, build_cut_dataset, game_cut_features,
+)
 from src.rating_history import add_prior_ratings, add_recent_form, reconstruct_prior_ratings, reconstruct_recent_form
 
 HEADERS = '[Event "Live Chess"]\n[White "W"]\n[Black "B"]\n[Result "1-0"]\n[TimeControl "180+2"]\n\n'
@@ -78,6 +82,24 @@ class LiveFeaturesTest(unittest.TestCase):
         self.assertEqual((at0["reloj_blancas_seg"], at0["diferencia_reloj_seg"]), (180, 0))
         self.assertIsNone(at0["gasto_reciente_blancas_seg"])  # no moves played yet
         self.assertEqual(rows[1], game_cut_features(_pgn(MOVES), [10], 180, 2)[0][0])
+
+    def test_position_quality_features(self) -> None:
+        # White knight on e5 attacked by the d6 pawn and undefended; it eyes d7 and f7 next to the black king.
+        board = chess.Board("4k3/8/3p4/4N3/8/8/P7/4K3 w - - 0 1")
+        self.assertEqual((_hanging_material(board, chess.WHITE), _hanging_material(board, chess.BLACK)), (3, 0))
+        self.assertEqual((_king_attacks(board, chess.WHITE), _king_attacks(board, chess.BLACK)), (0, 2))
+        # a2 has no black pawn ahead on files a-b; d6 has no white pawn ahead on files c-e.
+        self.assertEqual((_passed_pawns(board, chess.WHITE), _passed_pawns(board, chess.BLACK)), (1, 1))
+        start = chess.Board()
+        self.assertEqual((_side_mobility(start, chess.WHITE), _side_mobility(start, chess.BLACK)), (20, 20))
+        self.assertEqual(start.turn, chess.WHITE)  # the helper works on a copy
+
+    def test_cut_rows_include_position_quality(self) -> None:
+        rows, _ = game_cut_features(_pgn(MOVES), [0, 20], 180, 2)
+        at0 = rows[0]
+        self.assertEqual((at0["material_colgado_blancas"], at0["peones_pasados_negras"]), (0, 0))
+        self.assertEqual((at0["movilidad_blancas"], at0["movilidad_negras"]), (20, 20))
+        self.assertEqual(at0["movilidad_negras"], 20)  # black's moves count even when white is to move
 
     def test_no_row_when_the_game_ends_at_or_before_the_cut(self) -> None:
         rows, plies = game_cut_features(_pgn(MOVES[:10]), [10, 20], 180, 2)

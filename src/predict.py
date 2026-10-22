@@ -40,6 +40,15 @@ LIVE = [
     "capturas_blancas", "capturas_negras", "enroco_blancas", "enroco_negras", "derechos_enroque_blancas",
     "derechos_enroque_negras", *CLOCKS,
 ]
+# Calidad de la posición más allá del conteo de material (src/live_features.py). El
+# notebook 04 prueba cada grupo por separado y deja los que superan su regla.
+POSITION_GROUPS = {
+    "material colgado": ["material_colgado_blancas", "material_colgado_negras"],
+    "ataques al rey": ["ataques_al_rey_blancas", "ataques_al_rey_negras"],
+    "peones pasados": ["peones_pasados_blancas", "peones_pasados_negras"],
+    "movilidad de cada bando": ["movilidad_blancas", "movilidad_negras"],
+}
+POSITION = [column for group in POSITION_GROUPS.values() for column in group]
 CATEGORICAL = ["TimeClass", "matchup_apertura"]
 
 

@@ -47,6 +47,45 @@ def _material(board: chess.Board, color: chess.Color) -> tuple[int, int]:
     return total, non_pawn
 
 
+def _hanging_material(board: chess.Board, color: chess.Color) -> int:
+    """Puntos de las piezas de ``color`` atacadas por el rival y sin ningún defensor."""
+    hanging = 0
+    for square, piece in board.piece_map().items():
+        if piece.color != color or piece.piece_type == chess.KING:
+            continue
+        if board.is_attacked_by(not color, square) and not board.is_attacked_by(color, square):
+            hanging += PIECE_VALUES[piece.piece_type]
+    return hanging
+
+
+def _king_attacks(board: chess.Board, color: chess.Color) -> int:
+    """Ataques rivales sobre la casilla del rey de ``color`` y las que lo rodean."""
+    king = board.king(color)
+    if king is None:
+        return 0
+    zone = chess.SquareSet(chess.BB_KING_ATTACKS[king]) | chess.SquareSet(chess.BB_SQUARES[king])
+    return sum(len(board.attackers(not color, square)) for square in zone)
+
+
+def _passed_pawns(board: chess.Board, color: chess.Color) -> int:
+    """Peones de ``color`` sin peones rivales delante, en su columna ni en las vecinas."""
+    enemy_pawns = board.pieces(chess.PAWN, not color)
+    passed = 0
+    for square in board.pieces(chess.PAWN, color):
+        file, rank = chess.square_file(square), chess.square_rank(square)
+        ahead = range(rank + 1, 8) if color == chess.WHITE else range(rank - 1, -1, -1)
+        blockers = (chess.square(f, r) for f in (file - 1, file, file + 1) if 0 <= f < 8 for r in ahead)
+        passed += not any(blocker in enemy_pawns for blocker in blockers)
+    return passed
+
+
+def _side_mobility(board: chess.Board, color: chess.Color) -> int:
+    """Jugadas pseudo-legales de ``color`` en la posición, le toque mover o no."""
+    view = board.copy(stack=False)
+    view.turn = color
+    return view.pseudo_legal_moves.count()
+
+
 def _recent_time_spent(clocks: list[float], increment: float) -> float | None:
     """Segundos gastados en las últimas ``RECENT_OWN_MOVES`` jugadas propias.
 
@@ -148,6 +187,11 @@ def _snapshot(
         row[f"capturas_{suffix}"] = captures[color]
         row[f"enroco_{suffix}"] = castled[color]
         row[f"derechos_enroque_{suffix}"] = board.has_castling_rights(color)
+        # Position quality beyond the material count: what a player reads off the board.
+        row[f"material_colgado_{suffix}"] = _hanging_material(board, color)
+        row[f"ataques_al_rey_{suffix}"] = _king_attacks(board, color)
+        row[f"peones_pasados_{suffix}"] = _passed_pawns(board, color)
+        row[f"movilidad_{suffix}"] = _side_mobility(board, color)
         if clocks is None:
             row[f"reloj_{suffix}_seg"] = None
             row[f"reloj_frac_{suffix}"] = None
