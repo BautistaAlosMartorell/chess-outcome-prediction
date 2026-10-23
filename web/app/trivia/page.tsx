@@ -6,6 +6,7 @@ import { Tablero } from "@/components/Tablero";
 import { Marcador } from "@/components/Marcador";
 import {
   favorito,
+  controlTiempo,
   NOMBRES,
   posicionEn,
   relojesEn,
@@ -170,8 +171,7 @@ function Trivia() {
         />
         <section className={styles.panel} aria-label="Pregunta y revelaciones">
           <p className={styles.etiqueta}>
-            {a.partida.ritmo} · {a.partida.tiempo_base_seg / 60} min +{" "}
-            {a.partida.incremento_seg} s
+            {a.partida.ritmo} · {controlTiempo(a.partida.tiempo_base_seg, a.partida.incremento_seg)}
           </p>
           <p>
             Jugada {Math.ceil(caso.ply / 2)} · Mueven{" "}

@@ -30,6 +30,11 @@ export function relojesEn(analisis: Analisis, ply: number) {
 }
 
 export const RESULTADOS = ["Gana Blancas", "Empate", "Gana Negras"] as const;
+
+export function controlTiempo(base: number, incremento: number): string {
+  const inicial = base % 60 === 0 ? `${base / 60} min` : `${base.toLocaleString("es-AR")} s`;
+  return `${inicial} + ${incremento.toLocaleString("es-AR")} s`;
+}
 export type Resultado = (typeof RESULTADOS)[number];
 export const NOMBRES = {
   "Gana Blancas": "Blancas",
