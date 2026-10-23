@@ -167,6 +167,25 @@ class ChessPipelineTest(unittest.TestCase):
             backward, _ = cleaner.clean(dict(reversed(paths.items())))
         pd.testing.assert_frame_equal(forward, backward)
 
+    def test_clean_records_each_step_of_the_funnel(self) -> None:
+        # The app shows how many rows survive each step: a duplicate and a 2-ply game drop out.
+        cleaner = DataCleaner(self.config)
+        short = self._minimal_game("https://www.chess.com/game/live/12")
+        short["pgn"] = short["pgn"].replace("2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = {}
+            for user, games in [("a", [self._minimal_game("https://www.chess.com/game/live/11"), short]),
+                                ("b", [self._minimal_game("https://www.chess.com/game/live/11")])]:
+                paths[user] = Path(tmp) / f"{user}.json"
+                paths[user].write_text(json.dumps({"games": games}))
+            df, raw_row_count = cleaner.clean(paths)
+        counts = [count for _, count in cleaner.pasos]
+        self.assertEqual(cleaner.pasos[0], ("Registros descargados", raw_row_count))
+        self.assertEqual(counts[:2], [3, 2])
+        self.assertEqual(counts[-2:], [2, 1])  # only the plies threshold drops the short game
+        self.assertEqual(counts[-1], len(df))
+        self.assertEqual(counts, sorted(counts, reverse=True))
+
     def test_parse_result_maps_draw(self) -> None:
         cleaner = DataCleaner(self.config)
         df = pd.DataFrame({"Result": ["1-0", "0-1", "1/2-1/2"]})
