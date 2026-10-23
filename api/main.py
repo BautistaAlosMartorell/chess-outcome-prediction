@@ -13,6 +13,7 @@ verificó contra el camino de entrenamiento.
 from __future__ import annotations
 
 import io
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,7 +105,9 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
     app = FastAPI(title="Ajedrez en vivo", lifespan=lifespan)
     app.state.modelo, app.state.cliente = modelo, cliente
     app.add_middleware(
-        CORSMiddleware, allow_origins=["http://localhost:3000"], allow_methods=["*"], allow_headers=["*"],
+        CORSMiddleware,
+        allow_origins=[origin.strip() for origin in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if origin.strip()],
+        allow_methods=["GET", "POST"], allow_headers=["Content-Type"],
     )
 
     def jugador(fetch):

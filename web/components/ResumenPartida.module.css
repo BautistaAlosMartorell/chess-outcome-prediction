@@ -1,0 +1,50 @@
+.dialog {
+  width: min(960px, calc(100vw - 24px));
+  max-height: 94dvh;
+  overflow: auto;
+  border: 1px solid var(--linea);
+  border-radius: 24px;
+  background: var(--fondo);
+  color: var(--texto);
+  padding: clamp(16px, 3vw, 28px);
+  box-shadow: var(--sombra);
+}
+.dialog::backdrop {
+  background: rgb(23 59 50 / 65%);
+  backdrop-filter: blur(5px);
+}
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cabecera span {
+  font-weight: 800;
+  color: var(--verde);
+}
+.dialog h2 {
+  margin: 16px 0 8px;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+}
+.dialog p {
+  margin: 8px 0;
+}
+.tablero {
+  width: min(100%, 390px);
+  margin: 18px auto;
+}
+.controles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.nota {
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+}
+
+.tablero { width: clamp(220px, calc(100dvh - 480px), 390px); max-width: 100%; }
+.controles { position: sticky; bottom: -1px; background: var(--fondo); padding: 12px 0; border-top: 1px solid var(--linea); z-index: 2; }
+@media (max-width: 800px) { .tablero { width: clamp(200px, calc(100dvh - 540px), 360px); } }

@@ -1,34 +1,31 @@
-/* "Club de noche": a chess club at night. Pine felt, ivory and ebony pieces, the amber light
-   of a digital clock. Color encodes sides (white / draw / black), the running clock and time
-   trouble; nothing else. */
+/* Warm chess club: cream, forest green and playful geometric details. */
 :root {
-  --fondo: #0e2426;
-  --fondo-hondo: #0a1c1e;
-  --panel: #133236;
-  --panel-alto: #19403f;
-  --linea: #24474b;
-  --texto: #eaf2ee;
-  --texto-suave: #9fb7b1;
-
+  --fondo: #fff8ee;
+  --fondo-hondo: #f3ecdf;
+  --panel: #ffffff;
+  --panel-alto: #e5efe5;
+  --linea: #d4ddcf;
+  --texto: #173b32;
+  --texto-suave: #52665c;
+  --verde: #216653;
+  --coral: #d95640;
+  --amarillo: #f2c35b;
   --blancas: #f6f1e7;
-  --negras: #0a0f10;
-  --tablas: #7fa3a0;
-  --borde-negras: #3e6366;
-
-  --reloj: #ffb547;
-  --apuro: #ff6b5b;
-
-  --casilla-clara: #dce7e1;
-  --casilla-oscura: #4f7f78;
-
+  --negras: #202c28;
+  --tablas: #78978a;
+  --borde-negras: #52665c;
+  --reloj: #216653;
+  --apuro: #b63c29;
+  --casilla-clara: #f6edda;
+  --casilla-oscura: #729783;
   --ancho-condensado: 75%;
-  --radio: 6px;
-  --radio-chico: 4px;
-  --separacion: clamp(16px, 3vw, 32px);
+  --radio: 20px;
+  --radio-chico: 12px;
+  --separacion: clamp(16px, 3vw, 36px);
   --rebote: cubic-bezier(0.34, 1.4, 0.5, 1);
   --suave: cubic-bezier(0.22, 0.8, 0.3, 1);
-
-  color-scheme: dark;
+  --sombra: 0 8px 28px rgb(23 59 50 / 7%);
+  color-scheme: light;
 }
 
 * {
@@ -48,8 +45,8 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* A felt-like vignette: lighter where the board sits, darker at the edges. */
-  background: radial-gradient(120% 80% at 30% 0%, #133437 0%, var(--fondo) 45%, var(--fondo-hondo) 100%) fixed;
+  /* A warm wash frames the content without reducing chart contrast. */
+  background: radial-gradient(ellipse at 95% 0%, #f9e4bc 0%, transparent 38%), var(--fondo);
 }
 
 /* Numbers that change (clocks, percentages) never jitter. */
@@ -75,12 +72,12 @@ button {
 }
 
 ::selection {
-  background: var(--reloj);
-  color: var(--negras);
+  background: var(--amarillo);
+  color: var(--texto);
 }
 
 :focus-visible {
-  outline: 2px solid var(--reloj);
+  outline: 3px solid var(--verde);
   outline-offset: 2px;
 }
 
@@ -93,3 +90,24 @@ button {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Vega's tooltip (charts made with Altair), in the app's colors. It lives outside any
+   component, so it can't go in a CSS module. */
+#vg-tooltip-element.vg-tooltip {
+  background: var(--panel-alto);
+  color: var(--texto);
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+  font-family: inherit;
+  box-shadow: var(--sombra);
+}
+
+#vg-tooltip-element.vg-tooltip td.key {
+  color: var(--texto-suave);
+}
+
+button:disabled { cursor: default; opacity: .5; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button, select { font: inherit; }
+button { min-height: 42px; }
+a { text-underline-offset: 4px; }

@@ -56,7 +56,7 @@ export function Tablero({ fen, orientacion = "white", ultima = null, jaque = nul
         position: fen,
         boardOrientation: orientacion,
         allowDragging: Boolean(onMover),
-        animationDurationInMs: 220,
+        animationDurationInMs: typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220,
         darkSquareStyle: { backgroundColor: "var(--casilla-oscura)" },
         lightSquareStyle: { backgroundColor: "var(--casilla-clara)" },
         darkSquareNotationStyle: { color: "var(--casilla-clara)", fontWeight: 600 },
@@ -65,7 +65,7 @@ export function Tablero({ fen, orientacion = "white", ultima = null, jaque = nul
         boardStyle: {
           borderRadius: "10px",
           overflow: "hidden",
-          boxShadow: "0 0 0 1px var(--linea), 0 24px 50px rgba(0, 0, 0, 0.45)",
+          boxShadow: "0 0 0 1px var(--linea), 0 16px 40px rgba(23, 59, 50, 0.12)",
         },
         onSquareClick: ({ square }) => clic(square),
         onPieceDrop: ({ sourceSquare, targetSquare }) => {

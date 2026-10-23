@@ -163,6 +163,9 @@ src/history_transformer.py                 rating previo (también el de rivales
 src/experiment_rival_ratings.py            arnés de comparación de las variantes con ratings de rivales (mismos folds y regla del 04)
 src/model_validation.py                    validación cruzada temporal por partida (las filas de una partida no se separan)
 src/predict.py                             columnas del modelo y predecir(): probabilidades jugada a jugada para la app
+src/app_data.py                            rutas de las tablas que exportan los notebooks 02 y 04 para la app
+src/app_charts.py                          gráficos de la app, hechos con Altair, con una sola paleta
+src/build_app.py                           construye web/public/app/ desde los datos, los notebooks y el modelo
 src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
 src/pipeline.py                            orquestador CLI
 tests/test_chess_pipeline.py               pruebas unitarias sin acceso de red
@@ -172,8 +175,10 @@ tests/test_modeling.py                     pruebas del splitter temporal por par
 tests/test_history_transformer.py           ventanas, temporalidad y serialización del historial del Pipeline
 tests/test_model_realism.py                 comportamiento y calibración del artefacto final (si existe localmente)
 tests/test_api.py                          pruebas de la API de la app (sin red: Chess.com y el modelo son falsos)
+tests/test_build_app.py                    pruebas del build de la app: paleta, controles de Explorá, coincidencia con el notebook
 api/                                       API de la app (FastAPI): predecir jugada a jugada, ficha y partidas de cualquier usuario
-web/                                       interfaz de la app (Next.js): Jugar y Analizar
+web/                                       app de la Entrega 4 (Next.js): bienvenida, trivia, proyecto (portada y tallo), Explorá, Jugar y Analizar
+web/public/app/                            números y gráficos que genera src/build_app.py (versionados)
 models/                                    modelo entrenado (lo regenera el notebook 04), ignorado por Git
 ```
 
@@ -300,9 +305,45 @@ en ese orden. El 04 requiere decenas de minutos (ver el tiempo medido en su últ
 
 ### La app (Entrega 4)
 
-Dos procesos: la API en Python, que usa el modelo de `notebooks/04_modelado.ipynb`, y la
-interfaz en Next.js. Requiere `models/modelo_en_vivo.joblib`: si no está, se genera
-corriendo ese notebook con **Restart & Run All**.
+La bienvenida (`/`) invita a probar la trivia o conocer el proyecto. El botón
+**Conocer el proyecto** abre `/proyecto`, que conserva el recorrido académico completo.
+
+La app cuenta el proyecto con la forma que pide la [consigna](docs/entregas/consigna-entrega-4.md):
+
+- **Portada:** la pregunta, la idea central y tres números.
+- **Tallo**, que el lector recorre en orden: *Los datos*, *Lo que encontramos* y *El
+  modelo*, cada sección con su gráfico y su «Cómo lo sabemos».
+- **Copa**, que maneja el usuario: *Explorá* y *Probá el modelo* (Jugar y Analizar).
+
+Plan y decisiones: [`docs/entregas/plan-entrega-4.md`](docs/entregas/plan-entrega-4.md).
+
+**Cómo se construye.** Los gráficos son de Altair (`src/app_charts.py`).
+`python -m src.build_app` toma tres cosas:
+
+- los datos del pipeline;
+- las tablas que exportan al final los notebooks 02 y 04;
+- el modelo guardado.
+
+Con eso recalcula el test, falla si no coincide con el notebook 04, y escribe los números
+y las specs de Vega-Lite en `web/public/app/`. Esos archivos sí se versionan: son
+agregados y una muestra de 2.000 partidas de test, no `data/`, y la app los necesita
+para publicarse. Si cambian los datos:
+
+```bash
+# 1. DAG de Airflow (o python -m src.pipeline)
+# 2. notebooks/02_eda_hipotesis.ipynb y notebooks/04_modelado.ipynb con Restart & Run All
+.venv/bin/python -m src.build_app      # ~1-2 min: limpia los JSON, arma el test y predice
+```
+
+La regeneración del 23/10 ejecutó el DAG y los notebooks 02 y 04 con kernel limpio;
+el 04 tardó 54,5 minutos y reprodujo sus métricas anteriores. El build posterior
+incluye los 60 casos de trivia y el tema claro. Registro:
+[`docs/auditorias/cierre-app-entrega-4-2026-10-23.md`](docs/auditorias/cierre-app-entrega-4-2026-10-23.md).
+
+**Cómo se corre.** Son dos procesos: la API en Python, que usa el modelo de
+`notebooks/04_modelado.ipynb`, y la interfaz en Next.js. Requiere
+`models/modelo_en_vivo.joblib`: si no está, se genera corriendo ese notebook con
+**Restart & Run All**. `/proyecto`, Explorá y la trivia no usan la API: leen `web/public/app/`.
 
 ```bash
 # 1. API (desde la raíz del repo), en http://localhost:8000
@@ -315,6 +356,9 @@ npm install
 npm run dev
 ```
 
+- **Explorá:** 2.000 partidas de test en un gráfico de Altair. Un deslizador elige el
+  corte y dos menús, el ritmo y el nivel. Cada punto muestra lo que dijo el modelo, y al
+  hacerle clic se ve la curva de probabilidades de esa partida.
 - **Jugar:** dos personas en la misma computadora, con reloj. Después de cada jugada, la
   barra muestra la probabilidad de que ganen las blancas, de tablas o de que ganen las
   negras, y cuántas jugadas faltan. Cada lado puede traer su ficha de Chess.com (rating y
@@ -332,10 +376,22 @@ del modelo. Analizar aplica la misma condición al inicio UTC del PGN, sin susti
 por la hora de cierre si falta. La demo de portada también usa el artefacto nuevo.
 Todo pasa por `src.predict.predecir`, verificado contra el camino de entrenamiento.
 
+**Publicación preparada, sin desplegar.** La imagen `deploy/api.Dockerfile` sirve la
+API en el puerto 7860; `CORS_ORIGINS` admite los orígenes de la web separados por
+comas. La web usa `NEXT_PUBLIC_API_URL` al construir. Las instrucciones para Docker,
+Hugging Face Spaces y Vercel están en [`deploy/README.md`](deploy/README.md).
+`python deploy/prepare_space.py --output /tmp/ajedrez-space` prepara sólo los archivos
+necesarios para el Space, incluido el modelo local, sin copiar datos ni credenciales.
+La publicación queda diferida por decisión del usuario.
+
 ### Tests
 
 ```bash
 python -m unittest discover -s tests
+cd web
+npm run test
+npm run typecheck
+npm run build
 ```
 
 No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
@@ -344,7 +400,7 @@ unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
 una dama ganada, desventaja de reloj, el ganador cerca del final, calibración por clase,
 que más diferencia de rating nunca baje la probabilidad de blancas y que la API derive
 lo mismo que el entrenamiento en partidas reales.
-En el artefacto vigente pasan 102 de 104 tests: el de dama ganada falla en sus dos
+En la verificación integrada del 23/10 pasan 121 de 122 tests: el de dama ganada falla en sus dos
 colores (+11,58/+6,29 puntos de probabilidad frente a +15 exigidos). El fallo se
 conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
 Lo que marcó la devolución de la Entrega 2 y cómo se resolvió cada pedido está en
@@ -409,3 +465,36 @@ Además, las cuentas seleccionadas aparecen hasta en 1.204 filas del dataset fin
 cuenta*, pero una partida también puede entrar a través de la descarga de su oponente si
 ambos fueron seleccionados. La deduplicación por `GameUrl` evita contarla dos veces, aunque
 permite que un username supere su propio tope en apariciones totales.
+
+### Trivia y resumen de partidas
+
+`/trivia` propone tres posiciones de partidas reales de test. Cada posición se resuelve en orden: se responde Blancas,
+Tablas o Negras, se revela el pronóstico del modelo y luego el resultado real. Recién
+entonces se pasa a la siguiente posición. Un punto por acierto, tanto para el
+usuario como para la clase más probable del modelo. Es un marcador de esa sesión,
+no una nueva métrica de evaluación. No se filtran los casos por acierto o confianza.
+
+Para la exposición, abrir `/trivia?modo=expo`: una pregunta, votación a mano alzada y
+revelaciones controladas por el presentador, en aproximadamente 90 segundos. Abrir la
+página antes de presentar. No requiere sala, cuentas, Chess.com ni API de predicción.
+
+El banco se regenera con `.venv/bin/python -m src.build_app`. Se sortean hasta 60
+partidas de test con la semilla del proyecto y, por partida, un corte 20/40/60 con
+ambos relojes, anterior al final y no terminal. El índice en
+`web/public/app/trivia/index.json` registra el universo y las exclusiones. Los casos
+son artefactos públicos reproducibles, igual que los de Explorá: el resultado está
+oculto en la interfaz, no cifrado. Los ratings visibles se derivan con el historial
+causal del Pipeline. El build verifica la paridad de probabilidades a 1e-9.
+
+Después de revelar se puede abrir el análisis local de cada caso sin red externa.
+En Analizar, **Ver resumen animado** recorre el inicio, hasta tres cambios de al menos
+10 puntos porcentuales en P(blancas), separados por seis plies, y el resultado real.
+Cada escena dura cuatro segundos; los momentos del modelo se limitan al ply 120.
+Se puede pausar o avanzar manualmente, y al cerrar se conserva la posición original.
+Con movimiento reducido empieza pausado. No identifica mejores jugadas ni atribuye
+causalidad a los cambios del pronóstico.
+
+La estética clara toma como referencia las tarjetas y colores cálidos de
+[Kizupi, en One Page Love](https://onepagelove.com/kizupi), con diseño propio de ajedrez.
+Los tokens de la web y las paletas de Altair se actualizan juntos. Validación adicional
+de la lógica de trivia y resumen: `cd web && npm test`.

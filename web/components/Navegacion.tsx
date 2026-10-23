@@ -4,9 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import styles from "@/app/layout.module.css";
 
+// Keep the research narrative one click away from the welcome page.
 const ENLACES = [
-  { href: "/jugar", texto: "Jugar" },
-  { href: "/analizar", texto: "Analizar una partida" },
+  { href: "/proyecto", texto: "El proyecto" },
+  { href: "/trivia", texto: "¿Quién gana?" },
+  { href: "/explora", texto: "Explorá" },
+  { href: "/jugar", texto: "Jugá" },
+  { href: "/analizar", texto: "Analizá" },
 ];
 
 export function Navegacion() {

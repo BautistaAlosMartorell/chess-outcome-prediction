@@ -1,0 +1,44 @@
+.pagina {
+  display: grid;
+  gap: 24px;
+}
+
+.encabezado {
+  display: grid;
+  gap: 12px;
+  max-width: 80ch;
+}
+
+.encabezado h1 {
+  margin: 0;
+  font-stretch: 118%;
+  font-weight: 800;
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+}
+
+.encabezado p {
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+.pasos {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.grafico {
+  padding: clamp(14px, 2.5vw, 28px);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  min-width: 0;
+}
+
+.nota {
+  margin: 0;
+  max-width: 80ch;
+  color: var(--texto-suave);
+  font-size: 0.92rem;
+}

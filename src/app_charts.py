@@ -18,15 +18,16 @@ import pandas as pd
 from src.predict import RESULT_ORDER
 
 # One palette for the whole app (web/app/globals.css).
-FONDO_TEXTO = "#eaf2ee"
-TEXTO_SUAVE = "#9fb7b1"
-LINEA = "#24474b"
-COLOR_RESULTADO = {"Gana Blancas": "#f6f1e7", "Empate": "#7fa3a0", "Gana Negras": "#0a0f10"}
-BORDE_PUNTO = "#3e6366"
+FONDO_TEXTO = "#173b32"
+TEXTO_SUAVE = "#52665c"
+LINEA = "#d4ddcf"
+COLOR_RESULTADO = {"Gana Blancas": "#f6f1e7", "Empate": "#78978a", "Gana Negras": "#202c28"}
+# Outline keeps the ivory points visible on the light chart surface.
+BORDE_PUNTO = "#78978a"
 RITMOS = ["bullet", "blitz", "rapid"]
-COLOR_RITMO = {"bullet": "#ff6b5b", "blitz": "#ffb547", "rapid": "#6fc2b0"}
-COLOR_MODELO, COLOR_PISO = "#ffb547", "#9fb7b1"
-COLOR_VARIABLE = {"Material": "#f6f1e7", "Reloj, a igual material": "#ffb547"}
+COLOR_RITMO = {"bullet": "#b63c29", "blitz": "#216653", "rapid": "#806320"}
+COLOR_MODELO, COLOR_PISO = "#216653", "#52665c"
+COLOR_VARIABLE = {"Material": "#d95640", "Reloj, a igual material": "#216653"}
 
 ESCALA_RESULTADO = alt.Scale(domain=RESULT_ORDER, range=[COLOR_RESULTADO[r] for r in RESULT_ORDER])
 ESCALA_RITMO = alt.Scale(domain=RITMOS, range=[COLOR_RITMO[r] for r in RITMOS])
@@ -150,7 +151,7 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
         # Material is an integer: a fixed per-game jitter (computed in the build) separates the points.
         material_visible="datum.balance_material + datum.desplazamiento",
         ventaja="datum.p_blancas - datum.p_negras",
-    ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.6).encode(
+    ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
         x=alt.X("material_visible:Q", title="Material de blancas − negras (puntos)",
                 scale=alt.Scale(domain=[-15, 15], clamp=True)),
         y=alt.Y("ventaja:Q", title="Lo que dice el modelo: P(blancas) − P(negras)",
@@ -178,7 +179,7 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     curva = detalle_base.mark_area(opacity=0.95, interpolate="monotone").encode(
         x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[0, 120])),
         y=alt.Y("probabilidad:Q", stack="normalize", title="Probabilidad según el modelo", axis=alt.Axis(format="%")),
-        color=alt.Color("prediccion:N", scale=ESCALA_RESULTADO, legend=None),
+        color=alt.Color("prediccion:N", title="Según el modelo", scale=ESCALA_RESULTADO),
         order=alt.Order("orden:Q"),
         tooltip=[alt.Tooltip("corte_ply:Q", title="Plies"), alt.Tooltip("prediccion:N", title="Resultado"),
                  alt.Tooltip("probabilidad:Q", title="Probabilidad", format=".0%")],
@@ -188,10 +189,16 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(c=corte.name)  # the slider's value, as a data field
     titulo = base.transform_filter(elegida).transform_filter(alt.datum.corte_ply == 0).mark_text(
         align="left", baseline="bottom", fontSize=13, dy=-8, color=FONDO_TEXTO,
+        limit=alt.ExprRef(expr="width"),
     ).encode(x=alt.value(0), y=alt.value(0), text="titulo:N")
-    detalle = (curva + marca_corte + titulo).properties(height=180, width=ANCHO_EXPLORA)
+    # Until a game is chosen, the lower view says how to choose one (the selection's store is empty).
+    aviso = alt.Chart(pd.DataFrame({"texto": ["Elegí una partida de arriba\npara ver sus probabilidades"]})).transform_filter(
+        "length(data('elegida_store')) == 0"
+    ).mark_text(fontSize=14, color=TEXTO_SUAVE, lineBreak="\n", x=alt.ExprRef(expr="width / 2"), y=90).encode(text="texto:N")
+    detalle = (curva + marca_corte + titulo + aviso).properties(height=180, width=ANCHO_EXPLORA)
     # The 5,000-row guard is for notebooks; the build checks the file size instead.
     with alt.data_transformers.enable("default", max_rows=None):
-        spec = alt.vconcat(panorama, detalle, spacing=36).configure(**TEMA).to_dict()
+        # Two legends on purpose: above, how each game ended; below, what the model said.
+        spec = alt.vconcat(panorama, detalle, spacing=36).resolve_legend(color="independent").configure(**TEMA).to_dict()
     spec["datasets"]["partidas"] = partidas.to_dict(orient="records")
     return spec

@@ -1,5 +1,27 @@
 # Changelog
 
+## Integrar la interfaz existente y preparar la PR de Entrega 4 (2026-10-23)
+
+- Recuperar los cinco commits de `feat/trivia-resumen-visual` que no entraron en el
+  merge de la PR #35: tema claro, bienvenida, proyecto, Explorá, trivia y resumen animado.
+- Regenerar los gráficos y los 60 casos de trivia con el modelo del 04 recién ejecutado.
+- Corregir el desborde del texto de ayuda de Explorá en móvil y la presentación de
+  controles de tiempo cortos; conservar el diseño existente.
+- Preparar Docker de inferencia, CORS configurable y exportación para un Space,
+  con instrucciones de Vercel. No publicar por decisión del usuario.
+- Verificar 122 tests Python (121 aprobados y el fallo conocido de dama en dos
+  subcasos), cuatro tests web, tipos, build, Docker y navegación de la trivia.
+
+## Regenerar los reportes y gráficos de la Entrega 4 (2026-10-23)
+
+- Ejecutar el DAG completo y los notebooks 02 y 04 con kernel limpio, guardando
+  sus salidas y reportes. El 04 reproduce las decisiones y métricas anteriores.
+- Construir y validar el resumen y los cuatro gráficos Altair de `web/public/app/`;
+  Explorá contiene 2.000 partidas y pesa 3,76 MB. Su integración web queda pendiente.
+- Verificar la compilación web y 105 tests: 104 pasan, el contrato conocido de dama
+  ganada falla en dos subcasos. Documentar la diferencia de metadatos del Parquet base,
+  sin cambios en los valores, y actualizar el estado del plan de Entrega 4.
+
 ## Documentar la devolución de la Entrega 2 (2026-10-22)
 
 - Agregar `docs/entregas/devolucion-entrega-2.md`: los cuatro pedidos del 25/09
