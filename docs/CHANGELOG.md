@@ -1,5 +1,12 @@
 # Changelog
 
+## Documentar la devolución de la Entrega 2 (2026-10-22)
+
+- Agregar `docs/entregas/devolucion-entrega-2.md`: los cuatro pedidos del 25/09
+  (diferencia de ELO máxima, varias filas por partida, qué es una fila, matchup de
+  aperturas), qué se hizo, dónde está y con qué número; más las correcciones propias.
+  Enlazarlo desde el plan de la Entrega 3, el README y la skill de entregas.
+
 ## Sumar el rating de los rivales al modelo de la app (2026-10-22)
 
 Rama `feat/ratings-de-rivales`, fases 0–4a de `plan-mejora-modelo-app.md`.

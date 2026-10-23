@@ -347,6 +347,8 @@ lo mismo que el entrenamiento en partidas reales.
 En el artefacto vigente pasan 102 de 104 tests: el de dama ganada falla en sus dos
 colores (+11,58/+6,29 puntos de probabilidad frente a +15 exigidos). El fallo se
 conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
+Lo que marcó la devolución de la Entrega 2 y cómo se resolvió cada pedido está en
+[`docs/entregas/devolucion-entrega-2.md`](docs/entregas/devolucion-entrega-2.md).
 
 El modelo final del 04 es un random forest de 40 columnas: contexto, posición y
 relojes, forma reciente y el rating de los dos lados con su antigüedad, diferencia y

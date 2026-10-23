@@ -119,7 +119,8 @@ La suite local ejecuta 104 tests: 102 pasan y el de dama ganada falla en dos sub
 (+11,58/+6,29 puntos frente al contrato de +15). Se conserva el fallo y se documenta;
 las demás pruebas de realismo (incluida la grilla de rating) y la paridad API/entrenamiento
 pasan. Estas pruebas requieren el artefacto y, para población/calibración, los datos
-regenerados; sin ellos se saltean. Mapa y respuestas: `docs/entregas/plan-entrega-3.md`.
+regenerados; sin ellos se saltean. Mapa y respuestas: `docs/entregas/plan-entrega-3.md`; devolución de la Entrega 2 y cómo se
+resolvió cada pedido: `docs/entregas/devolucion-entrega-2.md`.
 La app usa este artefacto con historiales, inicios y antigüedad del rating. Falta, para
 la Entrega 4, una pieza de visualizaciones de hallazgos además de la app.
 
