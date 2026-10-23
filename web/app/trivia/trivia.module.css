@@ -1,0 +1,121 @@
+.pagina {
+  display: grid;
+  gap: 24px;
+}
+.pagina h1,
+.final h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  margin: 8px 0 16px;
+  letter-spacing: -0.04em;
+}
+.etiqueta {
+  color: var(--verde);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+.cuerpo {
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.panel,
+.final {
+  display: grid;
+  gap: 16px;
+  padding: clamp(20px, 4vw, 36px);
+  background: var(--panel);
+  border: 1px solid var(--linea);
+  border-radius: 24px;
+  box-shadow: var(--sombra);
+}
+.panel p {
+  margin: 0;
+}
+.opciones {
+  display: grid;
+  gap: 12px;
+}
+.opcion {
+  border: 2px solid var(--linea);
+  border-radius: 16px;
+  padding: 18px;
+  background: var(--fondo);
+  font-size: 1.3rem;
+  font-weight: 800;
+  text-align: left;
+  transition:
+    transform 150ms,
+    border-color 150ms;
+}
+.opcion:hover {
+  transform: translateX(3px);
+  border-color: var(--verde);
+}
+.opcion[aria-pressed="true"] {
+  background: var(--panel-alto);
+  border-color: var(--verde);
+  box-shadow: inset 5px 0 var(--verde);
+}
+.revelacion {
+  border-left: 4px solid var(--coral);
+  padding: 4px 0 4px 18px;
+  animation: revelar 0.3s ease-out;
+}
+.revelacion h2 {
+  font-size: 1.5rem;
+  margin-top: 0;
+}
+.revelacion button {
+  margin-top: 16px;
+}
+.nota {
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+}
+.expo .cuerpo {
+  grid-template-columns: minmax(0, 580px) minmax(0, 1fr);
+}
+.expo .opcion {
+  font-size: 1.6rem;
+}
+.final {
+  max-width: 850px;
+  margin: 30px auto;
+}
+@keyframes revelar {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (max-width: 800px) {
+  .cuerpo,
+  .expo .cuerpo {
+    grid-template-columns: 1fr;
+  }
+  .cuerpo > :first-child {
+    max-width: 560px;
+    width: 100%;
+    margin: auto;
+  }
+}
+
+/* Fit the whole decision on a typical classroom projector. */
+@media (min-width: 801px) {
+  .expo { gap: 12px; }
+  .expo header p { margin: 4px 0; }
+  .expo h1 { font-size: 2.4rem; margin: 4px 0 8px; }
+  .expo .cuerpo { --tablero-expo: clamp(280px, calc(100dvh - 360px), 520px); grid-template-columns: var(--tablero-expo) minmax(0, 1fr); gap: 24px; }
+  .expo .panel { gap: 12px; padding: 20px 24px; }
+  .expo .opciones { gap: 8px; }
+  .expo .opcion { padding: 10px 16px; font-size: 1.3rem; }
+  .expo .panel > p:last-child { font-size: .85rem; }
+}

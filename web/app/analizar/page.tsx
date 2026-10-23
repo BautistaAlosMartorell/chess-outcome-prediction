@@ -3,6 +3,9 @@
 import { Chess } from "chess.js";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ResumenPartida as VisorResumen } from "@/components/ResumenPartida";
+import { cargarCaso } from "@/lib/trivia";
+import { relojesEn } from "@/lib/partida";
 import { Curva } from "@/components/Curva";
 import { Marcador } from "@/components/Marcador";
 import styles from "@/components/Partida.module.css";
@@ -26,21 +29,6 @@ function resultadoPara(partida: ResumenPartida, usuario: string): "Ganó" | "Per
   return ganador.usuario.toLowerCase() === usuario.toLowerCase() ? "Ganó" : "Perdió";
 }
 
-// Clock of each side at ply k: the time left after its last move up to k (the base time before it moved).
-function relojesEn(analisis: Analisis, k: number) {
-  const base = analisis.partida.tiempo_base_seg * 1000;
-  const ultimo = (paridad: number) => {
-    for (let ply = k; ply >= 1; ply--) {
-      if (ply % 2 === paridad) {
-        const s = analisis.relojes_seg[ply - 1];
-        return s === null ? null : s * 1000;
-      }
-    }
-    return base;
-  };
-  return { blancas: ultimo(1), negras: ultimo(0) };
-}
-
 export default function Pagina() {
   // useSearchParams needs a Suspense boundary so the rest of the page can be prerendered.
   return (
@@ -57,6 +45,7 @@ function Analizar() {
   const [buscado, setBuscado] = useState<string | null>(null);
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [partidas, setPartidas] = useState<ResumenPartida[]>([]);
+  const [verResumen, setVerResumen] = useState(false);
   const [analisis, setAnalisis] = useState<Analisis | null>(null);
   const [ply, setPly] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
@@ -119,6 +108,14 @@ function Analizar() {
   useEffect(() => {
     if (inicial.current) return;
     inicial.current = true;
+    const caso = parametros.get("caso");
+    if (caso) {
+      setCargando(caso);
+      cargarCaso(caso).then(c => { setAnalisis(c.analisis); setPly(c.ply); })
+        .catch(e => setError(e instanceof Error ? e.message : "No se pudo cargar el caso."))
+        .finally(() => setCargando(null));
+      return;
+    }
     const nombre = parametros.get("usuario")?.trim();
     const url = parametros.get("partida");
     if (!nombre) return;
@@ -191,7 +188,7 @@ function Analizar() {
   }, [analisis, total]);
 
   const momentos = useMemo(() => (analisis ? momentosClave(analisis.curva) : []), [analisis]);
-  const punto = analisis?.curva.find((p) => p.ply === ply) ?? null;
+  const punto = ply <= 120 ? analisis?.curva.find((p) => p.ply === ply) ?? null : null;
   const final =
     analisis && ply === total ? `${FINALES[analisis.partida.resultado]}${analisis.final ? ` (${analisis.final})` : ""}` : null;
 
@@ -202,6 +199,7 @@ function Analizar() {
 
   return (
     <div className={styles.pagina}>
+      {verResumen && analisis ? <VisorResumen analisis={analisis} onCerrar={() => setVerResumen(false)} /> : null}
       <form className={`${styles.panel} ${propios.buscador}`} onSubmit={buscar}>
         <label htmlFor="usuario" className={styles.titulo}>
           Analizar una partida de Chess.com
@@ -241,6 +239,7 @@ function Analizar() {
               final={final}
             />
             <div className={propios.navegacion}>
+              <button type="button" className={styles.principal} onClick={() => { setReproduciendo(false); setVerResumen(true); }}>Ver resumen animado</button>
               <div className={propios.controles} role="group" aria-label="Controles de reproducción">
                 <button type="button" className={styles.boton} onClick={() => irA(0)} disabled={ply === 0} aria-label="Ir al principio">
                   ⏮
@@ -298,7 +297,7 @@ function Analizar() {
                   router.replace(`/analizar?usuario=${encodeURIComponent(buscado ?? "")}`);
                 }}
               >
-                Volver a las partidas de {buscado}
+                {buscado ? `Volver a las partidas de ${buscado}` : "Buscar otra partida"}
               </button>
             </div>
           </div>
