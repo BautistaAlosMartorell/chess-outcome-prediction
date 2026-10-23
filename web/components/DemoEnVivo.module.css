@@ -5,7 +5,7 @@
   padding: clamp(18px, 3vw, 28px);
   border-radius: 18px;
   background: linear-gradient(180deg, var(--panel-alto), var(--panel));
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 30px 70px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 30px 70px rgba(23, 59, 50, 0.09);
   animation: entrar 700ms var(--suave) both 150ms;
 }
 
@@ -45,7 +45,7 @@
   border-radius: 50%;
   background: var(--apuro);
   box-shadow: 0 0 0 0 rgba(255, 107, 91, 0.6);
-  animation: emitir 1.6s ease-out infinite;
+
 }
 
 @keyframes emitir {
@@ -93,3 +93,6 @@
   color: var(--texto-suave);
   font-size: 0.9rem;
 }
+
+.control { justify-self: start; background: var(--panel); border: 1px solid var(--linea); padding: 6px 14px; border-radius: 999px; color: var(--verde); font-weight: 700; }
+.blancas { stroke: var(--borde-negras); stroke-width: .6px; }

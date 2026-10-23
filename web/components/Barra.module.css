@@ -41,7 +41,7 @@
 
 .tablas :global(.cifra) {
   font-size: 1.6rem;
-  color: var(--tablas);
+  color: var(--texto-suave);
 }
 
 /* "▲ 12": who gained after the last move. Rises and fades. */
@@ -107,7 +107,7 @@
 
 .segBlancas {
   background: linear-gradient(180deg, #ffffff, var(--blancas));
-  box-shadow: 0 0 18px rgba(246, 241, 231, 0.25);
+  box-shadow: inset 0 0 0 1px var(--borde-negras);
 }
 
 .segTablas {

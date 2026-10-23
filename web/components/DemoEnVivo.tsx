@@ -7,24 +7,26 @@ import { Barra } from "./Barra";
 import styles from "./DemoEnVivo.module.css";
 
 const PASO_MS = 700;
-const PAUSA_FINAL = 4; // frames held on the last move before starting over
 
 const ANCHO = 520;
 const ALTO = 96;
 
-// The home page's live demo: a real game replays itself, ply by ply, in a loop.
+// The home page demo plays once; users can pause or replay it.
 export function DemoEnVivo() {
   const total = PARTIDA_EJEMPLO.length;
   const [cuadro, setCuadro] = useState(0);
+  const [reproduciendo, setReproduciendo] = useState(true);
 
   useEffect(() => {
-    if (prefiereMenosMovimiento()) {
-      setCuadro(total - 1);
-      return;
-    }
-    const intervalo = window.setInterval(() => setCuadro((c) => (c + 1) % (total + PAUSA_FINAL)), PASO_MS);
-    return () => window.clearInterval(intervalo);
+    if (prefiereMenosMovimiento()) { setCuadro(total - 1); setReproduciendo(false); }
   }, [total]);
+
+  useEffect(() => {
+    if (!reproduciendo) return;
+    if (cuadro >= total - 1) { setReproduciendo(false); return; }
+    const intervalo = window.setTimeout(() => setCuadro(cuadro + 1), PASO_MS);
+    return () => window.clearTimeout(intervalo);
+  }, [total, reproduciendo, cuadro]);
 
   const ply = Math.min(cuadro, total - 1);
   const [blancas, tablas, negras] = PARTIDA_EJEMPLO[ply];
@@ -55,6 +57,10 @@ export function DemoEnVivo() {
         <path d={banda((p) => p[0] + p[1], () => 1)} className={styles.negras} />
         <line x1={0} x2={ANCHO} y1={ALTO / 2} y2={ALTO / 2} className={styles.mitad} />
       </svg>
+      <button type="button" className={styles.control} onClick={() => {
+        if (cuadro >= total - 1) setCuadro(0);
+        setReproduciendo(!reproduciendo);
+      }}>{reproduciendo ? "Pausar demo" : cuadro >= total - 1 ? "Repetir demo" : "Continuar demo"}</button>
       <figcaption className={styles.pie}>
         {ply === total - 1
           ? "Ganaron las negras: las blancas abandonaron."
