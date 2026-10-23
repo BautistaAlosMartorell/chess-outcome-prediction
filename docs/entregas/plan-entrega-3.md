@@ -1,6 +1,8 @@
 # Entrega 3 · Modelado (28/10/2026)
 
 Mapa de la [consigna](consigna-entrega-3.md) al notebook 04 y respuestas para la defensa.
+Lo que marcó la devolución de la Entrega 2 y cómo se resolvió (minutos 0–2):
+[`devolucion-entrega-2.md`](devolucion-entrega-2.md).
 Dataset vigente: DAG `manual__2026-10-22T18:56:28`, 120 cuentas, 100.396 partidas,
 1.559.622 cortes. Los números de modelado salen de las celdas ejecutadas del 04;
 la hoja de datos está en `plan-coherencia.md`.
