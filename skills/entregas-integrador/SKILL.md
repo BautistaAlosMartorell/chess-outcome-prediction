@@ -93,29 +93,35 @@ H1 y H3 globales quedan inconclusas con la regla del EDA; H2 y H4, refutadas. El
 exploratorio ya mejora antes de mover: 0,880 frente a 0,895. El 04 selecciona por cinco
 folds temporales por partida: random forest 0,836 ± 0,025 frente a logística
 0,857 ± 0,027 y piso 0,938 ± 0,009. Grilla: max_features=0.3,
-min_samples_leaf=20. No se balancea. Quedan 40 columnas: PRE_GAME + LIVE + FORM;
+min_samples_leaf=20. No se balancea. La regla deja PRE_GAME + LIVE + FORM;
 se conservan rating y relojes, entran diez de forma y se excluyen los cuatro grupos
-adicionales de posición, estilo y matchup bajo la regla global/corte 0.
+adicionales de posición, estilo y matchup bajo la regla global/corte 0. Después entra
+el rating de los rivales (variante D del plan de mejora): 40 columnas finales, sin
+pausas ni sesión, con antigüedad, diferencia y promedio de rating.
 
 `PlayerHistoryTransformer` deriva rating y forma dentro del Pipeline con cierres
 estrictamente anteriores al inicio. La auditoría encontró 1.345 observaciones para
 las que ordenar cierres y aplicar shift no garantizaba esa disponibilidad. Se repitió
-la selección con la condición estricta. Test: log-loss 0,804 frente a 0,936 (14,09 %
-menos), 3,79 % de mejora antes de mover y 18,84 % al ply 60; recall de Empate 3,60 %.
-El período ya fue mirado en el 03 y en una versión anterior del 04: no es un holdout
-nuevo. Duración: MAE 22,934 frente a 28,357 plies, con boosting sin grilla propia.
-El artefacto pesa 132,1 MB, no se versiona; `predecir()` reproduce los cortes a 1e-9.
+la selección con la condición estricta. Test: log-loss 0,795 frente a 0,936 (15,07 %
+menos), 5,17 % de mejora antes de mover y 19,58 % al ply 60; recall de Empate 3,81 %.
+El período ya fue mirado en el 03 y en versiones anteriores del 04: no es un holdout
+nuevo. Duración: MAE 22,889 frente a 28,357 plies, con boosting sin grilla propia.
+El artefacto pesa 132,0 MB, no se versiona; `predecir()` reproduce los cortes a 1e-9.
 
-La suite local ejecuta 94 tests: 93 pasan y el de dama ganada falla en dos subcasos
-(+9,02/+10,34 puntos frente al contrato de +15). Se conserva el fallo y se documenta;
-las otras cuatro pruebas de realismo pasan. Estas pruebas requieren el artefacto y,
-para población/calibración, los datos regenerados; sin ellos se saltean.
-Mapa y respuestas: `docs/entregas/plan-entrega-3.md`. La app (PR #31, mergeado) usa
-este artefacto con historiales e inicios. Una auditoría posterior, sin reentrenar,
-encontró que sólo 185/80.314 partidas de train tienen ambos ratings previos y que la
-diferencia de rating mueve la probabilidad al revés: plan en
-`docs/entregas/plan-mejora-modelo-app.md`. Falta, para la Entrega 4, una pieza de
-visualizaciones de hallazgos además de la app.
+Ratings de rivales (rama `feat/ratings-de-rivales`, 22/10): sólo 185/80.314 partidas
+de train tenían ambos ratings previos y la diferencia movía la probabilidad al revés.
+El rating de cada rival que traen los JSON entra al historial (33.496/80.314); D mejora
+la CV por −0,0053 ± 0,0022 y el corte 0 por −0,0090 ± 0,0029, y la grilla de control
+queda sin inversiones (antes 16/44). Arnés: `src/experiment_rival_ratings.py`; plan y
+decisión en `docs/entregas/plan-mejora-modelo-app.md`.
+
+La suite local ejecuta 104 tests: 102 pasan y el de dama ganada falla en dos subcasos
+(+11,58/+6,29 puntos frente al contrato de +15). Se conserva el fallo y se documenta;
+las demás pruebas de realismo (incluida la grilla de rating) y la paridad API/entrenamiento
+pasan. Estas pruebas requieren el artefacto y, para población/calibración, los datos
+regenerados; sin ellos se saltean. Mapa y respuestas: `docs/entregas/plan-entrega-3.md`.
+La app usa este artefacto con historiales, inicios y antigüedad del rating. Falta, para
+la Entrega 4, una pieza de visualizaciones de hallazgos además de la app.
 
 ## Qué pide cada entrega
 

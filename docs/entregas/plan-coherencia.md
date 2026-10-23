@@ -79,10 +79,11 @@ cero; bullet y blitz siguen siendo inciertos.
 El 03 ahora supera modestamente al piso antes de mover, también sobre población común.
 Al corregir el historial con la condición estricta, su log-loss del corte 0 es 0,880
 contra 0,895: reemplaza el 0,879 previo a esa corrección. Las decisiones finales del
-04 y sus cifras están en `plan-entrega-3.md`: quedan 40 columnas, con forma reciente;
-log-loss 0,804 frente a 0,936 y MAE de duración 22,934 frente a 28,357.
-La suite de 94 tests conserva un fallo en dos subcasos de dama ganada (+9,02/+10,34
-puntos frente a +15 exigidos); los otros 93 tests pasan. No equivale a suite en verde.
+04 y sus cifras están en `plan-entrega-3.md`: quedan 40 columnas, con forma reciente
+y el rating de los dos lados (incluidos rivales), su antigüedad, diferencia y promedio;
+log-loss 0,795 frente a 0,936 y MAE de duración 22,889 frente a 28,357.
+La suite de 104 tests conserva un fallo en dos subcasos de dama ganada (+11,58/+6,29
+puntos frente a +15 exigidos); los otros 102 tests pasan. No equivale a suite en verde.
 
 ## Verificación de coherencia
 

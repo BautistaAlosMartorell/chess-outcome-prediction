@@ -959,11 +959,15 @@ al imputador, que aprende su estadística sólo con el train correspondiente.
 La importancia por permutación del 04 se mide después de derivar el historial,
 ante el resto del Pipeline ya ajustado, para poder interpretar esas columnas.
 
-**Selección final de la corrida vigente del 04:** 40 columnas (`PRE_GAME + LIVE + FORM`).
-Se conservan rating y relojes, entran las diez columnas de forma reciente y quedan
-fuera los cuatro grupos adicionales de posición, estilo y matchup. Rating y forma
-se derivan dentro de `PlayerHistoryTransformer`, con cierre estrictamente anterior
-al inicio. Las diferencias pareadas y el veto por corte 0 están en
+**Selección final de la corrida vigente del 04:** 40 columnas. La regla de §7 deja
+`PRE_GAME + LIVE + FORM` (se conservan rating y relojes, entra la forma reciente y
+quedan fuera los cuatro grupos adicionales de posición, estilo y matchup). Después
+entra el rating de los rivales: salen `minutos_desde_anterior` y `partidas_sesion` y
+entran `antiguedad_rating_dias_{blancas,negras}`, `diferencia_elo_previa` (vacía si
+falta un lado) y `elo_promedio_previo`. Rating, antigüedad y forma se derivan dentro de
+`PlayerHistoryTransformer`, con cierre estrictamente anterior al inicio; el rating y
+su tendencia consultan también las observaciones de la cuenta como rival en otras
+partidas descargadas, la forma sólo las propias. Las diferencias pareadas y el veto por corte 0 están en
 [el mapa de Entrega 3](plan-entrega-3.md).
 
 ## 9. Diagnóstico cuantitativo de las 100.396 partidas
