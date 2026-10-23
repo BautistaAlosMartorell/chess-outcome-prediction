@@ -1,0 +1,111 @@
+.seccion {
+  display: grid;
+  gap: 18px;
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  min-width: 0;
+}
+
+.etapa {
+  margin: 0;
+  color: var(--reloj);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.titulo {
+  margin: 0;
+  max-width: 34ch;
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.queMirar {
+  max-width: 72ch;
+  color: var(--texto-suave);
+}
+
+.queMirar p {
+  margin: 0 0 8px;
+}
+
+.comoLoSabemos {
+  border-radius: 10px;
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.comoLoSabemos summary {
+  padding: 12px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.comoLoSabemos summary:hover {
+  color: var(--reloj);
+}
+
+.evidencia {
+  display: grid;
+  gap: 14px;
+  padding: 4px 16px 18px;
+  max-width: 90ch;
+}
+
+.evidencia h3 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+
+.evidencia p,
+.evidencia ul,
+.evidencia ol {
+  margin: 0;
+}
+
+.evidencia li + li {
+  margin-top: 4px;
+}
+
+.tablaScroll {
+  overflow-x: auto;
+}
+
+.tabla {
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 100%;
+}
+
+.tabla th,
+.tabla td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--linea);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tabla th {
+  color: var(--texto-suave);
+  font-weight: 600;
+}
+
+.numerica {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.resaltada td {
+  color: var(--reloj);
+  font-weight: 700;
+}
+
+.seccion { box-shadow: var(--sombra), inset 0 0 0 1px var(--linea); }

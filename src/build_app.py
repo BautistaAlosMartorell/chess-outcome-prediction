@@ -27,6 +27,7 @@ import pandas as pd
 from sklearn.metrics import log_loss
 
 from src import app_charts
+from src.app_trivia import construir_trivia
 from src.app_data import REPORTE_EDA, REPORTE_MODELADO, leer_reporte
 from src.clean_data import DataCleaner
 from src.history_transformer import HISTORY_INPUTS, attach_player_histories, player_history_payloads
@@ -196,6 +197,7 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "embudo": pasos,
             "siguen_al_ply_60": {k: float(v) for k, v in alive_60["siguen"].items()},
             "siguen_al_ply_60_total": float(alive_60["partidas"].sum() / len(games)),
+            "siguen_al_ply_120_total": float(vivas.loc[vivas["corte_ply"] == 120, "partidas"].sum() / len(games)),
             "por_ritmo": games["TimeClass"].astype(str).value_counts().to_dict(),
             "por_nivel": games["nivel_promedio"].astype(str).value_counts().to_dict(),
             "columnas_con_fuga": modelado["columnas_con_fuga"],
@@ -262,6 +264,12 @@ def main() -> None:
     test_metrics = verificar_contra_notebook(pred, curva, modelado)
     logger.info("Test reconstruido: log-loss %.4f contra %.4f del piso, igual que el notebook 04",
                 test_metrics["log_loss"], test_metrics["log_loss piso"])
+
+    trivia_index, trivia_cases = construir_trivia(test, pred, games, paths, artifact, random_state)
+    # Publish the index last so it never points to missing cases.
+    for case in trivia_cases:
+        escribir(f"trivia/{case['id']}.json", case)
+    escribir("trivia/index.json", trivia_index)
 
     filas, partidas = muestra_explora(pred, games, random_state)
     eta2 = pd.concat([
