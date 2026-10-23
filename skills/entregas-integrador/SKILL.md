@@ -37,9 +37,9 @@ el doble que los dos parciales. Se aprueba con 60 %.
 | 1 · Ingeniería de datos | **02/09/2026** | Pipeline automatizado que produce el dataset |
 | 2 · Análisis exploratorio | **23/09/2026** | Exploración, hipótesis y hallazgos |
 | 3 · Modelado | **28/10/2026** (5K10: 30/10) | Objetivo predictivo, modelos comparados y métricas |
-| 4 · Visualización e integración | **04/11/2026** | Visualizaciones y aplicación funcionando |
-| Exposición final | 18/11/2026 | Proyecto completo y demo en vivo |
-| Recuperación | 25/11/2026 | Para los grupos que la necesiten |
+| 4 · Visualización e integración | **11/11/2026** (5K10: 13/11) | App web publicada en una URL que cuenta el proyecto y deja usarlo |
+| Exposición final | 25/11/2026 | La misma app, frente al curso |
+| Recuperación | a confirmar | El kit decía 25/11; la consigna de la Entrega 4 movió la expo a esa fecha |
 
 ## Estado del repo
 
@@ -121,8 +121,9 @@ las demás pruebas de realismo (incluida la grilla de rating) y la paridad API/e
 pasan. Estas pruebas requieren el artefacto y, para población/calibración, los datos
 regenerados; sin ellos se saltean. Mapa y respuestas: `docs/entregas/plan-entrega-3.md`; devolución de la Entrega 2 y cómo se
 resolvió cada pedido: `docs/entregas/devolucion-entrega-2.md`.
-La app usa este artefacto con historiales, inicios y antigüedad del rating. Falta, para
-la Entrega 4, una pieza de visualizaciones de hallazgos además de la app.
+La app usa este artefacto con historiales, inicios y antigüedad del rating. Para la
+Entrega 4 falta lo que pide su consigna además de Probá el modelo: portada, tallo con
+Altair, Explorá, script de construcción y URL pública. Plan: `docs/entregas/plan-entrega-4.md`.
 
 ## Qué pide cada entrega
 
@@ -140,8 +141,14 @@ Entrega 3.
 mismas métricas, y una justificación de por qué esas métricas. Es la entrega donde se
 rompen los proyectos con fuentes flojas. Consigna completa: `docs/entregas/consigna-entrega-3.md`.
 
-**4 · Visualización e integración.** Visualizaciones que comunican los hallazgos y una
-aplicación funcionando. Demo en vivo en la exposición final.
+**4 · Visualización e integración.** Una app web publicada en una URL con forma de
+"copa de martini": portada (idea central en una oración + tres números), tallo guiado
+(Los datos, Lo que encontramos, El modelo: título que afirma, gráfico que lo prueba y
+«Cómo lo sabemos» desplegable), y copa del usuario (Explorá con panorama, dos controles
+y detalle con el modelo; Probá el modelo con aviso fuera de rango). Gráficos con
+**Altair**, paleta y escalas iguales en toda la app, script de construcción tipo
+`build_app.py` y coincidencia con los notebooks. Consigna completa:
+`docs/entregas/consigna-entrega-4.md`.
 
 ## Los 7 criterios de una buena fuente
 
