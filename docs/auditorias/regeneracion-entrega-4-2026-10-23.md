@@ -61,7 +61,7 @@ Seguimiento del pendiente de la fase 1 del
 - El resumen de portada y las tablas de hipótesis coinciden con los reportes de los
   notebooks. `git diff --check` pasa.
 
-## Alcance restante
+## Alcance al cerrar la regeneración
 
 La integración de los gráficos en las páginas, las pruebas de navegación y la
 publicación siguen en las fases 3–6 del plan de Entrega 4. Esta regeneración no
@@ -70,5 +70,7 @@ Las pruebas automatizadas específicas de `tests/test_build_app.py` también que
 para esa etapa; la validación de los JSON de esta corrida se ejecutó por separado.
 
 El notebook principal de la Entrega 3 es el **04**; el **03** conserva la exploración
-previa y no es necesario para regenerar estos reportes y gráficos. Todo el trabajo
-queda local, sin commit, push ni PR; datos y modelos siguen ignorados por git.
+previa y no es necesario para regenerar estos reportes y gráficos. Al terminar esta
+etapa los cambios quedaron locales; datos y modelos siguen ignorados por git.
+La recuperación posterior de la interfaz ya construida, sus pruebas y la preparación
+de la PR se registran en [el cierre de la app](cierre-app-entrega-4-2026-10-23.md).

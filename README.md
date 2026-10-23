@@ -335,6 +335,11 @@ para publicarse. Si cambian los datos:
 .venv/bin/python -m src.build_app      # ~1-2 min: limpia los JSON, arma el test y predice
 ```
 
+La regeneración del 23/10 ejecutó el DAG y los notebooks 02 y 04 con kernel limpio;
+el 04 tardó 54,5 minutos y reprodujo sus métricas anteriores. El build posterior
+incluye los 60 casos de trivia y el tema claro. Registro:
+[`docs/auditorias/cierre-app-entrega-4-2026-10-23.md`](docs/auditorias/cierre-app-entrega-4-2026-10-23.md).
+
 **Cómo se corre.** Son dos procesos: la API en Python, que usa el modelo de
 `notebooks/04_modelado.ipynb`, y la interfaz en Next.js. Requiere
 `models/modelo_en_vivo.joblib`: si no está, se genera corriendo ese notebook con
@@ -371,10 +376,22 @@ del modelo. Analizar aplica la misma condición al inicio UTC del PGN, sin susti
 por la hora de cierre si falta. La demo de portada también usa el artefacto nuevo.
 Todo pasa por `src.predict.predecir`, verificado contra el camino de entrenamiento.
 
+**Publicación preparada, sin desplegar.** La imagen `deploy/api.Dockerfile` sirve la
+API en el puerto 7860; `CORS_ORIGINS` admite los orígenes de la web separados por
+comas. La web usa `NEXT_PUBLIC_API_URL` al construir. Las instrucciones para Docker,
+Hugging Face Spaces y Vercel están en [`deploy/README.md`](deploy/README.md).
+`python deploy/prepare_space.py --output /tmp/ajedrez-space` prepara sólo los archivos
+necesarios para el Space, incluido el modelo local, sin copiar datos ni credenciales.
+La publicación queda diferida por decisión del usuario.
+
 ### Tests
 
 ```bash
 python -m unittest discover -s tests
+cd web
+npm run test
+npm run typecheck
+npm run build
 ```
 
 No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
@@ -383,7 +400,7 @@ unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
 una dama ganada, desventaja de reloj, el ganador cerca del final, calibración por clase,
 que más diferencia de rating nunca baje la probabilidad de blancas y que la API derive
 lo mismo que el entrenamiento en partidas reales.
-En el artefacto vigente pasan 102 de 104 tests: el de dama ganada falla en sus dos
+En la verificación integrada del 23/10 pasan 121 de 122 tests: el de dama ganada falla en sus dos
 colores (+11,58/+6,29 puntos de probabilidad frente a +15 exigidos). El fallo se
 conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
 Lo que marcó la devolución de la Entrega 2 y cómo se resolvió cada pedido está en

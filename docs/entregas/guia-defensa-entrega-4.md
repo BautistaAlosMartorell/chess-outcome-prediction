@@ -120,6 +120,12 @@ Un test (`tests/test_build_app.py`) verifica que coincidan.
   Confirmar con el docente que Next.js + FastAPI vale en lugar de HTML o Streamlit.
 - Completar `devolucion-entrega-3.md` después del 28/10.
 
+La configuración del despliegue está preparada en `deploy/README.md`: API Docker,
+`CORS_ORIGINS`, web con `NEXT_PUBLIC_API_URL` y exportador del paquete del Space.
+No se publica en el cierre del 23/10 por decisión del usuario. La verificación local,
+incluido el recorrido de la trivia, está en
+[`cierre-app-entrega-4-2026-10-23.md`](../auditorias/cierre-app-entrega-4-2026-10-23.md).
+
 ## Cierre participativo: 90 segundos
 
 1. Abrir `/trivia?modo=expo` antes de la exposición. La posición está sorteada sin

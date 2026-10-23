@@ -125,6 +125,18 @@ La app usa este artefacto con historiales, inicios y antigüedad del rating. Par
 Entrega 4 falta lo que pide su consigna además de Probá el modelo: portada, tallo con
 Altair, Explorá, script de construcción y URL pública. Plan: `docs/entregas/plan-entrega-4.md`.
 
+**Al 23/10/2026 (app de Entrega 4 integrada; vigente):**
+Se conservan el tema claro, la bienvenida, `/proyecto`, Explorá y la trivia de
+`feat/trivia-resumen-visual`. Sus cinco commits no habían entrado en la PR #35,
+que terminó en `4085249`; se recuperaron sin rediseñar la interfaz. El DAG y los
+notebooks 02/04 se ejecutaron con kernel limpio y reprodujeron las métricas del modelo.
+El build genera los JSON locales de 2.000 partidas de Explorá y 60 casos de trivia.
+La suite integrada ejecuta 122 tests: 121 pasan y uno falla en los dos subcasos
+conocidos de dama ganada. Los cuatro tests de experiencias de la web pasan.
+Docker de inferencia, CORS y preparación de un Space están en `deploy/`; la
+publicación queda diferida por decisión del usuario. No confundir integración local
+con URL pública. Auditoría: `docs/auditorias/cierre-app-entrega-4-2026-10-23.md`.
+
 ## Qué pide cada entrega
 
 **1 · Ingeniería de datos.** Pipeline que baja los datos sin intervención humana y los

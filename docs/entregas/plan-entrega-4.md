@@ -27,8 +27,26 @@ Streamlit", así que hay que **confirmar con el docente** que esta forma vale. L
 plataforma de publicación queda para el final (se decide al final). El contenido no
 depende de esa decisión.
 
-Rama: `feat/entrega-4-app` desde `main` (skill `git-workflow`). Pedir confirmación
+Rama original: `feat/entrega-4-app`; cierre en `feat/completar-app-entrega-4` (skill `git-workflow`). Pedir confirmación
 antes de cada push, PR y merge.
+
+## Estado de la regeneración · 23/10/2026
+
+Se completó la ejecución pendiente de la fase 1: DAG en verde, notebooks 02 y 04
+desde kernel limpio (el 04 tardó 54,5 minutos) y reportes exportados. El script de
+la fase 2 generó el resumen y los cuatro gráficos en `web/public/app/`, con
+2.000 partidas para Explorá. Las métricas reproducen las anteriores; las specs y
+los datos generados pasaron su validación. No hace falta repetir esta corrida para
+continuar con la fase 3, que integra los gráficos en las páginas.
+
+Registro, investigación del hash del Parquet base, pruebas y límites:
+[`regeneracion-entrega-4-2026-10-23.md`](../auditorias/regeneracion-entrega-4-2026-10-23.md).
+La recuperación posterior de los cinco commits de `feat/trivia-resumen-visual`
+completa la interfaz con tema claro, `/proyecto`, Explorá, trivia y resumen animado.
+Se regeneró el banco de 60 casos con el artefacto actual y se verificaron los
+tests de Python y las experiencias de la web. El despliegue está preparado y
+documentado en `deploy/README.md`, pero **no se publica por decisión del usuario**.
+Detalle del cierre: [auditoría de la app](../auditorias/cierre-app-entrega-4-2026-10-23.md).
 
 ## Fase 0 · Consigna y fechas (chico)
 
@@ -58,8 +76,9 @@ Para que la app coincida con los notebooks, los números salen de ellos, no se r
 - **Embudo de limpieza para «Los datos»:** ver si `src/clean_data.py` ya cuenta cada
   paso (duplicados entre usuarios, partidas de menos de 5 plies). Si no, agregar
   `pasos_limpieza` a `data_summary.json` en `src/pipeline.py` (`build_summary`).
-- Hace falta volver a correr el DAG, el 02 y el 04 (37 min). **Lo corre una persona del grupo**
-  (el DAG no se dispara ni se actualizan números sin él).
+- La regeneración del DAG, el 02 y el 04 quedó completada el 23/10 a pedido de un
+  integrante del grupo (ver el registro de arriba). Para futuras regeneraciones,
+  coordinar la corrida con el grupo; el 04 requiere decenas de minutos.
 
 ## Fase 2 · Script de construcción y gráficos Altair
 
@@ -75,8 +94,8 @@ Para que la app coincida con los notebooks, los números salen de ellos, no se r
      mismos historiales que usa el 04 (`attach_player_histories`).
   3. Verifica que el test global de la muestra completa coincida con el reporte del 04
      (0,795 frente a 0,936) dentro de una tolerancia, o falla.
-  4. Escribe, **versionados**, `web/public/graficos/<seccion>.json` (specs de Vega-Lite,
-     `chart.to_dict()`) y `web/public/datos/explora.json`. Son agregados y una muestra, no
+  4. Escribe, **versionados**, `web/public/app/graficos/<seccion>.json` (specs de Vega-Lite,
+     `chart.to_dict()`), `web/public/app/resumen.json` y los casos de `web/public/app/trivia/`. Son agregados y una muestra, no
      `data/`, y tienen que viajar al deploy. Se documenta como excepción y se controla el tamaño.
 - **Gráficos y títulos que afirman** (las cifras se recalculan en el build; el texto
   final se cierra en grupo):

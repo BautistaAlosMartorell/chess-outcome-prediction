@@ -44,3 +44,7 @@ Thumbs.db
 logs/
 plugins/
 data/processed/_interim_clean.parquet
+
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/

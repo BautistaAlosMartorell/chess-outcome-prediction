@@ -143,7 +143,7 @@ como una evaluación nunca observada.
 
 ## Pruebas del artefacto y límite pendiente
 
-`python -m unittest discover -s tests` ejecuta 104 tests sin red: **102 pasan y uno falla
+`python -m unittest discover -s tests` ejecuta 122 tests sin red: **121 pasan y uno falla
 en dos subcasos**. Proporciones iniciales, menos reloj, ganador cerca del final en
 promedio, calibración por clase, la grilla de diferencia de rating y la paridad entre la
 API y el entrenamiento pasan. El test de dama ganada exige una subida de

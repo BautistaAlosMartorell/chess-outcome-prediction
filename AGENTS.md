@@ -22,6 +22,7 @@ api/         API de la app (FastAPI): sirve predecir() y consulta la PubAPI de C
 web/         app de la Entrega 4 (Next.js): portada y tallo con los hallazgos, Explorá, jugar con relojes y analizar partidas de cualquier usuario; web/public/app la genera `python -m src.build_app` y se versiona
 config/      config.yaml (bandas de ELO, ventana temporal, cortes, descarga) y jugadores_seleccionados.yaml (lista congelada, versionada)
 data/        vacío en git — se regenera corriendo el pipeline
+deploy/      imagen Docker de inferencia y preparación de archivos para publicar la API; sin despliegue automático
 tests/       pruebas unitarias sin acceso de red (python -m unittest discover -s tests)
 skills/      instrucciones reutilizables para agentes (leer más abajo)
 docker-compose.yml, Dockerfile, .env.example   stack de Airflow
