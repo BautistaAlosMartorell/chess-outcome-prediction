@@ -68,6 +68,23 @@ class ApiTest(unittest.TestCase):
                  "columnas": columns, "familia": "prueba"}
         self.client = TestClient(create_app(model, FakeChessCom()))
 
+    def test_deployed_frontend_can_send_prediction_preflight(self) -> None:
+        with patch.dict("os.environ", {"CORS_ORIGINS": "https://chess.example, https://preview.example"}):
+            client = TestClient(create_app(self.client.app.state.modelo, FakeChessCom()))
+        response = client.options("/predecir", headers={
+            "Origin": "https://preview.example", "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["access-control-allow-origin"], "https://preview.example")
+
+    def test_unknown_frontend_is_not_granted_cors_access(self) -> None:
+        response = self.client.options("/predecir", headers={
+            "Origin": "https://unknown.example", "Access-Control-Request-Method": "POST",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("access-control-allow-origin", response.headers)
+
     def test_live_game_gets_one_point_per_ply_including_the_current_one(self) -> None:
         response = self.client.post("/predecir", json={
             "jugadas": ["e4", "e5", "Nf3"], "relojes_seg": [179, 178, 175], "tiempo_base_seg": 180, "incremento_seg": 2,

@@ -52,7 +52,7 @@ async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(`${API_URL}${path}`, init);
   } catch {
     throw new ApiError(
-      `No hay conexión con el modelo en ${API_URL}. Levantá la API con "uvicorn api.main:app" desde la raíz del repo.`,
+      "No pudimos conectar con el modelo. Si el servicio estaba en reposo, puede tardar unos instantes en arrancar. Volvé a intentar.",
     );
   }
   if (!response.ok) {
