@@ -60,6 +60,8 @@ class DataCleaner:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
         self.time_classes = set(config["chess_com"]["time_classes"])
+        # (paso, filas que quedan) of the last clean() call, in order: the funnel the app shows.
+        self.pasos: list[tuple[str, int]] = []
 
     @staticmethod
     def _opening_name(eco_url: str | None) -> str | None:
@@ -212,16 +214,19 @@ class DataCleaner:
         Se conservan a propósito: documentan por fila qué garantiza el filtro y
         sirven de traza de auditoría, no como features de modelo.
         """
-        valid = (
-            df["resultado"].notna()
-            & df["WhiteElo"].notna()
-            & df["BlackElo"].notna()
-            & df["Date"].notna()
-            & (df["Variant"] == "Standard")
-            & df["TimeClass"].isin(self.time_classes)
-            & (df["Rated"] == True)  # noqa: E712
-            & (df["cantidad_jugadas"] >= MIN_PLIES)
-        )
+        checks = {
+            "Con resultado": df["resultado"].notna(),
+            "Con rating de los dos jugadores": df["WhiteElo"].notna() & df["BlackElo"].notna(),
+            "Con fecha válida": df["Date"].notna(),
+            "Ajedrez estándar": df["Variant"] == "Standard",
+            "Bullet, blitz o rapid": df["TimeClass"].isin(self.time_classes),
+            "Rated": df["Rated"] == True,  # noqa: E712
+            f"Al menos {MIN_PLIES} medio-movimientos": df["cantidad_jugadas"] >= MIN_PLIES,
+        }
+        valid = pd.Series(True, index=df.index)
+        for name, check in checks.items():
+            valid &= check
+            self.pasos.append((name, int(valid.sum())))
         return df.loc[valid].copy()
 
     @staticmethod
@@ -272,6 +277,7 @@ class DataCleaner:
     def clean(self, raw_paths: dict[str, Path]) -> tuple[pd.DataFrame, int]:
         """Ejecuta parseo, deduplicación, validación y limpieza."""
         df, raw_row_count = self.parse_all(raw_paths)
+        self.pasos = [("Registros descargados", raw_row_count), ("Sin partidas repetidas entre usuarios", len(df))]
         df = self.parse_result(df)
         df = self.parse_numeric_fields(df)
         df = self.count_moves(df)
