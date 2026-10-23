@@ -4,6 +4,30 @@ Estado al 22/10/2026. Reemplaza la primera versión de este plan (queda en el hi
 de git); la evidencia sigue en [la auditoría](../auditorias/modelo-app-2026-10-22.md) y
 [el avance](../auditorias/avance-mejora-modelo-app-2026-10-22.md).
 
+## Resultado (22/10/2026, rama `feat/ratings-de-rivales`)
+
+Fases 0–4a hechas. **Se promovió la variante D.** Arnés: `src/experiment_rival_ratings.py`
+(`python -m src.experiment_rival_ratings`, 17,6 min); el notebook 04 repite la comparación
+en §7 y la grilla en §8.
+
+| Variante | Cols | CV log-loss | Δ global vs A | Δ corte 0 vs A | Regla del 04 | Inversiones en la grilla |
+|---|---|---|---|---|---|---|
+| A (Entrega 3) | 40 | 0,8267 | — | — | — | 16 de 44 |
+| B | 42 | 0,8260 | −0,0008 ± 0,0025 | −0,0028 ± 0,0032 | no gana | 3 de 44 |
+| C | 44 | 0,8226 | −0,0042 ± 0,0019 | −0,0074 ± 0,0024 | gana | 0 de 44 |
+| **D** | 40 | **0,8214** | **−0,0053 ± 0,0022** | **−0,0090 ± 0,0029** | **gana** | **0 de 44** |
+
+- Fase 0: el arnés reproduce la grilla del 04 (30 columnas, 0,8301 ± 0,0231) y la
+  ablación con forma (40 columnas, 0,8267; corte 0 0,8802).
+- Fase 1: 100.548 observaciones de sólo rating; train con los dos ratings pasa de 185
+  a 33.496 / 80.314, igual que el piloto valor por valor.
+- Test, mirado una vez con D elegida (período ya usado): 0,795 frente a 0,804 de A y
+  0,936 del piso; corte 0 0,854 frente a 0,866.
+- Tests: 104, pasan 102. Dama ganada sigue fallando: +11,58 / +6,29 frente a
+  +9,02 / +10,34 de A. Blancas sube y negras baja; no es objetivo de este plan y el
+  umbral no se tocó.
+- El artefacto anterior queda en `models/baselines/25051ff7bd92.joblib`.
+
 **Objetivo:** que la probabilidad que muestra la app responda bien al nivel de los dos
 jugadores, sin romper lo que ya funciona en vivo. Se trabaja **en una rama aparte** desde
 después de la Entrega 3 (28/10) o en paralelo sin tocar `main`; la decisión de promover
@@ -64,9 +88,10 @@ Rama `feat/ratings-de-rivales` desde `main` con el PR #32 mergeado. Script
 `max_features=0.3`, `min_samples_leaf=20`) y lo evalúa en los cinco folds.
 
 Salida: log-loss por fold, global y en el corte 0, más la grilla de control de rating
-(ver fase 3). **Criterio para seguir:** reproduce 0,830 ± 0,023 de la grilla del 04
-(mismo desvío de sklearn) con diferencia menor a 0,001. Si no, se arregla el arnés
-antes de comparar nada.
+(ver fase 3). **Criterio para seguir:** con las 30 columnas de la grilla reproduce
+0,830 ± 0,023 de la grilla del 04 (mismo desvío de sklearn) con diferencia menor a
+0,001, y con las 40 columnas, el 0,8267 de la ablación "+ forma reciente". Si no, se
+arregla el arnés antes de comparar nada.
 
 ### 1 · Ratings de rivales dentro del historial (uno o dos días)
 

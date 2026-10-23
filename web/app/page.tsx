@@ -41,11 +41,11 @@ export default function Inicio() {
           </div>
           <div>
             <dt>El ritmo y el nivel</dt>
-            <dd>Bullet, blitz o rapid, y el rating de cada jugador si se conoce. Antes de mover, su ventaja predictiva es modesta.</dd>
+            <dd>Bullet, blitz o rapid, el rating de cada jugador si se conoce, cuán reciente es y la diferencia entre los dos. Antes de mover, su ventaja predictiva es modesta.</dd>
           </div>
           <div>
             <dt>La forma reciente</dt>
-            <dd>Resultados, racha, evolución del rating y actividad de los jugadores importados, usando sólo partidas terminadas antes de empezar.</dd>
+            <dd>Resultados, racha y evolución del rating de los jugadores importados, usando sólo partidas terminadas antes de empezar.</dd>
           </div>
         </dl>
       </section>

@@ -96,6 +96,42 @@ def own_game_history(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
     return history.sort_values(["username", "time_class", "end_time", "GameUrl"], kind="stable").reset_index(drop=True)
 
 
+def game_observations(raw_paths: Mapping[str, Path]) -> pd.DataFrame:
+    """Partidas propias más una observación de sólo rating del rival en cada partida.
+
+    Cada partida descargada trae el rating del rival al cerrar: es una observación de
+    su rating, aunque de él no se tenga la secuencia de partidas. Esas filas llevan
+    ``propia=False`` y no aportan puntaje ni reloj: sólo sirven para el rating previo y
+    su antigüedad, nunca para forma, racha, sesión ni estilo. Se deduplica por cuenta y
+    ``GameUrl`` (la misma partida puede estar en dos archivos) prefiriendo la propia.
+    """
+    own = own_game_history(raw_paths).assign(propia=True)
+    rows = []
+    for username, path in raw_paths.items():
+        with Path(path).open("r", encoding="utf-8") as file:
+            games = json.load(file).get("games", [])
+        for game in games:
+            colors = {color: str(game.get(color, {}).get("username", "")).lower() for color in ("white", "black")}
+            if username.lower() not in colors.values():
+                continue
+            for color, rival in colors.items():
+                if rival and rival != username.lower():
+                    rows.append({
+                        "username": rival, "GameUrl": game.get("url"), "color": color,
+                        "time_class": game.get("time_class"), "end_time": game.get("end_time"),
+                        "rating_posterior": game[color].get("rating"), "puntaje": None,
+                        "por_tiempo": False, "reloj_final_frac": None, "propia": False,
+                    })
+    rivals = pd.DataFrame(rows, columns=own.columns).dropna(subset=["rating_posterior", "end_time", "GameUrl"])
+    observations = pd.concat([own, rivals], ignore_index=True)
+    before = len(observations)
+    observations = observations.sort_values("propia", ascending=False, kind="stable").drop_duplicates(["username", "GameUrl"])
+    assert not observations.duplicated(["username", "GameUrl"]).any()
+    logger.info("Observaciones de rating: %d propias, %d sólo rating de rivales (%d duplicadas descartadas).",
+                int(observations["propia"].sum()), int((~observations["propia"]).sum()), before - len(observations))
+    return observations.sort_values(["username", "time_class", "end_time", "GameUrl"], kind="stable").reset_index(drop=True)
+
+
 def reconstruct_prior_ratings(
     raw_paths: Mapping[str, Path], start_times: pd.DataFrame | None = None
 ) -> pd.DataFrame:

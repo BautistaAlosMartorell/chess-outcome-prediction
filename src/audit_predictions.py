@@ -56,7 +56,7 @@ def run(root: Path) -> dict:
     paths = {u: root / f"data/raw/chesscom_{u}_raw.json"
              for u in load_selection(root / "config/jugadores_seleccionados.yaml")}
     print("Derivando historiales causales...", flush=True)
-    histories = player_history_payloads(paths, games[["GameUrl", "StartTime"]])
+    histories = player_history_payloads(paths, games[["GameUrl", "StartTime"]], rivales=artifact.get("historial_rivales", False))
     all_context = attach_player_histories(games, histories)
     context = all_context[all_context["StartTime"] >= pd.Timestamp(artifact["entrenado_hasta"])].copy()
     training = all_context[all_context["EndTime"] < pd.Timestamp(artifact["entrenado_hasta"])]

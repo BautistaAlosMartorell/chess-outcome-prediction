@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from api import chesscom
 from src.predict import MODEL_PATH, RESULT_ORDER, PRE_GAME, FORM, cargar_modelo, predecir, model_input_frame
-from src.history_transformer import PlayerHistoryTransformer
+from src.history_transformer import RATING_AGE, RATING_RELATIVE, PlayerHistoryTransformer
 from src.utils import load_config
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -137,6 +137,11 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             "elo_blancas_previo": pedido.elo_blancas_previo,
             "elo_negras_previo": pedido.elo_negras_previo,
         }
+        for side in ("blancas", "negras"):
+            # A rating sent by the caller is the player's current one: zero days old. With a
+            # username, the history from Chess.com replaces both rating and age.
+            if contexto[f"elo_{side}_previo"] is not None:
+                contexto[f"antiguedad_rating_dias_{side}"] = 0.0
         contexto["StartTime"] = pedido.inicio_partida or datetime.now(timezone.utc)
         for side in ("blancas", "negras"):
             usuario = getattr(pedido, f"usuario_{side}")
@@ -173,7 +178,7 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             contexto[f"historial_{side}"] = observaciones(player, games if player.lower() == usuario.lower() else None)
 
         # Return only the derived pre-game context; raw history stays on the server.
-        columns = PRE_GAME + FORM
+        columns = PRE_GAME + FORM + RATING_AGE + RATING_RELATIVE
         derived = PlayerHistoryTransformer(columns).fit_transform(
             model_input_frame(pd.DataFrame([contexto]), columns)
         ).iloc[0]

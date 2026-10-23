@@ -815,7 +815,8 @@ Target
   resultado
 
 Predictores candidatos (todos existen antes de la primera jugada)
-  elo_blancas_previo, elo_negras_previo   (src/rating_history.py; NaN del lado sin historial)
+  elo_blancas_previo, elo_negras_previo   (src/history_transformer.py; del rival, el rating que traen
+                                          las partidas descargadas; NaN si no hay ninguno anterior)
   tiempo_base_seg
   incremento_seg
   TimeClass
@@ -824,6 +825,7 @@ Predictores candidatos (todos existen antes de la primera jugada)
 Historial candidato, derivado dentro del Pipeline del 04
   forma_ultimas10_*, racha_*, tendencia_rating_*, minutos_desde_anterior_*, partidas_sesion_*
   derrotas_por_tiempo_*, reloj_final_*  (estilo, hasta 20 partidas previas)
+  antiguedad_rating_dias_*, diferencia_elo_previa, elo_promedio_previo  (nivel relativo)
 
 Partición y auditoría, no predictores automáticos
   GameUrl
@@ -832,7 +834,8 @@ Partición y auditoría, no predictores automáticos
 
 Es el corte 0 de la tabla de cortes (8.5): la posición inicial con los relojes completos.
 Los ratings del Parquet son posteriores a la partida y no entran; el rating previo se
-reconstruye y normalmente sólo se conoce de un lado. El notebook 03 mejora modestamente
+reconstruye; con el rating de los rivales que traen los JSON se conocen los dos lados en el
+41,7 % de las partidas de train. El notebook 03 mejora modestamente
 al piso antes de empezar: 0,880 contra 0,895, con la corrección temporal estricta. El
 04 decide por validación cruzada qué grupos conservar; la lista exacta queda en el
 artefacto (`columnas`) y en `plan-entrega-3.md`, sin confundir candidatos con seleccionados.
@@ -917,7 +920,7 @@ Observaciones del historial desde los JSON crudos
   historial_blancas, historial_negras      (payloads por cuenta, no agregados)
 
 Derivadas dentro del Pipeline del 04
-  elo_blancas_previo, elo_negras_previo
+  elo_blancas_previo, elo_negras_previo, antiguedad_rating_dias_*, diferencia_elo_previa, elo_promedio_previo
   forma_ultimas10_*, racha_*, tendencia_rating_*, minutos_desde_anterior_*, partidas_sesion_*
   derrotas_por_tiempo_*, reloj_final_*      (candidatas; la lista final sale de la ablación)
 
@@ -942,7 +945,8 @@ las columnas elegidas en §7 entre los grupos candidatos de `src/predict.py`.
 `PlayerHistoryTransformer` recibe observaciones individuales, ritmo e inicio actual.
 Consulta sólo `end_time < StartTime`: un cierre igual al inicio también queda fuera.
 No conserva los historiales en el estimador ajustado. El rating es el último cierre
-del mismo ritmo; la forma usa diez resultados previos; la tendencia necesita once
+del mismo ritmo, propio o visto como rival en otra partida descargada (con su antigüedad
+en días); forma, racha, sesión y estilo usan sólo partidas propias; la forma usa diez resultados previos; la tendencia necesita once
 ratings previos para comparar el último con el de diez partidas antes. Las rachas
 se reinician con tablas. La sesión puede mezclar ritmos y se reinicia tras 30 minutos.
 El estilo usa hasta veinte partidas del mismo ritmo, con un mínimo de diez valores.
@@ -959,11 +963,15 @@ al imputador, que aprende su estadística sólo con el train correspondiente.
 La importancia por permutación del 04 se mide después de derivar el historial,
 ante el resto del Pipeline ya ajustado, para poder interpretar esas columnas.
 
-**Selección final de la corrida vigente del 04:** 40 columnas (`PRE_GAME + LIVE + FORM`).
-Se conservan rating y relojes, entran las diez columnas de forma reciente y quedan
-fuera los cuatro grupos adicionales de posición, estilo y matchup. Rating y forma
-se derivan dentro de `PlayerHistoryTransformer`, con cierre estrictamente anterior
-al inicio. Las diferencias pareadas y el veto por corte 0 están en
+**Selección final de la corrida vigente del 04:** 40 columnas. La regla de §7 deja
+`PRE_GAME + LIVE + FORM` (se conservan rating y relojes, entra la forma reciente y
+quedan fuera los cuatro grupos adicionales de posición, estilo y matchup). Después
+entra el rating de los rivales: salen `minutos_desde_anterior` y `partidas_sesion` y
+entran `antiguedad_rating_dias_{blancas,negras}`, `diferencia_elo_previa` (vacía si
+falta un lado) y `elo_promedio_previo`. Rating, antigüedad y forma se derivan dentro de
+`PlayerHistoryTransformer`, con cierre estrictamente anterior al inicio; el rating y
+su tendencia consultan también las observaciones de la cuenta como rival en otras
+partidas descargadas, la forma sólo las propias. Las diferencias pareadas y el veto por corte 0 están en
 [el mapa de Entrega 3](plan-entrega-3.md).
 
 ## 9. Diagnóstico cuantitativo de las 100.396 partidas

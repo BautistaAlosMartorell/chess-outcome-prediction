@@ -142,7 +142,7 @@ Se reconstruye el rating previo del lado seleccionado desde su historial. En est
 
 La reconstrucción cubre al menos un lado en 100.112 de 100.396 partidas (99,7 %). Sobre ese mismo subconjunto, el η² baja de 0,115 a 0,087, ambos amarillos.
 
-La fuga del rating posterior está documentada. Para modelar, `src/rating_history.py` usa el rating previo reconstruido y deja NaN del lado sin historial; nunca lo rellena con el posterior del rival. Reconstruir ambos lados requeriría más historiales.
+La fuga del rating posterior está documentada. Para modelar, `src/rating_history.py` usa el rating previo reconstruido y deja NaN del lado sin historial; nunca lo rellena con el posterior del rival. Reconstruir ambos lados requeriría más historiales. *(Actualización posterior, Entrega 3: el rating del rival sí está en cada partida descargada donde aparece; el 04 lo usa como rating previo con cierre anterior al inicio y conoce los dos lados en el 41,7 % de train.)*
 
 `es_sorpresa` coincide al 100 % con una regla de `resultado` y `diferencia_elo`:
 es identidad, no una asociación aprovechable. `Result` es el target en otro formato.

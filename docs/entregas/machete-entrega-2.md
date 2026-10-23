@@ -39,7 +39,8 @@ Las decisiones de la corrida anterior se mantienen, con magnitudes nuevas.
   52,78 % con el anterior (90.665).
 - En |diferencia| ≤10: 51,92 % vs. 45,25 % victoria blanca; brecha 6,68 pp.
 - Reconstrucción parcial: 100.112 partidas, η² 0,115 → 0,087 en el mismo subconjunto.
-  Conserva fuga del rival; el modelo deja ese lado NaN.
+  Conserva fuga del rival; el modelo deja ese lado NaN (en la Entrega 3 el rival
+  toma el rating que traen sus partidas descargadas anteriores al inicio).
 - es_sorpresa: 100 % de identidad con una regla que usa el target.
 - Regla oral: ¿existía esta información al predecir? Si revela el final, sale.
 

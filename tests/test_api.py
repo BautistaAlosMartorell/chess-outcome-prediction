@@ -98,6 +98,10 @@ class ApiTest(unittest.TestCase):
         # Ana's rating after g2 (1520), not after g3 (1530); Beto's from his own history (1480).
         self.assertEqual(body["contexto"]["elo_blancas_previo"], 1520)
         self.assertEqual(body["contexto"]["elo_negras_previo"], 1480)
+        # Ana's last blitz close (g2) was 50 s before g3 started; Beto's (b0), 100 s.
+        self.assertAlmostEqual(body["contexto"]["antiguedad_rating_dias_blancas"], 50 / 86400)
+        self.assertAlmostEqual(body["contexto"]["antiguedad_rating_dias_negras"], 100 / 86400)
+        self.assertEqual(body["contexto"]["diferencia_elo_previa"], 1520 - 1480)
         self.assertEqual(body["jugadas"], ["e4", "e5", "Nf3", "Nc6"])
         self.assertEqual(body["relojes_seg"], [179, 178, 175, 170])
         self.assertEqual([p["ply"] for p in body["curva"]], [0, 1, 2, 3])  # finished: no point after the last move
@@ -136,6 +140,13 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(len(context["historial_blancas"]), 4)
         self.assertTrue(all(isinstance(row, tuple) for row in context["historial_blancas"]))
 
+    def test_rating_sent_by_the_caller_is_current_so_zero_days_old(self) -> None:
+        with patch("api.main.curva", return_value=[]) as predict:
+            self.client.post("/predecir", json={"tiempo_base_seg": 180, "incremento_seg": 2, "elo_blancas_previo": 1500})
+        context = predict.call_args.args[1]
+        self.assertEqual(context["antiguedad_rating_dias_blancas"], 0.0)
+        self.assertNotIn("antiguedad_rating_dias_negras", context)
+
     def test_missing_start_never_uses_a_rating_from_before_the_finish(self) -> None:
         game = dict(FakeChessCom.GAMES["ana"][0], pgn=PGN)
         self.assertIsNone(chesscom.rating_previo(FakeChessCom.GAMES["ana"], game, "ana"))
@@ -147,6 +158,87 @@ class ApiTest(unittest.TestCase):
 
     def test_time_class_follows_chess_com(self) -> None:
         self.assertEqual([ritmo(60, 0), ritmo(180, 2), ritmo(300, 0), ritmo(600, 0)], ["bullet", "blitz", "blitz", "rapid"])
+
+
+
+@unittest.skipUnless(HAS_FASTAPI, "la API necesita api/requirements.txt")
+class ApiTrainingParityTest(unittest.TestCase):
+    """The API builds histories from Chess.com archives; training, from the downloaded JSON.
+
+    For real games between two selected accounts whose downloads (capped at 1.000 games
+    per account) both cover the game and at least 11 earlier games of its rhythm, both
+    sources hold the same observations, so the derived pre-game columns (and the model's
+    probabilities) must coincide.
+    """
+
+    def test_real_games_get_the_same_history_columns_as_in_training(self) -> None:
+        import json
+        from itertools import islice
+        from pathlib import Path
+
+        import numpy as np
+
+        from src.history_transformer import HISTORY_FEATURES, PlayerHistoryTransformer, attach_player_histories, player_history_payloads
+        from src.player_selection import load_selection
+        from src.predict import MODEL_PATH, cargar_modelo, predecir
+
+        root = Path(__file__).resolve().parents[1]
+        clean = root / "data/processed/partidas_ajedrez_clean.parquet"
+        selected = load_selection(root / "config/jugadores_seleccionados.yaml")
+        paths = {u.lower(): root / f"data/raw/chesscom_{u}_raw.json" for u in selected}
+        if not clean.exists() or not all(path.exists() for path in paths.values()):
+            self.skipTest("Regenerar los datos con el pipeline")
+        games = pd.read_parquet(clean)
+        both = games[games["White"].str.lower().isin(paths) & games["Black"].str.lower().isin(paths)].sort_values("GameUrl")
+        raw_cache = {}
+
+        def own_games(user):
+            if user not in raw_cache:
+                raw_cache[user] = json.loads(paths[user].read_text(encoding="utf-8"))["games"]
+            return raw_cache[user]
+
+        def covered(row):
+            for user in (row["White"].lower(), row["Black"].lower()):
+                archive = own_games(user)
+                if not any(g["url"] == row["GameUrl"] for g in archive):
+                    return False
+                earlier = [g for g in archive if g["time_class"] == row["TimeClass"]
+                           and g["end_time"] < row["StartTime"].timestamp()]
+                if len(earlier) < 11:
+                    return False
+            return True
+
+        picked = []
+        for rhythm, group in both.groupby("TimeClass"):
+            picked += list(islice((row for _, row in group.iterrows() if covered(row)), 2))
+        sample = pd.DataFrame(picked)
+        self.assertGreater(len(sample), 0)
+        artifact = cargar_modelo(root / MODEL_PATH) if (root / MODEL_PATH).exists() else None
+        for _, row in sample.iterrows():
+            with self.subTest(url=row["GameUrl"]):
+                users = [row["White"].lower(), row["Black"].lower()]
+                subset = {u: paths[u] for u in users}
+                raw = {u: own_games(u) for u in users}
+                target = next(g for g in raw[users[0]] if g["url"] == row["GameUrl"])
+                self.assertEqual(chesscom.inicio(target), row["StartTime"].to_pydatetime())
+                training = attach_player_histories(
+                    games[games["GameUrl"] == row["GameUrl"]],
+                    player_history_payloads(subset, games[["GameUrl", "StartTime"]], rivales=True))
+                api = training.copy()
+                api["StartTime"] = chesscom.inicio(target)
+                for side, user in zip(["blancas", "negras"], users):
+                    api[f"historial_{side}"] = [chesscom.historial(raw[user], user)]
+                derive = PlayerHistoryTransformer(HISTORY_FEATURES)
+                pd.testing.assert_frame_equal(derive.fit_transform(api).reset_index(drop=True),
+                                              derive.fit_transform(training).reset_index(drop=True))
+                if artifact is not None:
+                    context = {k: training.iloc[0][k] for k in ["TimeClass", "tiempo_base_seg", "incremento_seg", "EsTorneo",
+                                                                "StartTime", "historial_blancas", "historial_negras"]}
+                    api_context = dict(context, StartTime=api.iloc[0]["StartTime"],
+                                       historial_blancas=api.iloc[0]["historial_blancas"],
+                                       historial_negras=api.iloc[0]["historial_negras"])
+                    np.testing.assert_allclose(predecir(target["pgn"], api_context, artifact).iloc[:, 1:4].to_numpy(),
+                                               predecir(target["pgn"], context, artifact).iloc[:, 1:4].to_numpy(), atol=1e-12)
 
 
 if __name__ == "__main__":

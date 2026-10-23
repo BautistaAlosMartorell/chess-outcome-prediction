@@ -1,5 +1,23 @@
 # Changelog
 
+## Sumar el rating de los rivales al modelo de la app (2026-10-22)
+
+Rama `feat/ratings-de-rivales`, fases 0–4a de `plan-mejora-modelo-app.md`.
+
+- Agregar `src/experiment_rival_ratings.py`: reproduce la grilla del 04 (0,8301 ± 0,0231)
+  y compara variantes con los mismos folds, la regla del 04 y una grilla de control.
+- Guardar en el historial una observación de sólo rating del rival de cada partida
+  descargada (`player_history_payloads(..., rivales=True)`); rating, tendencia y la
+  nueva `antiguedad_rating_dias` las consultan, forma/racha/sesión/estilo no. Nuevas
+  `diferencia_elo_previa` (vacía si falta un lado) y `elo_promedio_previo`. Train con
+  ambos ratings: 185 → 33.496 de 80.314.
+- Promover la variante D (40 columnas, sin pausas ni sesión): CV −0,0053 ± 0,0022,
+  corte 0 −0,0090 ± 0,0029; grilla sin inversiones (antes 16 de 44). Notebook 04 con
+  Restart & Run All (42,8 min): test 0,795 frente a 0,804, período ya usado.
+- API: un rating cargado a mano entra con antigüedad 0; el análisis devuelve antigüedad
+  y diferencia. Tests de paridad API/entrenamiento y de la grilla: 104, pasan 102; dama
+  ganada sigue fallando (+11,58/+6,29 frente a +15).
+
 ## Auditar la app y poner al día el cierre de Entrega 3 (2026-10-22)
 
 - Agregar la auditoría de predicciones de la app, el piloto de cobertura de ratings

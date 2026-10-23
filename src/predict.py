@@ -25,8 +25,8 @@ from src.rating_history import FORM_COLUMNS, STYLE_COLUMNS
 RESULT_ORDER = ["Gana Blancas", "Empate", "Gana Negras"]
 MODEL_PATH = Path("models/modelo_en_vivo.joblib")
 
-# Lo que se sabe antes de la primera jugada. El rating previo sólo existe para las cuentas
-# con historial descargado; el del rival casi siempre queda NaN.
+# Lo que se sabe antes de la primera jugada. El rating previo sale del historial de la
+# cuenta o, para un rival, de las partidas descargadas donde aparece; si no hay, NaN.
 PRE_GAME = ["TimeClass", "tiempo_base_seg", "incremento_seg", "EsTorneo", "elo_blancas_previo", "elo_negras_previo"]
 # Forma reciente de cada lado (src/rating_history.py), con la misma regla anti-fuga.
 FORM = [f"{column}_{side}" for column in FORM_COLUMNS for side in ("blancas", "negras")]

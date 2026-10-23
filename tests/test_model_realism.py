@@ -4,7 +4,7 @@ Requieren el modelo local del notebook 04; las pruebas de población/calibració
 requieren además los datos regenerables. Las tolerancias amplias se fijan como
 contratos de comportamiento, no como las métricas exactas de una corrida.
 El artefacto actual incumple el contrato de +15 puntos por ganar la dama en
-apertura (+9,02/+10,34): se conserva el fallo, explicado en plan-entrega-3.md.
+apertura: se conserva el fallo, explicado en plan-entrega-3.md.
 """
 
 from pathlib import Path
@@ -83,6 +83,25 @@ class FinalModelRealismTest(unittest.TestCase):
                 probability = self.predict([hurried]).iloc[0][label]
                 self.assertGreater(baseline[label] - probability, .05)
 
+    def test_more_rating_difference_never_lowers_white_on_the_initial_board(self):
+        # Control grid of docs/entregas/plan-mejora-modelo-app.md: both ratings known and one
+        # day old, empty form, only the difference changes. Rapid 3000 has no training data.
+        if not self.artifact.get("historial_rivales"):
+            self.skipTest("El artefacto no se entrenó con ratings de rivales")
+        differences = [-400, -200, 0, 200, 400]
+        for rhythm, base in [("bullet", 60), ("blitz", 180), ("rapid", 600)]:
+            board, _ = game_cut_features("1. e4 *", [0], base, 0)
+            for mean in [1200, 1800, 2400, 3000]:
+                if (rhythm, mean) == ("rapid", 3000):
+                    continue
+                with self.subTest(rhythm=rhythm, mean=mean):
+                    rows = [dict(board[0], TimeClass=rhythm, tiempo_base_seg=base, incremento_seg=0, EsTorneo=False,
+                                 elo_blancas_previo=mean + d / 2, elo_negras_previo=mean - d / 2,
+                                 antiguedad_rating_dias_blancas=1.0, antiguedad_rating_dias_negras=1.0)
+                            for d in differences]
+                    white = self.predict(rows)["Gana Blancas"].to_numpy()
+                    self.assertTrue((np.diff(white) >= -1e-9).all(), dict(zip(differences, white.round(3))))
+
     @classmethod
     def population(cls):
         if hasattr(cls, "_population"):
@@ -97,7 +116,9 @@ class FinalModelRealismTest(unittest.TestCase):
         paths = {u: ROOT / f"data/raw/chesscom_{u}_raw.json" for u in load_selection(ROOT / "config/jugadores_seleccionados.yaml")}
         if not all(path.exists() for path in paths.values()):
             raise unittest.SkipTest("Faltan historiales crudos para las pruebas de población")
-        histories = player_history_payloads(paths, games[["GameUrl", "StartTime"]])
+        # The same history sources the artifact was trained with.
+        histories = player_history_payloads(paths, games[["GameUrl", "StartTime"]],
+                                            rivales=cls.artifact.get("historial_rivales", False))
         context = attach_player_histories(future, histories)
         cuts = pd.read_parquet(cuts_path)
         cuts = cuts[cuts["GameUrl"].isin(future["GameUrl"])]

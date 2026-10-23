@@ -105,11 +105,13 @@ partidas (notebook 02, sección 9). **No entran al modelo.**
 cuenta seleccionada al cierre de su partida anterior del mismo ritmo, leído de su propio
 historial, con cierre estrictamente anterior al inicio actual. El orden por cierre
 con `shift()` solo no garantizaba esa condición; la sección 2 del 04 cuantifica y
-corrige los solapamientos. Sólo se puede reconstruir el lado de la cuenta seleccionada (≈ 50 % de blancas y
-50 % de negras, al menos un lado en el 99,7 % de las partidas): del rival normalmente no se descargó el
-historial, así que ese lado llega como NaN al preprocesamiento. El bosque imputa
-con estadísticas aprendidas sólo en su train y un indicador de faltante. Es la principal limitación de la
-predicción antes de la partida.
+corrige los solapamientos. Del rival normalmente no se descargó el historial, pero cada partida
+descargada trae su rating al cerrar: el transformador usa esas observaciones de sólo rating
+(con su antigüedad) para el rating previo, nunca para la forma. Así, 41,7 % de las partidas
+de train tienen el rating de los dos lados (con sólo las cuentas propias eran 185 de 80.314).
+Lo que falta llega como NaN al preprocesamiento; el bosque imputa con estadísticas
+aprendidas sólo en su train y un indicador de faltante, y la diferencia de rating queda
+vacía si falta un lado. Sigue siendo la principal limitación de la predicción antes de la partida.
 
 ### Limitación de la muestra
 
@@ -157,7 +159,8 @@ src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
 src/live_features.py                       dataset de predicción en vivo: una fila por partida y corte de plies (python-chess)
 src/rating_history.py                      lectura de historiales y helpers del EDA
-src/history_transformer.py                 rating previo, forma y estilo dentro del Pipeline, con cierre estrictamente anterior al inicio
+src/history_transformer.py                 rating previo (también el de rivales), antigüedad, forma y estilo dentro del Pipeline, con cierre estrictamente anterior al inicio
+src/experiment_rival_ratings.py            arnés de comparación de las variantes con ratings de rivales (mismos folds y regla del 04)
 src/model_validation.py                    validación cruzada temporal por partida (las filas de una partida no se separan)
 src/predict.py                             columnas del modelo y predecir(): probabilidades jugada a jugada para la app
 src/player_selection.py                    selección de jugadores por banda de ELO, congelada tras la primera corrida
@@ -320,9 +323,10 @@ npm run dev
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
 
-La app carga el modelo nuevo de 40 columnas. Para jugadores importados envía
-observaciones individuales del historial al Pipeline; éste calcula rating y forma con
-cierres estrictamente anteriores al inicio. En partidas jugadas en la app, ese inicio
+La app carga el modelo de 40 columnas. Para jugadores importados envía
+observaciones individuales del historial al Pipeline; éste calcula rating, su antigüedad,
+la diferencia de rating y la forma con cierres estrictamente anteriores al inicio. Un
+rating cargado a mano se toma como actual (antigüedad 0). En partidas jugadas en la app, ese inicio
 queda fijo al pulsar Empezar. Sin historial, usa el contexto conocido y el imputador
 del modelo. Analizar aplica la misma condición al inicio UTC del PGN, sin sustituirlo
 por la hora de cierre si falta. La demo de portada también usa el artefacto nuevo.
@@ -337,15 +341,21 @@ python -m unittest discover -s tests
 No usan red. Las pruebas de realismo requieren `models/modelo_en_vivo.joblib`;
 las de población/calibración necesitan además los Parquet y JSON locales. Si faltan,
 unittest las marca como omitidas. Verifican probabilidades iniciales plausibles,
-una dama ganada, desventaja de reloj, el ganador cerca del final y calibración por clase.
-En el artefacto vigente pasan 93 de 94 tests: el de dama ganada falla en sus dos
-colores (+9,02/+10,34 puntos de probabilidad frente a +15 exigidos). El fallo se
+una dama ganada, desventaja de reloj, el ganador cerca del final, calibración por clase,
+que más diferencia de rating nunca baje la probabilidad de blancas y que la API derive
+lo mismo que el entrenamiento en partidas reales.
+En el artefacto vigente pasan 102 de 104 tests: el de dama ganada falla en sus dos
+colores (+11,58/+6,29 puntos de probabilidad frente a +15 exigidos). El fallo se
 conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-entrega-3.md).
 
-El modelo final del 04 es un random forest de 40 columnas (`PRE_GAME + LIVE + FORM`),
-con historial causal dentro del Pipeline. En test: log-loss 0,804 frente a 0,936 del
-piso (14,09 % menos); duración: MAE 22,934 frente a 28,357 plies. El período de test
-ya fue observado en la exploración y en una versión previa del 04; las decisiones
+El modelo final del 04 es un random forest de 40 columnas: contexto, posición y
+relojes, forma reciente y el rating de los dos lados con su antigüedad, diferencia y
+promedio, con historial causal dentro del Pipeline. El rating de cada rival sale de las
+partidas ya descargadas (`player_history_payloads(..., rivales=True)`): la primera
+versión de la Entrega 3 sólo tenía los dos ratings en 185 de 80.314 partidas de train y
+respondía al revés a la diferencia de rating. En test: log-loss 0,795 frente a 0,936 del
+piso (15,07 % menos); duración: MAE 22,889 frente a 28,357 plies. El período de test
+ya fue observado en la exploración y en versiones previas del 04; las decisiones
 actuales se toman por CV temporal, sin presentarlo como un holdout nuevo.
 Las pruebas de la API (`tests/test_api.py`) se saltean si no está instalado
 `api/requirements.txt`.
