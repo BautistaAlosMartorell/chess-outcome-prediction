@@ -189,11 +189,12 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(c=corte.name)  # the slider's value, as a data field
     titulo = base.transform_filter(elegida).transform_filter(alt.datum.corte_ply == 0).mark_text(
         align="left", baseline="bottom", fontSize=13, dy=-8, color=FONDO_TEXTO,
+        limit=alt.ExprRef(expr="width"),
     ).encode(x=alt.value(0), y=alt.value(0), text="titulo:N")
     # Until a game is chosen, the lower view says how to choose one (the selection's store is empty).
-    aviso = alt.Chart(pd.DataFrame({"texto": ["Hacé clic en una partida de arriba para ver cómo cambiaron sus probabilidades"]})).transform_filter(
+    aviso = alt.Chart(pd.DataFrame({"texto": ["Elegí una partida de arriba\npara ver sus probabilidades"]})).transform_filter(
         "length(data('elegida_store')) == 0"
-    ).mark_text(fontSize=14, color=TEXTO_SUAVE).encode(x=alt.value(ANCHO_EXPLORA / 2), y=alt.value(90), text="texto:N")
+    ).mark_text(fontSize=14, color=TEXTO_SUAVE, lineBreak="\n", x=alt.ExprRef(expr="width / 2"), y=90).encode(text="texto:N")
     detalle = (curva + marca_corte + titulo + aviso).properties(height=180, width=ANCHO_EXPLORA)
     # The 5,000-row guard is for notebooks; the build checks the file size instead.
     with alt.data_transformers.enable("default", max_rows=None):
