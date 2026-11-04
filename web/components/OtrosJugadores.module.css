@@ -1,0 +1,24 @@
+.panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.comparacion {
+  display: grid;
+  gap: 1rem;
+}
+
+.quienes {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Two names and a button do not fit side by side on a phone. */
+.campos {
+  flex-wrap: wrap;
+}
+
+.campos input {
+  flex-basis: 12rem;
+}

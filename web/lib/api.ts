@@ -10,6 +10,9 @@ export type Punto = {
   plies_restantes?: number;
 };
 
+// Training cuts went up to this ply (move 60); past it the model extrapolates.
+export const ULTIMO_PLY_ENTRENADO = 120;
+
 export type Ritmo = "bullet" | "blitz" | "rapid";
 
 export type Ficha = {
@@ -65,7 +68,7 @@ async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type PedidoJugar = {
   jugadas: string[];
-  relojes_seg: number[];
+  relojes_seg: number[] | null;
   tiempo_base_seg: number;
   incremento_seg: number;
   elo_blancas_previo: number | null;

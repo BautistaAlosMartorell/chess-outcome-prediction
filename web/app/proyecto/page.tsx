@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DemoEnVivo } from "@/components/DemoEnVivo";
+import { GraficoAltair } from "@/components/GraficoAltair";
 import { SeccionTallo, Tabla } from "@/components/Tallo";
 import { RESUMEN, decimal, enCorte, entero, pct } from "@/lib/resumen";
 import styles from "./page.module.css";
@@ -22,6 +23,16 @@ const MOTIVO_FUGA: Record<string, string> = {
   familia_apertura: "sale de la etiqueta ECO final",
 };
 
+const ETIQUETA_RESULTADO: Record<string, string> = { "Gana Blancas": "blancas", Empate: "tablas", "Gana Negras": "negras" };
+
+function plies(tramo: string) {
+  return tramo === "0" ? "antes de mover" : `plies ${tramo}`;
+}
+
+function ordinal(n: number) {
+  return `${n}.º`;
+}
+
 function porNombre(filas: Record<string, unknown>[], clave: string, prefijo: string) {
   const fila = filas.find((f) => String(f[clave]).startsWith(prefijo));
   if (!fila) throw new Error(`Falta ${prefijo} en resumen.json`);
@@ -37,6 +48,25 @@ export default function Proyecto() {
   const test = modelo.test;
   const elegido = modelo.comparacion.find((f) => f.variante === modelo.familia);
   const errores = modelo.errores_desde_ply_60;
+
+  // Professor's feedback on Entrega 3: fixed decision and importance, band by band.
+  const tramos = modelo.test_por_tramo;
+  const tramoInicial = tramos[0];
+  const tramoFinal = tramos[tramos.length - 1];
+  const recall = (tramo: string, clase: string) =>
+    modelo.confusion_por_tramo.find((f) => f.tramo === tramo && f.real === clase && f.predicho === clase)?.porcentaje_fila ?? 0;
+  const importancia = (columna: string, tramo: string) => {
+    const fila = modelo.importancia_por_tramo.find((f) => f.columna === columna && f.tramo === tramo);
+    if (!fila) throw new Error(`Falta la importancia de ${columna} en ${tramo}`);
+    return fila;
+  };
+  const lider = (tramo: string) =>
+    modelo.importancia_por_tramo
+      .filter((f) => f.tramo === tramo)
+      .reduce((a, b) => (b.log_loss > a.log_loss ? b : a));
+  // First band where the material leads the model (by log-loss).
+  const cruce = modelo.tramos.find((t) => lider(t).columna === "balance_material") ?? tramoFinal.tramo;
+  const color = porNombre(hallazgos.hipotesis_durante, "hipotesis", "H4′");
 
   return (
     <div className={styles.inicio}>
@@ -202,8 +232,9 @@ export default function Proyecto() {
               <h3>La métrica y por qué</h3>
               <p>
                 Log-loss: mide qué tan buenas son las probabilidades, no sólo si el resultado más probable acertó. La
-                app muestra probabilidades, y el error caro es mostrarlas muy seguras y equivocadas. F1 macro y el recall
-                de tablas se miran al lado, para que la clase chica (las tablas) no desaparezca.
+                app muestra probabilidades, y el error caro es mostrarlas muy seguras y equivocadas. Al lado se informa
+                siempre la accuracy, la métrica de decisión fija (el modelo dijo esto, ¿acertó?), con la matriz de
+                confusión. F1 macro y el recall de tablas se miran para que la clase chica (las tablas) no desaparezca.
               </p>
               <h3>El piso</h3>
               <p>
@@ -243,9 +274,12 @@ export default function Proyecto() {
                 Quedó el {modelo.familia.toLowerCase()}
                 {elegido ? `, con ${decimal(Number(elegido.log_loss))} en validación` : ""}.
               </p>
-              <h3>El ajuste del elegido</h3>
+              <h3>El ajuste de hiperparámetros</h3>
               <p>
-                Grilla con los mismos pedazos ({modelo.grilla.length} combinaciones). La mejor:{" "}
+                Búsqueda aleatoria (RandomizedSearchCV) con los mismos pedazos, en los dos ensambles:{" "}
+                {modelo.busqueda_iteraciones} combinaciones sorteadas por familia, más la mejor configuración de la
+                Entrega 3 y el boosting por defecto como candidatos fijos ({modelo.grilla.length} en total). Queda el{" "}
+                {modelo.familia.toLowerCase()} con{" "}
                 {Object.entries(modelo.mejores_hiperparametros)
                   .map(([k, v]) => `${k} = ${v}`)
                   .join(", ")}
@@ -253,10 +287,47 @@ export default function Proyecto() {
                 {decimal(modelo.balanceo.recall_empate_con)}, pero empeora la log-loss en{" "}
                 {decimal(modelo.balanceo.diferencia, 4)} ± {decimal(modelo.balanceo.desvio, 4)}: no se balancea.
               </p>
+              <h3>La calibración</h3>
+              <p>
+                Los ensambles de árboles tienden a achatar las probabilidades extremas: con una ventaja grande, el
+                modelo daba menos de lo que pasaba en la realidad. Se probaron tres calibradores, cada uno ajustado con
+                predicciones de partidas anteriores a las que se mide. Quedó: {modelo.calibracion.elegida.toLowerCase()}.
+              </p>
+              <Tabla
+                filas={modelo.calibracion.tabla}
+                resaltar={(f) => f.variante === modelo.calibracion.elegida}
+                columnas={[
+                  { titulo: "Calibrador", valor: (f) => String(f.variante) },
+                  { titulo: "Log-loss", valor: (f) => decimal(Number(f.log_loss), 4), numerica: true },
+                  { titulo: "Diferencia", valor: (f) => `${decimal(Number(f["Δ global"]), 4)} ± ${decimal(Number(f["± Δ global"]), 4)}`, numerica: true },
+                  { titulo: "Antes de mover", valor: (f) => `${decimal(Number(f["Δ corte 0"]), 4)} ± ${decimal(Number(f["± Δ corte 0"]), 4)}`, numerica: true },
+                ]}
+              />
+              <h3>Una regla del juego: sin material para dar mate no se gana</h3>
+              <p>
+                Al probar la app apareció un error: con dama, torre y alfil contra el rey solo, pero 1,3 segundos en el
+                reloj, el modelo le daba 17 % de ganar al rey solo. Eso es imposible: sin material para dar mate no se
+                gana ni por tiempo; si se cae la bandera del rival, son tablas. Ahora cada corte sabe si a cada lado le
+                alcanza el material para dar mate (mirando sólo el tablero de ese momento), y atrás del bosque va esa
+                regla: la victoria imposible queda en 0. En las {entero(modelo.regla_mate.filas)} filas de test donde un
+                solo lado puede dar mate, la log-loss baja de {decimal(modelo.regla_mate.log_loss_sin_regla, 3)} a{" "}
+                {decimal(modelo.regla_mate.log_loss_con_regla, 3)}.
+              </p>
+              <Tabla
+                filas={modelo.regla_mate.tabla}
+                columnas={[
+                  { titulo: "Reloj del que puede ganar", valor: (f) => String(f["reloj del que puede ganar"]) },
+                  { titulo: "Filas", valor: (f) => entero(Number(f.filas)), numerica: true },
+                  { titulo: "Real: gana / tablas", valor: (f) => `${decimal(Number(f["real: gana el que puede"]), 1)} % / ${decimal(Number(f["real: tablas"]), 1)} %`, numerica: true },
+                  { titulo: "Sin regla: gana el que no puede", valor: (f) => `${decimal(Number(f["sin regla: gana el que no puede"]), 1)} %`, numerica: true },
+                  { titulo: "Con regla: gana / tablas", valor: (f) => `${decimal(Number(f["con regla: gana el que puede"]), 1)} % / ${decimal(Number(f["con regla: tablas"]), 1)} %`, numerica: true },
+                ]}
+              />
               <h3>El resultado en el test</h3>
               <p>
                 Log-loss {decimal(test.log_loss)} contra {decimal(test["log_loss piso"])} del piso (
-                {pct(portada.mejora_test)} menos), F1 macro {decimal(test.f1_macro)}. El período de test ya se había
+                {pct(portada.mejora_test)} menos), F1 macro {decimal(test.f1_macro)}. Acierta el {pct(test.accuracy)} de
+                las filas, contra {pct(test["accuracy piso"])} del piso. El período de test ya se había
                 mirado en la exploración: no es un holdout nuevo.
               </p>
               <h3>Dónde se equivoca</h3>
@@ -289,6 +360,161 @@ export default function Proyecto() {
                 El modelo casi nunca veía los ratings de los dos jugadores a la vez. Ahora el historial suma el rating
                 de los rivales que ya traían los archivos descargados, y el modelo usa la diferencia y el promedio de
                 rating: {modelo.columnas_finales} columnas en total.
+              </p>
+            </>
+          }
+        />
+
+        <SeccionTallo
+          id="acierta"
+          etapa="¿Acertó?"
+          titulo={`Si se queda con lo más probable, acierta el ${pct(tramoInicial.accuracy, 0)} antes de mover y el ${pct(tramoFinal.accuracy, 0)} después del ply 95; mirar sólo el material nunca lo alcanza.`}
+          grafico="/app/graficos/acierto.json"
+          descripcionGrafico="Tres líneas por tramo de plies: aciertos del modelo, de la regla del material y del piso; el modelo queda siempre arriba."
+          queMirar={
+            <>
+              <p>
+                Acá no importan las probabilidades: el modelo dice un resultado (el más probable) y se cuenta si acertó.
+                El piso dice siempre {modelo.clase_piso.toLowerCase()}; la regla del material, que gana el que va arriba
+                en material (y blancas si están iguales).
+              </p>
+              <p>
+                Antes de mover el modelo le saca {decimal((tramoInicial.accuracy - tramoInicial["accuracy piso"]) * 100, 1)}{" "}
+                puntos al piso, sólo con el rating y el contexto. Al final, la regla del material llega al{" "}
+                {pct(tramoFinal["accuracy regla material"], 0)}: lo que le falta para alcanzar al modelo lo ponen el reloj y
+                el rating.
+              </p>
+            </>
+          }
+          evidencia={
+            <>
+              <h3>Por tramo de jugadas</h3>
+              <Tabla
+                filas={tramos}
+                columnas={[
+                  { titulo: "Tramo", valor: (f) => plies(f.tramo) },
+                  { titulo: "Filas", valor: (f) => entero(f.filas), numerica: true },
+                  { titulo: "Aciertos del modelo", valor: (f) => pct(f.accuracy), numerica: true },
+                  { titulo: "Regla del material", valor: (f) => pct(f["accuracy regla material"]), numerica: true },
+                  { titulo: "Piso", valor: (f) => pct(f["accuracy piso"]), numerica: true },
+                  { titulo: "Log-loss", valor: (f) => decimal(f.log_loss), numerica: true },
+                  { titulo: "Recall tablas", valor: (f) => pct(f.recall_empate), numerica: true },
+                ]}
+              />
+              <p>
+                Los tramos tardíos sólo tienen partidas largas: entre los plies {tramoFinal.tramo} quedan{" "}
+                {entero(tramoFinal.partidas)} de las {entero(tramoInicial.partidas)} partidas de test. Por eso el piso
+                baja: en las partidas largas ganan menos las blancas y hay más tablas.
+              </p>
+              <h3>La matriz de confusión, tramo por tramo</h3>
+              <GraficoAltair
+                src="/app/graficos/confusion.json"
+                descripcion="Matriz de confusión del tramo elegido en el menú: de cada resultado real, qué porcentaje predijo el modelo."
+              />
+              <p>
+                Antes de mover, cuando casi no tiene información, el modelo se inclina por blancas: reconoce el{" "}
+                {decimal(recall(tramoInicial.tramo, "Gana Blancas"), 1)} % de sus victorias y el{" "}
+                {decimal(recall(tramoInicial.tramo, "Gana Negras"), 1)} % de las de negras. Al final se emparejan (
+                {decimal(recall(tramoFinal.tramo, "Gana Blancas"), 1)} % y {decimal(recall(tramoFinal.tramo, "Gana Negras"), 1)}{" "}
+                %). Las tablas casi nunca son la opción más probable: recién entre los plies {tramoFinal.tramo} reconoce el{" "}
+                {decimal(recall(tramoFinal.tramo, "Empate"), 1)} % de ellas.
+              </p>
+            </>
+          }
+        />
+
+        <SeccionTallo
+          id="en-que-se-fija"
+          etapa="En qué se fija"
+          titulo={`Antes de mover, el modelo se fija en el rating; desde los plies ${cruce}, en el material, y después en el reloj.`}
+          grafico="/app/graficos/importancia.json"
+          descripcionGrafico="Importancia por permutación de cinco columnas en cada tramo de plies: la diferencia de rating baja y el material y el reloj suben."
+          queMirar={
+            <>
+              <p>
+                Cada línea dice cuánto empeora el modelo si esa columna se desordena en ese tramo: cuanto más alta, más
+                se apoya en ella. La diferencia de rating es lo único que pesa antes de mover (
+                {decimal(importancia("diferencia_elo_previa", tramoInicial.tramo).log_loss, 4)}) y se apaga al final (
+                {decimal(importancia("diferencia_elo_previa", tramoFinal.tramo).log_loss, 4)}).
+              </p>
+              <p>
+                El material y el reloj arrancan en cero, porque al principio son iguales para los dos, y terminan
+                adelante: {decimal(importancia("balance_material", tramoFinal.tramo).log_loss, 4)} y{" "}
+                {decimal(importancia("diferencia_reloj_seg", tramoFinal.tramo).log_loss, 4)} entre los plies{" "}
+                {tramoFinal.tramo}.
+              </p>
+            </>
+          }
+          evidencia={
+            <>
+              <h3>Cómo se mide</h3>
+              <p>
+                Importancia por permutación, dentro de cada tramo, sobre 5.000 filas de test por tramo: se desordena una
+                columna, se vuelve a predecir y se mide cuánto empeora. Es lo que usa el modelo, no una causa. Las
+                columnas parecidas (el material de cada lado y su diferencia) se reparten la importancia.
+              </p>
+              <h3>Lo mismo, en aciertos</h3>
+              <Tabla
+                filas={modelo.tramos}
+                columnas={[
+                  { titulo: "Tramo", valor: (t) => plies(t) },
+                  ...["diferencia_elo_previa", "balance_material", "diferencia_reloj_seg"].map((c) => ({
+                    titulo: `${importancia(c, tramoInicial.tramo).nombre}: aciertos que se pierden`,
+                    valor: (t: string) => `${decimal(importancia(c, t).accuracy * 100, 1)} pts`,
+                    numerica: true,
+                  })),
+                ]}
+              />
+            </>
+          }
+        />
+
+        <SeccionTallo
+          id="hipotesis"
+          etapa="Las hipótesis, de punta a punta"
+          titulo="Las hipótesis del análisis exploratorio, vistas otra vez con el modelo: cuáles pesan y en qué momento de la partida."
+          queMirar={
+            <>
+              <p>
+                Cada hipótesis sobre el resultado pasó por tres momentos: el análisis exploratorio (Entrega 2) la
+                midió con una sola variable a la vez; el modelo (Entrega 3) la puso junto a todo lo demás; y la
+                importancia por tramo (Entrega 4) dice cuándo importa.
+              </p>
+              <Tabla
+                filas={hallazgos.en_el_modelo}
+                columnas={[
+                  { titulo: "Hipótesis", valor: (h) => <strong>{h.hipotesis}</strong> },
+                  { titulo: "Exploratorio (Entrega 2)", valor: (h) => `${h.decision}. ${h.medida}.` },
+                  {
+                    titulo: "En el modelo (Entrega 3)",
+                    valor: (h) => {
+                      const puesto = modelo.importancia.findIndex((f) => f.columna === h.columna) + 1;
+                      return puesto > 0
+                        ? `${ordinal(puesto)} columna más importante de ${modelo.columnas_finales} (${h.nombre.toLowerCase()})`
+                        : `Fuera de las 10 más importantes (${h.nombre.toLowerCase()})`;
+                    },
+                  },
+                  {
+                    titulo: "Tramo por tramo (Entrega 4)",
+                    valor: (h) => `${ordinal(h.puesto[tramoInicial.tramo])} antes de mover → ${ordinal(h.puesto[tramoFinal.tramo])} entre los plies ${tramoFinal.tramo}`,
+                  },
+                ]}
+              />
+              <p>
+                <strong>{color.hipotesis}.</strong> {color.decision}. En el modelo aparece en cómo decide sin
+                información: antes de mover, el piso dice siempre {ETIQUETA_RESULTADO[modelo.clase_piso]} y acierta el{" "}
+                {pct(tramoInicial["accuracy piso"])}, y el modelo reconoce más victorias de blancas que de negras hasta
+                que la posición lo desempata.
+              </p>
+            </>
+          }
+          evidencia={
+            <>
+              <h3>Cómo leer los puestos</h3>
+              <p>
+                El puesto de la Entrega 3 es entre todas las columnas del modelo, en todo el test. El de cada tramo es
+                entre las cinco columnas que lideran en algún momento (rating, material, reloj y los relojes de cada
+                lado). Las hipótesis sobre la duración no aparecen: la duración quedó como objetivo secundario.
               </p>
             </>
           }

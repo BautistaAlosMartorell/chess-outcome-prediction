@@ -909,6 +909,7 @@ Features del corte (sólo miran jugadas <= corte_ply)
   jaques_*, capturas_*, enroco_*, derechos_enroque_*
   reloj_*_seg, reloj_frac_*, diferencia_reloj_seg, gasto_reciente_*_seg
   material_colgado_*, ataques_al_rey_*, peones_pasados_*, movilidad_*   (calidad de la posición)
+  puede_dar_mate_*     (le alcanza el material para dar mate; regla del juego, no fuga)
 
 Contexto fijo desde el tidy
   TimeClass, tiempo_base_seg, incremento_seg, EsTorneo

@@ -153,7 +153,7 @@ Dockerfile                                 imagen de Airflow con las dependencia
 notebooks/01_data_ingestion_verification.ipynb     Entrega 1: pipeline narrado y verificación
 notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil y fugas, cuatro hipótesis antes de la partida (Parte A) y cuatro durante, sobre la tabla de cortes (Parte B), + anexo de matchmaking
 notebooks/03_prediccion_en_vivo.ipynb              Entrega 3 (exploración): curva por corte, desbalance de Empate y matchup de apertura
-notebooks/04_modelado.ipynb                        Entrega 3: modelado formal (piso, tres familias con CV temporal por partida, grilla, ablación, test una vez) y modelo guardado para la app
+notebooks/04_modelado.ipynb                        Entrega 3: modelado formal (piso, tres familias con CV temporal por partida, búsqueda aleatoria, ablación, calibración, test una vez, métricas por tramo) y modelo guardado para la app
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
@@ -238,6 +238,7 @@ por `GameUrl`.
 | `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
 | `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte (`movilidad`: jugadas legales del bando que mueve). |
 | `material_colgado_*`, `ataques_al_rey_*`, `peones_pasados_*`, `movilidad_*` | Calidad de la posición de cada bando: puntos de piezas atacadas y sin defensor, ataques rivales sobre la casilla del rey y sus vecinas, peones pasados y jugadas posibles (le toque mover o no). |
+| `puede_dar_mate_*` | Si las piezas de cada bando en el corte alcanzan para dar mate (`python-chess`, `has_insufficient_material`). Con rey solo o rey y una pieza menor no se gana ni por tiempo; el modelo final lleva esa regla atrás (`src/reglas.py`). |
 | `reloj_*_seg`, `reloj_frac_*`, `diferencia_reloj_seg` | Reloj restante de cada bando, en segundos y como fracción del tiempo base. |
 | `gasto_reciente_*_seg` | Segundos gastados en las últimas 5 jugadas propias. NaN en el corte 0 (todavía no hubo jugadas). |
 
@@ -367,7 +368,7 @@ npm run dev
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
 
-La app carga el modelo de 40 columnas. Para jugadores importados envía
+La app carga el modelo de 48 columnas. Para jugadores importados envía
 observaciones individuales del historial al Pipeline; éste calcula rating, su antigüedad,
 la diferencia de rating y la forma con cierres estrictamente anteriores al inicio. Un
 rating cargado a mano se toma como actual (antigüedad 0). En partidas jugadas en la app, ese inicio
@@ -406,13 +407,22 @@ conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-en
 Lo que marcó la devolución de la Entrega 2 y cómo se resolvió cada pedido está en
 [`docs/entregas/devolucion-entrega-2.md`](docs/entregas/devolucion-entrega-2.md).
 
-El modelo final del 04 es un random forest de 40 columnas: contexto, posición y
-relojes, forma reciente y el rating de los dos lados con su antigüedad, diferencia y
+El modelo final del 04 es un random forest de 48 columnas: contexto, posición y
+relojes (con material para dar mate, material colgado, ataques al rey y movilidad), forma reciente y el rating de los dos lados con su antigüedad, diferencia y
 promedio, con historial causal dentro del Pipeline. El rating de cada rival sale de las
 partidas ya descargadas (`player_history_payloads(..., rivales=True)`): la primera
 versión de la Entrega 3 sólo tenía los dos ratings en 185 de 80.314 partidas de train y
-respondía al revés a la diferencia de rating. En test: log-loss 0,795 frente a 0,936 del
-piso (15,07 % menos); duración: MAE 22,889 frente a 28,357 plies. El período de test
+respondía al revés a la diferencia de rating. Sus hiperparámetros salen de una
+búsqueda aleatoria (`RandomizedSearchCV`) en el bosque y el boosting; se probó calibrar las
+probabilidades y ningún calibrador pasó la regla. Atrás del bosque va una regla del juego
+(`src/reglas.py`): un lado sin material para dar mate tiene 0 % de ganar. En test: log-loss
+0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos; duración: MAE 22,788
+frente a 28,357 plies.
+Lo que pidió la devolución de la Entrega 3 está en
+[`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md), junto con la
+verificación de realismo del modelo final y sus limitaciones conocidas (el rival casi sin reloj,
+ventajas de material muy grandes y tablas muy probables: en esos extremos el modelo es más prudente
+que la realidad). El período de test
 ya fue observado en la exploración y en versiones previas del 04; las decisiones
 actuales se toman por CV temporal, sin presentarlo como un holdout nuevo.
 Las pruebas de la API (`tests/test_api.py`) se saltean si no está instalado
@@ -491,6 +501,8 @@ En Analizar, **Ver resumen animado** recorre el inicio, hasta tres cambios de al
 10 puntos porcentuales en P(blancas), separados por seis plies, y el resultado real.
 Cada escena dura cuatro segundos; los momentos del modelo se limitan al ply 120.
 Se puede pausar o avanzar manualmente, y al cerrar se conserva la posición original.
+Después de la jugada 60 (ply 120) Analizar sigue mostrando las probabilidades, con
+un aviso: el modelo se entrenó con cortes hasta el ply 120 y desde ahí extrapola.
 Con movimiento reducido empieza pausado. No identifica mejores jugadas ni atribuye
 causalidad a los cambios del pronóstico.
 

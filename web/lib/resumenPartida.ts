@@ -1,4 +1,4 @@
-import type { Analisis } from "./api";
+import { ULTIMO_PLY_ENTRENADO, type Analisis } from "./api";
 export type EscenaResumen = {
   ply: number;
   desde: number;
@@ -14,7 +14,7 @@ export function escenasResumen(a: Analisis): EscenaResumen[] {
     .flatMap((p, i) => {
       const previo = a.curva[i];
       const delta = p.gana_blancas - previo.gana_blancas;
-      return p.ply <= 120 && p.ply < total && Math.abs(delta) >= 0.1
+      return p.ply <= ULTIMO_PLY_ENTRENADO && p.ply < total && Math.abs(delta) >= 0.1
         ? [
             {
               ply: p.ply,

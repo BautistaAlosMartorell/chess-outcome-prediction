@@ -71,7 +71,13 @@ class ChessComClient:
         archives = self._get(f"{BASE_URL}/{usuario.lower()}/games/archives").get("archives", [])
         games: list[dict[str, Any]] = []
         for month_url in reversed(archives[-max_meses:]):
-            games.extend(g for g in self._get(month_url).get("games", []) if es_valida(g))
+            try:
+                month = self._get(month_url)
+            except JugadorNoEncontrado:
+                # The PubAPI lists the current month before its archive exists and 404s it:
+                # the player exists (the profile answered), the month just has no games yet.
+                continue
+            games.extend(g for g in month.get("games", []) if es_valida(g))
             if len(games) >= minimo:
                 break
         return sorted(games, key=lambda g: (g.get("end_time", 0), g.get("url", "")), reverse=True)

@@ -100,6 +100,13 @@ class LiveFeaturesTest(unittest.TestCase):
         self.assertEqual((at0["material_colgado_blancas"], at0["peones_pasados_negras"]), (0, 0))
         self.assertEqual((at0["movilidad_blancas"], at0["movilidad_negras"]), (20, 20))
         self.assertEqual(at0["movilidad_negras"], 20)  # black's moves count even when white is to move
+        self.assertEqual((at0["puede_dar_mate_blancas"], at0["puede_dar_mate_negras"]), (True, True))
+
+    def test_lone_king_cannot_mate(self) -> None:
+        # The end of the game that motivated the column: queen, rook and bishop against a bare king.
+        pgn = '[Event "Live Chess"]\n[Result "0-1"]\n[SetUp "1"]\n[FEN "3q4/8/4r1bK/8/8/5k2/8/8 w - - 0 1"]\n\n1. Kg7 Qf6+ 0-1'
+        rows, _ = game_cut_features(pgn, [0, 1], 180, 0)
+        self.assertEqual((rows[0]["puede_dar_mate_blancas"], rows[0]["puede_dar_mate_negras"]), (False, True))
 
     def test_no_row_when_the_game_ends_at_or_before_the_cut(self) -> None:
         rows, plies = game_cut_features(_pgn(MOVES[:10]), [10, 20], 180, 2)

@@ -30,6 +30,7 @@ from src import app_charts
 from src.app_trivia import construir_trivia
 from src.app_data import REPORTE_EDA, REPORTE_MODELADO, leer_reporte
 from src.clean_data import DataCleaner
+from src.metricas_tramo import TRAMOS, confusion_por_tramo, metricas_por_tramo, predicha
 from src.history_transformer import HISTORY_INPUTS, attach_player_histories, player_history_payloads
 from src.player_selection import load_selection
 from src.predict import MODEL_PATH, PRE_GAME, RESULT_ORDER, cargar_modelo, model_input_frame
@@ -138,6 +139,63 @@ def verificar_contra_notebook(pred: pd.DataFrame, curva: pd.DataFrame, reporte: 
     return test
 
 
+# Sorted label order, as sklearn's classes_: Empate, Gana Blancas, Gana Negras.
+CLASES = sorted(RESULT_ORDER)
+COLUMNAS_PROBA = ["p_empate", "p_blancas", "p_negras"]
+# The hypotheses of notebook 02 that are about the result, and the model column that answers each.
+HIPOTESIS_EN_EL_MODELO = {
+    "H1 ": "diferencia_elo_previa",
+    "H1′": "balance_material",
+    "H2′": "diferencia_reloj_seg",
+}
+
+
+def por_tramo(pred: pd.DataFrame, reporte: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Métricas y matriz de confusión por tramo de jugadas; falla si no da lo mismo que el notebook 04."""
+    proba = pred[COLUMNAS_PROBA].to_numpy()
+    metricas = metricas_por_tramo(pred["resultado"], proba, CLASES, pred["corte_ply"], pred["GameUrl"],
+                                  reporte["clase_piso"])
+    confusion = confusion_por_tramo(pred["resultado"], predicha(proba, CLASES), pred["corte_ply"])
+    notebook = pd.DataFrame(reporte["test_por_tramo"]).set_index("tramo").loc[TRAMOS]
+    for column in ["accuracy", "accuracy piso", "log_loss"]:
+        gap = (metricas.set_index("tramo")[column] - notebook[column]).abs().max()
+        if gap > TOLERANCIA:
+            raise AssertionError(f"{column} por tramo difiere del notebook 04 hasta en {gap:.2e}")
+    notebook_confusion = pd.DataFrame(reporte["confusion_por_tramo"])
+    if not (confusion["filas"].to_numpy() == notebook_confusion["filas"].to_numpy()).all():
+        raise AssertionError("La matriz de confusión por tramo difiere del notebook 04")
+    metricas["accuracy regla material"] = notebook["accuracy regla material"].to_numpy()
+    return metricas, confusion
+
+
+def importancia_por_tramo(reporte: dict[str, Any]) -> pd.DataFrame:
+    """Importancia por permutación (notebook 04) de las columnas líderes, una fila por (columna, tramo)."""
+    largo = pd.DataFrame(reporte["importancia_por_tramo"])
+    ancho = largo.pivot_table(index=["columna", "tramo"], columns="metrica", values="valor").reset_index()
+    ancho = ancho[ancho["columna"].isin(app_charts.NOMBRE_COLUMNA)]
+    assert ancho["columna"].nunique() == len(app_charts.NOMBRE_COLUMNA), "Falta una columna líder en el reporte"
+    ancho["nombre"] = ancho["columna"].map(app_charts.NOMBRE_COLUMNA)
+    return ancho[["columna", "nombre", "tramo", "log_loss", "accuracy"]]
+
+
+def hipotesis_en_el_modelo(eda: dict[str, Any], importancia: pd.DataFrame) -> list[dict[str, Any]]:
+    """Cada hipótesis del EDA sobre el resultado, con lo que dijo después el modelo, tramo por tramo."""
+    hipotesis = [{"hipotesis": h["Hipótesis"], "medida": h["Medida"], "decision": h["Decisión"]}
+                 for h in eda["hipotesis_antes"]]
+    hipotesis += [{"hipotesis": h["hipotesis"], "medida": h["medida"], "decision": h["decision"]}
+                  for h in eda["hipotesis_durante"]]
+    # Rank of each leading column inside each band (1 = the one the model leans on most).
+    rango = importancia.pivot(index="tramo", columns="columna", values="log_loss").rank(axis=1, ascending=False)
+    filas = []
+    for prefijo, columna in HIPOTESIS_EN_EL_MODELO.items():
+        (h,) = [h for h in hipotesis if h["hipotesis"].startswith(prefijo)]
+        valores = importancia[importancia["columna"] == columna].set_index("tramo").loc[TRAMOS]
+        filas.append({**h, "columna": columna, "nombre": app_charts.NOMBRE_COLUMNA[columna],
+                      "importancia": _registros(valores[["log_loss", "accuracy"]].reset_index()),
+                      "puesto": {t: int(rango.loc[t, columna]) for t in TRAMOS}})
+    return filas
+
+
 def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Partidas de test para Explorá, estratificadas por ritmo y nivel, con todas sus filas."""
     info = games.set_index("GameUrl").loc[pred["GameUrl"].unique()]
@@ -175,7 +233,8 @@ def _registros(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, Any]], vivas: pd.DataFrame,
             eda: dict[str, Any], modelado: dict[str, Any], curva: pd.DataFrame, test: dict[str, float],
-            artifact: dict[str, Any], n_explora: int) -> dict[str, Any]:
+            artifact: dict[str, Any], n_explora: int, tramos: pd.DataFrame, confusion: pd.DataFrame,
+            importancia: pd.DataFrame) -> dict[str, Any]:
     """Los números que cita el texto de la app, todos calculados acá o leídos de los notebooks."""
     by_cut = curva.set_index("corte_ply")
     alive_60 = vivas[vivas["corte_ply"] == 60].set_index("TimeClass")
@@ -208,6 +267,7 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "hipotesis_durante": eda["hipotesis_durante"],
             "eta2_material": eda["eta2_material"],
             "eta2_reloj": eda["eta2_reloj"],
+            "en_el_modelo": hipotesis_en_el_modelo(eda, importancia),
         },
         "modelo": {
             "familia": artifact["familia"],
@@ -215,6 +275,9 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "comparacion": modelado["comparacion"],
             "decision": modelado["decision"],
             "grilla": modelado["grilla"],
+            "busqueda_iteraciones": modelado["busqueda_iteraciones"],
+            "calibracion": modelado["calibracion"],
+            "regla_mate": modelado["regla_mate"],
             "mejores_hiperparametros": modelado["mejores_hiperparametros"],
             "balanceo": modelado["balanceo"],
             "ratings_rivales": modelado["ratings_rivales"],
@@ -225,6 +288,11 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "confusion_por_columna": modelado["confusion_por_columna"],
             "errores_desde_ply_60": modelado["errores_desde_ply_60"],
             "importancia": modelado["importancia"][:10],
+            "clase_piso": modelado["clase_piso"],
+            "tramos": TRAMOS,
+            "test_por_tramo": _registros(tramos),
+            "confusion_por_tramo": _registros(confusion),
+            "importancia_por_tramo": _registros(importancia),
             "duracion_test": modelado["duracion_test"],
             "rango_rating": artifact["rango_rating"],
         },
@@ -265,6 +333,11 @@ def main() -> None:
     logger.info("Test reconstruido: log-loss %.4f contra %.4f del piso, igual que el notebook 04",
                 test_metrics["log_loss"], test_metrics["log_loss piso"])
 
+    tramos, confusion = por_tramo(pred, modelado)
+    importancia = importancia_por_tramo(modelado)
+    logger.info("Por tramo: aciertos %s, igual que el notebook 04",
+                ", ".join(f"{t} {a:.1%}" for t, a in zip(tramos["tramo"], tramos["accuracy"])))
+
     trivia_index, trivia_cases = construir_trivia(test, pred, games, paths, artifact, random_state)
     # Publish the index last so it never points to missing cases.
     for case in trivia_cases:
@@ -282,10 +355,18 @@ def main() -> None:
     ])[["serie", "corte_ply", "log_loss", "mejora", "partidas"]]
 
     escribir("resumen.json", resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
-                                     len(partidas)))
+                                     len(partidas), tramos, confusion, importancia))
     escribir("graficos/datos.json", app_charts.partidas_vivas(vivas).to_dict())
     escribir("graficos/hallazgos.json", app_charts.senal_por_corte(eta2).to_dict())
     escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga).to_dict())
+    acierto = pd.concat([
+        tramos.assign(serie=serie, accuracy=tramos[columna])
+        for serie, columna in [("Modelo", "accuracy"), ("Regla del material", "accuracy regla material"),
+                               ("Piso", "accuracy piso")]
+    ])[["serie", "tramo", "accuracy", "filas"]]
+    escribir("graficos/acierto.json", app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict())
+    escribir("graficos/confusion.json", app_charts.confusion_por_tramo(confusion, TRAMOS).to_dict())
+    escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict())
     escribir("graficos/explora.json",
              app_charts.explora(filas, partidas, list(config["elo"]["bandas"])))
     logger.info("App construida en %.0f s", time.perf_counter() - started)

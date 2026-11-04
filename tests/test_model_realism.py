@@ -3,8 +3,9 @@
 Requieren el modelo local del notebook 04; las pruebas de población/calibración
 requieren además los datos regenerables. Las tolerancias amplias se fijan como
 contratos de comportamiento, no como las métricas exactas de una corrida.
-El artefacto actual incumple el contrato de +15 puntos por ganar la dama en
-apertura: se conserva el fallo, explicado en plan-entrega-3.md.
+El modelo de la Entrega 3 incumplía el contrato de +15 puntos por ganar la dama en
+apertura (+11,6 y +6,3); el de la búsqueda aleatoria lo cumple (+24,1 y +24,0), y el de
+48 columnas con la regla de mate (src/reglas.py), también (+27,2 y +25,6).
 """
 
 from pathlib import Path
@@ -65,6 +66,18 @@ class FinalModelRealismTest(unittest.TestCase):
                 predictions = predecir(_pgn([(san, 170 - i) for i, san in enumerate(moves)]), context, self.artifact)
                 gain = predictions.loc[after, winner] - predictions.loc[before, winner]
                 self.assertGreater(gain, .15, f"Queen gain changed {winner} by {gain:.3f}")
+
+    def test_a_lone_king_never_wins_even_against_a_flagging_rival(self):
+        # End of the MagnusCarlsen game that motivated src/reglas.py: queen, rook and bishop
+        # against the bare king, with 1.3 s left on black's clock in a 3+0 game.
+        pgn = ('[Event "Live Chess"]\n[Result "0-1"]\n[SetUp "1"]\n[FEN "3q4/8/4r1bK/8/8/5k2/8/8 w - - 0 61"]\n\n'
+               '61. Kg7 {[%clk 0:00:51.2]} 61... Qf6+ {[%clk 0:00:01.3]} 0-1')
+        rows, _ = game_cut_features(pgn, [2], 180, 0, in_progress=True)
+        row = dict(rows[0], TimeClass="blitz", tiempo_base_seg=180, incremento_seg=0, EsTorneo=False, corte_ply=122,
+                   elo_blancas_previo=3390, elo_negras_previo=3026)
+        proba = self.predict([row]).iloc[0]
+        self.assertEqual(proba["Gana Blancas"], 0.0)
+        self.assertGreater(proba["Gana Negras"], .45, f"Gana Negras {proba['Gana Negras']:.3f}")
 
     def test_much_less_clock_hurts_each_side_on_the_same_board(self):
         rows, _ = game_cut_features(_pgn(MOVES), [20], 180, 0)

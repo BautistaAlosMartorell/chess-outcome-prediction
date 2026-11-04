@@ -35,11 +35,11 @@ El artefacto final se copia explícitamente y **no entra en Git**.
    el Dockerfile y el README de configuración del Space. Rechaza una carpeta no vacía.
    No copia `.env`, datos, notebooks, historial Git ni modelos de experimentos.
 3. Subir el contenido de esa carpeta al repositorio del Space mediante la cuenta del
-   grupo. El modelo de 132 MB requiere almacenamiento de archivos grandes de esa plataforma.
+   grupo. El modelo de 91 MB requiere almacenamiento de archivos grandes de esa plataforma.
 4. Configurar `CORS_ORIGINS` con el origen exacto de la web, sin barra final. Para
    varios orígenes, separarlos por comas. Los dominios de previews se agregan
    explícitamente; no se habilitan todos los dominios de Internet.
-5. Comprobar `https://<dominio-del-space>/salud`: debe informar 40 columnas y el corte
+5. Comprobar `https://<dominio-del-space>/salud`: debe informar 48 columnas y el corte
    temporal del notebook 04. Guardar la URL real en el README al publicar.
 
 El servicio puede necesitar arrancar después de un período de reposo. Antes de la

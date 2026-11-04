@@ -8,8 +8,9 @@ type Props = {
   etapa: string;
   // A title that states the finding, not the topic.
   titulo: string;
-  grafico: string;
-  descripcionGrafico: string;
+  // Optional: a section can make its case with text and tables alone.
+  grafico?: string;
+  descripcionGrafico?: string;
   // A few lines on what to look at in the chart.
   queMirar: ReactNode;
   // The technical evidence, collapsed by default.
@@ -24,7 +25,7 @@ export function SeccionTallo({ id, etapa, titulo, grafico, descripcionGrafico, q
       <h2 id={id} className={styles.titulo}>
         {titulo}
       </h2>
-      <GraficoAltair src={grafico} descripcion={descripcionGrafico} />
+      {grafico ? <GraficoAltair src={grafico} descripcion={descripcionGrafico ?? ""} /> : null}
       <div className={styles.queMirar}>{queMirar}</div>
       <details className={styles.comoLoSabemos}>
         <summary>Cómo lo sabemos</summary>
