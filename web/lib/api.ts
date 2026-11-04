@@ -65,7 +65,7 @@ async function pedir<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type PedidoJugar = {
   jugadas: string[];
-  relojes_seg: number[];
+  relojes_seg: number[] | null;
   tiempo_base_seg: number;
   incremento_seg: number;
   elo_blancas_previo: number | null;

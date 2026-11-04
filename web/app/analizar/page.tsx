@@ -8,6 +8,7 @@ import { cargarCaso } from "@/lib/trivia";
 import { relojesEn } from "@/lib/partida";
 import { Curva } from "@/components/Curva";
 import { Marcador } from "@/components/Marcador";
+import { OtrosJugadores } from "@/components/OtrosJugadores";
 import styles from "@/components/Partida.module.css";
 import { Planilla } from "@/components/Planilla";
 import { Tablero } from "@/components/Tablero";
@@ -308,6 +309,7 @@ function Analizar() {
             onElegir={irA}
             revelar={analisis.partida.url}
           />
+          <OtrosJugadores key={analisis.partida.url} analisis={analisis} ply={ply} />
         </section>
       ) : ficha ? (
         <section className={`${styles.panel} ${propios.listado}`} aria-label={`Partidas de ${ficha.usuario}`}>
