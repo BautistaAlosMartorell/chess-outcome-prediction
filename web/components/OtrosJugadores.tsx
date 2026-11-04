@@ -20,7 +20,7 @@ function valores(punto: Punto | null | undefined) {
 }
 
 function puntoEn(curva: Punto[], ply: number) {
-  return ply <= 120 ? curva.find((p) => p.ply === ply) ?? null : null;
+  return curva.find((p) => p.ply === ply) ?? null;
 }
 
 // A number is taken as a rating; anything else is a Chess.com user, rated in this game's time class.

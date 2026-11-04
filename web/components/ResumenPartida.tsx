@@ -27,9 +27,7 @@ export function ResumenPartida({
   const ply = Math.min(actual.ply, actual.desde + Math.floor(tick / 2));
   const posicion = useMemo(() => posicionEn(a.jugadas, ply), [a, ply]);
   const punto =
-    !actual.final && ply <= 120
-      ? (a.curva.find((p) => p.ply === ply) ?? null)
-      : null;
+    !actual.final ? (a.curva.find((p) => p.ply === ply) ?? null) : null;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     dialog.current?.showModal();

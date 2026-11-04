@@ -495,6 +495,8 @@ En Analizar, **Ver resumen animado** recorre el inicio, hasta tres cambios de al
 10 puntos porcentuales en P(blancas), separados por seis plies, y el resultado real.
 Cada escena dura cuatro segundos; los momentos del modelo se limitan al ply 120.
 Se puede pausar o avanzar manualmente, y al cerrar se conserva la posición original.
+Después de la jugada 60 (ply 120) Analizar sigue mostrando las probabilidades, con
+un aviso: el modelo se entrenó con cortes hasta el ply 120 y desde ahí extrapola.
 Con movimiento reducido empieza pausado. No identifica mejores jugadas ni atribuye
 causalidad a los cambios del pronóstico.
 

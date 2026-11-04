@@ -1,6 +1,6 @@
 "use client";
 
-import type { Punto } from "@/lib/api";
+import { ULTIMO_PLY_ENTRENADO, type Punto } from "@/lib/api";
 import { Barra } from "./Barra";
 import styles from "./Marcador.module.css";
 
@@ -89,7 +89,9 @@ export function Marcador({ blancas, negras, relojes, activo, punto, final, mostr
         <p className={`${styles.pie} ${final ? styles.pieFinal : ""}`} aria-live="polite">
           {final
             ? final
-            : restantes !== undefined
+            : punto && punto.ply > ULTIMO_PLY_ENTRENADO
+              ? "Después de la jugada 60 el modelo extrapola: no vio posiciones tan avanzadas"
+              : restantes !== undefined
               ? `Faltan unas ${Math.max(1, Math.round(restantes / 2))} jugadas por bando`
               : " "}
         </p>

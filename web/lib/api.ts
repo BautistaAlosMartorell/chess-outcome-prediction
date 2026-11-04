@@ -10,6 +10,9 @@ export type Punto = {
   plies_restantes?: number;
 };
 
+// Training cuts went up to this ply (move 60); past it the model extrapolates.
+export const ULTIMO_PLY_ENTRENADO = 120;
+
 export type Ritmo = "bullet" | "blitz" | "rapid";
 
 export type Ficha = {

@@ -189,7 +189,7 @@ function Analizar() {
   }, [analisis, total]);
 
   const momentos = useMemo(() => (analisis ? momentosClave(analisis.curva) : []), [analisis]);
-  const punto = ply <= 120 ? analisis?.curva.find((p) => p.ply === ply) ?? null : null;
+  const punto = analisis?.curva.find((p) => p.ply === ply) ?? null;
   const final =
     analisis && ply === total ? `${FINALES[analisis.partida.resultado]}${analisis.final ? ` (${analisis.final})` : ""}` : null;
 
