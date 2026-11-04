@@ -258,5 +258,44 @@ class ApiTrainingParityTest(unittest.TestCase):
                                                predecir(target["pgn"], context, artifact).iloc[:, 1:4].to_numpy(), atol=1e-12)
 
 
+class _Response:
+    def __init__(self, status_code: int, payload: dict | None = None) -> None:
+        self.status_code, self._payload = status_code, payload or {}
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(self.status_code)
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _Session:
+    """The PubAPI as seen early in a month: the archive list names a month that still 404s."""
+
+    def __init__(self, pages: dict[str, dict]) -> None:
+        self.headers: dict[str, str] = {}
+        self.pages = pages
+
+    def get(self, url: str, timeout: float) -> _Response:
+        return _Response(200, self.pages[url]) if url in self.pages else _Response(404)
+
+
+@unittest.skipUnless(HAS_FASTAPI, "la API necesita api/requirements.txt")
+class ChessComClientTest(unittest.TestCase):
+    def test_current_month_not_archived_yet_is_skipped_not_a_missing_player(self) -> None:
+        base = chesscom.BASE_URL
+        game = _game("g1", 1_000, ("hikaru", 3200, "win"), ("otro", 3000, "resigned"))
+        session = _Session({
+            f"{base}/hikaru/games/archives": {"archives": [f"{base}/hikaru/games/2026/10",
+                                                           f"{base}/hikaru/games/2026/11"]},
+            f"{base}/hikaru/games/2026/10": {"games": [game]},
+        })
+        client = chesscom.ChessComClient("test", session=session)
+        self.assertEqual([g["url"] for g in client.partidas("hikaru")], ["g1"])
+        with self.assertRaises(chesscom.JugadorNoEncontrado):
+            client.perfil("nadie")
+
+
 if __name__ == "__main__":
     unittest.main()
