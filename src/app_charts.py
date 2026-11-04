@@ -118,6 +118,91 @@ def modelo_contra_piso(curva: pd.DataFrame) -> alt.Chart:
     return con_tema((lineas + puntos).properties(height=320))
 
 
+# Professor's feedback on Entrega 3: fixed-decision metrics and importance, band by band.
+COLOR_ACIERTO = {"Modelo": COLOR_MODELO, "Regla del material": COLOR_VARIABLE["Material"], "Piso": COLOR_PISO}
+ESCALA_ACIERTO = alt.Scale(domain=list(COLOR_ACIERTO), range=list(COLOR_ACIERTO.values()))
+# Readable names for the columns that lead the importance in some band.
+NOMBRE_COLUMNA = {
+    "balance_material": "Material (blancas − negras)",
+    "diferencia_reloj_seg": "Reloj (blancas − negras)",
+    "diferencia_elo_previa": "Diferencia de rating previo",
+    "reloj_blancas_seg": "Reloj de blancas",
+    "reloj_negras_seg": "Reloj de negras",
+}
+COLOR_COLUMNA = dict(zip(NOMBRE_COLUMNA.values(), ["#d95640", "#216653", "#806320", "#78978a", "#202c28"]))
+ESCALA_COLUMNA = alt.Scale(domain=list(COLOR_COLUMNA), range=list(COLOR_COLUMNA.values()))
+
+
+def _eje_tramo(tramos: list[str]) -> alt.X:
+    return alt.X("tramo:O", sort=tramos, title="Plies jugados (tramo)", axis=alt.Axis(labelAngle=0))
+
+
+def acierto_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """Decisión fija: qué parte de las filas de test acierta cada serie, tramo por tramo.
+
+    ``filas`` tiene una fila por (serie, tramo) con ``accuracy`` (0 a 1) y ``filas``.
+    """
+    base = alt.Chart(filas).encode(
+        x=_eje_tramo(tramos),
+        y=alt.Y("accuracy:Q", title="Aciertos (la clase más probable fue la real)",
+                axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0.35, 0.8])),
+        color=alt.Color("serie:N", title=None, scale=ESCALA_ACIERTO),
+    )
+    lineas = base.mark_line(strokeWidth=2.5)
+    puntos = base.mark_point(filled=True, size=55).encode(
+        tooltip=[alt.Tooltip("serie:N", title="Serie"), alt.Tooltip("tramo:O", title="Plies"),
+                 alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%"),
+                 alt.Tooltip("filas:Q", title="Filas de test", format=",")],
+    )
+    return con_tema((lineas + puntos).properties(height=320))
+
+
+def confusion_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """Matriz de confusión de un tramo, elegido con un menú: de cada resultado real, qué se predijo.
+
+    ``filas`` tiene una fila por (tramo, real, predicho) con ``porcentaje_fila`` y ``filas``.
+    """
+    tramo = alt.param(name="tramo", value=tramos[0],
+                      bind=alt.binding_select(options=tramos, name="Plies jugados "))
+    base = alt.Chart(filas).transform_filter(alt.datum.tramo == tramo).encode(
+        x=alt.X("predicho:N", sort=RESULT_ORDER, title="Lo que dijo el modelo",
+                axis=alt.Axis(labelAngle=0, orient="top")),
+        y=alt.Y("real:N", sort=RESULT_ORDER, title="Cómo terminó"),
+    )
+    celdas = base.mark_rect(stroke="#ffffff", strokeWidth=2).encode(
+        color=alt.Color("porcentaje_fila:Q", title="% de la fila", legend=None,
+                        scale=alt.Scale(domain=[0, 100], range=["#f6f1e7", COLOR_MODELO])),
+        tooltip=[alt.Tooltip("real:N", title="Real"), alt.Tooltip("predicho:N", title="Predicho"),
+                 alt.Tooltip("porcentaje_fila:Q", title="% de la fila", format=".1f"),
+                 alt.Tooltip("filas:Q", title="Filas", format=",")],
+    )
+    textos = base.mark_text(fontSize=15).encode(
+        text=alt.Text("porcentaje_fila:Q", format=".0f"),
+        color=alt.condition(alt.datum.porcentaje_fila > 55, alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
+    )
+    return con_tema((celdas + textos).add_params(tramo).properties(height=240))
+
+
+def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """En qué se apoya el modelo en cada tramo: importancia por permutación de las columnas líderes.
+
+    ``filas`` tiene una fila por (nombre, tramo) con ``log_loss`` (cuánto empeora al
+    desordenar la columna) y ``accuracy`` (puntos de aciertos que se pierden, 0 a 1).
+    """
+    base = alt.Chart(filas).encode(
+        x=_eje_tramo(tramos),
+        y=alt.Y("log_loss:Q", title="Cuánto empeora el error al desordenarla (log-loss)"),
+        color=alt.Color("nombre:N", title=None, scale=ESCALA_COLUMNA, sort=list(COLOR_COLUMNA)),
+    )
+    lineas = base.mark_line(strokeWidth=2.5)
+    puntos = base.mark_point(filled=True, size=55).encode(
+        tooltip=[alt.Tooltip("nombre:N", title="Columna"), alt.Tooltip("tramo:O", title="Plies"),
+                 alt.Tooltip("log_loss:Q", title="Log-loss que empeora", format=".4f"),
+                 alt.Tooltip("accuracy:Q", title="Aciertos que se pierden", format=".1%")],
+    )
+    return con_tema((lineas + puntos).properties(height=340))
+
+
 def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> dict:
     """Explorá: las partidas de test en un corte, y la curva del modelo de la que se elija.
 

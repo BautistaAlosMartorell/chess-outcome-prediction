@@ -28,6 +28,16 @@ export type Resumen = {
     hipotesis_durante: Fila[];
     eta2_material: { corte_ply: number; eta2: number }[];
     eta2_reloj: { corte_ply: number; eta2: number; eta2_controlado: number }[];
+    // Each result hypothesis of the EDA, with what the model said about its column, band by band.
+    en_el_modelo: {
+      hipotesis: string;
+      medida: string;
+      decision: string;
+      columna: string;
+      nombre: string;
+      importancia: { tramo: string; log_loss: number; accuracy: number }[];
+      puesto: Record<string, number>;
+    }[];
   };
   modelo: {
     familia: string;
@@ -45,6 +55,8 @@ export type Resumen = {
     comparacion: Fila[];
     decision: Fila[];
     grilla: Fila[];
+    busqueda_iteraciones: number;
+    calibracion: { tabla: Fila[]; elegida: string; parametros: Record<string, unknown> | null };
     mejores_hiperparametros: Record<string, number | string>;
     balanceo: { diferencia: number; desvio: number; recall_empate_sin: number; recall_empate_con: number; se_balancea: boolean };
     ratings_rivales: Fila[];
@@ -55,6 +67,22 @@ export type Resumen = {
     confusion_por_columna: Fila[];
     errores_desde_ply_60: { filas_decisivas: number; erradas: number; predicho_arriba_en_material: number; terminaron_por_tiempo: number };
     importancia: { columna: string; media: number; "desvío": number }[];
+    clase_piso: string;
+    tramos: string[];
+    test_por_tramo: {
+      tramo: string;
+      filas: number;
+      partidas: number;
+      accuracy: number;
+      "accuracy piso": number;
+      "accuracy regla material": number;
+      log_loss: number;
+      f1_macro: number;
+      recall_empate: number;
+      "confianza media": number;
+    }[];
+    confusion_por_tramo: { tramo: string; real: string; predicho: string; filas: number; porcentaje_fila: number }[];
+    importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
     duracion_test: Fila[];
     rango_rating: [number, number];
   };

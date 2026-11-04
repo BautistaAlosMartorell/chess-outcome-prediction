@@ -142,7 +142,8 @@ class GeneratedFilesTest(unittest.TestCase):
 
     def test_files_exist_and_stay_light(self):
         for name in ["resumen.json", "graficos/datos.json", "graficos/hallazgos.json", "graficos/modelo.json",
-                     "graficos/explora.json"]:
+                     "graficos/explora.json", "graficos/acierto.json", "graficos/confusion.json",
+                     "graficos/importancia.json"]:
             path = self.dir / name
             self.assertTrue(path.exists(), name)
             self.assertLess(path.stat().st_size / 1e6, MAXIMO_MB, name)
