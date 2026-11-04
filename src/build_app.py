@@ -277,6 +277,7 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "grilla": modelado["grilla"],
             "busqueda_iteraciones": modelado["busqueda_iteraciones"],
             "calibracion": modelado["calibracion"],
+            "regla_mate": modelado["regla_mate"],
             "mejores_hiperparametros": modelado["mejores_hiperparametros"],
             "balanceo": modelado["balanceo"],
             "ratings_rivales": modelado["ratings_rivales"],

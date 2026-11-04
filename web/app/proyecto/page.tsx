@@ -303,6 +303,26 @@ export default function Proyecto() {
                   { titulo: "Antes de mover", valor: (f) => `${decimal(Number(f["Δ corte 0"]), 4)} ± ${decimal(Number(f["± Δ corte 0"]), 4)}`, numerica: true },
                 ]}
               />
+              <h3>Una regla del juego: sin material para dar mate no se gana</h3>
+              <p>
+                Al probar la app apareció un error: con dama, torre y alfil contra el rey solo, pero 1,3 segundos en el
+                reloj, el modelo le daba 17 % de ganar al rey solo. Eso es imposible: sin material para dar mate no se
+                gana ni por tiempo; si se cae la bandera del rival, son tablas. Ahora cada corte sabe si a cada lado le
+                alcanza el material para dar mate (mirando sólo el tablero de ese momento), y atrás del bosque va esa
+                regla: la victoria imposible queda en 0. En las {entero(modelo.regla_mate.filas)} filas de test donde un
+                solo lado puede dar mate, la log-loss baja de {decimal(modelo.regla_mate.log_loss_sin_regla, 3)} a{" "}
+                {decimal(modelo.regla_mate.log_loss_con_regla, 3)}.
+              </p>
+              <Tabla
+                filas={modelo.regla_mate.tabla}
+                columnas={[
+                  { titulo: "Reloj del que puede ganar", valor: (f) => String(f["reloj del que puede ganar"]) },
+                  { titulo: "Filas", valor: (f) => entero(Number(f.filas)), numerica: true },
+                  { titulo: "Real: gana / tablas", valor: (f) => `${decimal(Number(f["real: gana el que puede"]), 1)} % / ${decimal(Number(f["real: tablas"]), 1)} %`, numerica: true },
+                  { titulo: "Sin regla: gana el que no puede", valor: (f) => `${decimal(Number(f["sin regla: gana el que no puede"]), 1)} %`, numerica: true },
+                  { titulo: "Con regla: gana / tablas", valor: (f) => `${decimal(Number(f["con regla: gana el que puede"]), 1)} % / ${decimal(Number(f["con regla: tablas"]), 1)} %`, numerica: true },
+                ]}
+              />
               <h3>El resultado en el test</h3>
               <p>
                 Log-loss {decimal(test.log_loss)} contra {decimal(test["log_loss piso"])} del piso (

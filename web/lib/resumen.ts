@@ -57,6 +57,7 @@ export type Resumen = {
     grilla: Fila[];
     busqueda_iteraciones: number;
     calibracion: { tabla: Fila[]; elegida: string; parametros: Record<string, unknown> | null };
+    regla_mate: { filas: number; partidas: number; log_loss_sin_regla: number; log_loss_con_regla: number; tabla: Fila[] };
     mejores_hiperparametros: Record<string, number | string>;
     balanceo: { diferencia: number; desvio: number; recall_empate_sin: number; recall_empate_con: number; se_balancea: boolean };
     ratings_rivales: Fila[];
