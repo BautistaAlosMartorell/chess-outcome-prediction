@@ -419,7 +419,10 @@ probabilidades y ningún calibrador pasó la regla. Atrás del bosque va una reg
 0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos; duración: MAE 22,788
 frente a 28,357 plies.
 Lo que pidió la devolución de la Entrega 3 está en
-[`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md). El período de test
+[`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md), junto con la
+verificación de realismo del modelo final y sus limitaciones conocidas (el rival casi sin reloj,
+ventajas de material muy grandes y tablas muy probables: en esos extremos el modelo es más prudente
+que la realidad). El período de test
 ya fue observado en la exploración y en versiones previas del 04; las decisiones
 actuales se toman por CV temporal, sin presentarlo como un holdout nuevo.
 Las pruebas de la API (`tests/test_api.py`) se saltean si no está instalado

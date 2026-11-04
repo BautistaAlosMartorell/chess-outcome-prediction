@@ -86,6 +86,62 @@ Dama ganada: +27,2 y +25,6 puntos. La importancia por permutación se mide sobre
 regla: con la regla, desordenar `puede_dar_mate_*` le diría a quien ganó que no podía ganar, y eso
 mediría la regla, no lo que aprendió el modelo.
 
+## Verificación de realismo y limitaciones conocidas
+
+Revisión del 04/11/2026 del modelo final de 48 columnas, hecha fuera del notebook. Se armaron train
+y test igual que las celdas 2, 4 y 5 del notebook 04 (con los historiales de rivales), se predijo con
+`models/modelo_en_vivo.joblib` y se comparó lo predicho con lo que pasó. No cambió ningún número del
+modelo: esto sirve para saber qué esperar y dónde no confiar tanto.
+
+**Lo que está bien.**
+
+- Reproduce el reporte: log-loss 0,7905 y 62,28 % de aciertos en 319.284 filas de test (20.080
+  partidas).
+- Calibración por clase, en deciles de probabilidad: el error medio es de 1,3 puntos en Gana Blancas,
+  0,9 en Empate y 1,3 en Gana Negras; el peor decil se aleja 3,3 puntos. El promedio de cada tramo
+  queda a menos de 1 punto de lo real. Por ejemplo, en 95–120 da 17,4 % de tablas y se dieron 18,3 %.
+- Cuando el modelo da 80 % o más, acierta el 90,0 %; con 90 % o más, el 95,3 %.
+- Rating antes de mover (ply 0): sube parejo con la diferencia. Con +300 o más para blancas da
+  82,5 % contra 85,2 % real; entre −50 y +50 da 47,7 % contra 49,5 %.
+- Material: hasta 8 puntos de ventaja, P(gana el que va arriba) queda casi siempre a menos de 2
+  puntos de lo real en todos los tramos.
+- Regla de mate: las 2.417 filas de test donde un lado no puede dar mate tienen 0 % para ese lado,
+  y en la realidad ese lado no ganó ninguna.
+- Sobreajuste: en 8.000 partidas de train (que el modelo vio) da 0,715 y en test 0,790. Es la
+  diferencia normal de un bosque. Con fuga, el test se acercaría al train.
+- Las partidas donde el que terminó ganando tenía menos de 5 % en algún corte son 582 de 20.080, y
+  son sobre todo tablas inesperadas: repetición (31 %), ahogado (17 %), tiempo contra material
+  insuficiente (15 %), material insuficiente (15 %).
+
+**Limitaciones conocidas.** Las cuatro van en la misma dirección: en los extremos el modelo es más
+prudente que la realidad, nunca exagera.
+
+1. **El rival casi sin reloj.** Desde el ply 40, con material parejo (±1), según la fracción de reloj
+   que le queda al que tiene menos:
+
+   | Fracción del rival | Filas | Modelo: gana el de más reloj | Real | Modelo: tablas | Real |
+   |---|---|---|---|---|---|
+   | ≤ 2 % | 1.258 | 77,5 | 89,8 | 10,5 | 5,3 |
+   | 2–5 % | 3.434 | 69,4 | 74,3 | 13,8 | 10,9 |
+   | 5–10 % | 7.244 | 62,9 | 65,3 | 16,3 | 16,1 |
+   | 10 % o más | 71.404 | 51–58 | 51–60 | — | — |
+
+   Con 2 segundos o menos en el reloj del rival da 78–80 %, y en la realidad gana el 93–95 %. Pesa
+   más en bullet al final de la partida: ahí el error de la clase elegida es de 4,5–4,9 puntos (del
+   ply 65 al 120; 3,4 entre 45 y 60), contra 1–3 en los otros ritmos y tramos. Es la misma familia que el error del rey solo:
+   con el reloj casi en cero el bosque promedia hojas con situaciones distintas.
+2. **Ventajas de material muy grandes.** Con 9 puntos o más da de 3 a 6 puntos menos que lo real.
+   Entre los plies 45 y 60 da 75,4 % contra 81,5 %; antes de la búsqueda aleatoria la diferencia era
+   de 6,4 puntos.
+3. **Tablas muy probables.** Cuando da 50–70 % de tablas, se dan 63,5 % (370 filas). Cuando da más de
+   70 %, se dan 94,9 %, aunque son sólo 39 filas.
+4. **Cobertura de rating.** En el ply 0 de test, al 51,5 % de las partidas le falta el rating previo
+   de alguno de los dos lados. Ahí el modelo usa sólo lo que tiene.
+
+Si se quiere atacar alguna, la primera es la del reloj: es la que más se ve en la app, en finales de
+bullet y blitz. Cualquier cambio en el modelo implica otra corrida del notebook 04, de unos 85
+minutos, y volver a medir todo esto.
+
 No se usa un motor como Stockfish: el modelo aprende de partidas reales qué suele pasar
 entre personas de cierto nivel, con cierto material y cierto reloj, no cuál es la mejor
 jugada teórica.
