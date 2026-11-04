@@ -3,8 +3,8 @@
 Requieren el modelo local del notebook 04; las pruebas de población/calibración
 requieren además los datos regenerables. Las tolerancias amplias se fijan como
 contratos de comportamiento, no como las métricas exactas de una corrida.
-El artefacto actual incumple el contrato de +15 puntos por ganar la dama en
-apertura: se conserva el fallo, explicado en plan-entrega-3.md.
+El modelo de la Entrega 3 incumplía el contrato de +15 puntos por ganar la dama en
+apertura (+11,6 y +6,3); el de la búsqueda aleatoria lo cumple (+24,1 y +24,0).
 """
 
 from pathlib import Path
