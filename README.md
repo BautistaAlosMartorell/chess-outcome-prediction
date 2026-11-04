@@ -238,6 +238,7 @@ por `GameUrl`.
 | `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
 | `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte (`movilidad`: jugadas legales del bando que mueve). |
 | `material_colgado_*`, `ataques_al_rey_*`, `peones_pasados_*`, `movilidad_*` | Calidad de la posición de cada bando: puntos de piezas atacadas y sin defensor, ataques rivales sobre la casilla del rey y sus vecinas, peones pasados y jugadas posibles (le toque mover o no). |
+| `puede_dar_mate_*` | Si las piezas de cada bando en el corte alcanzan para dar mate (`python-chess`, `has_insufficient_material`). Con rey solo o rey y una pieza menor no se gana ni por tiempo; el modelo final lleva esa regla atrás (`src/reglas.py`). |
 | `reloj_*_seg`, `reloj_frac_*`, `diferencia_reloj_seg` | Reloj restante de cada bando, en segundos y como fracción del tiempo base. |
 | `gasto_reciente_*_seg` | Segundos gastados en las últimas 5 jugadas propias. NaN en el corte 0 (todavía no hubo jugadas). |
 
@@ -367,7 +368,7 @@ npm run dev
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
 
-La app carga el modelo de 46 columnas. Para jugadores importados envía
+La app carga el modelo de 48 columnas. Para jugadores importados envía
 observaciones individuales del historial al Pipeline; éste calcula rating, su antigüedad,
 la diferencia de rating y la forma con cierres estrictamente anteriores al inicio. Un
 rating cargado a mano se toma como actual (antigüedad 0). En partidas jugadas en la app, ese inicio
@@ -406,15 +407,17 @@ conserva; diagnóstico y alcance en [el mapa de Entrega 3](docs/entregas/plan-en
 Lo que marcó la devolución de la Entrega 2 y cómo se resolvió cada pedido está en
 [`docs/entregas/devolucion-entrega-2.md`](docs/entregas/devolucion-entrega-2.md).
 
-El modelo final del 04 es un random forest de 46 columnas: contexto, posición y
-relojes (con material colgado, peones pasados y movilidad), forma reciente y el rating de los dos lados con su antigüedad, diferencia y
+El modelo final del 04 es un random forest de 48 columnas: contexto, posición y
+relojes (con material para dar mate, material colgado, ataques al rey y movilidad), forma reciente y el rating de los dos lados con su antigüedad, diferencia y
 promedio, con historial causal dentro del Pipeline. El rating de cada rival sale de las
 partidas ya descargadas (`player_history_payloads(..., rivales=True)`): la primera
 versión de la Entrega 3 sólo tenía los dos ratings en 185 de 80.314 partidas de train y
 respondía al revés a la diferencia de rating. Sus hiperparámetros salen de una
 búsqueda aleatoria (`RandomizedSearchCV`) en el bosque y el boosting; se probó calibrar las
-probabilidades y ningún calibrador pasó la regla. En test: log-loss 0,791 frente a 0,936
-del piso (15,54 % menos) y 62,2 % de aciertos; duración: MAE 22,797 frente a 28,357 plies.
+probabilidades y ningún calibrador pasó la regla. Atrás del bosque va una regla del juego
+(`src/reglas.py`): un lado sin material para dar mate tiene 0 % de ganar. En test: log-loss
+0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos; duración: MAE 22,788
+frente a 28,357 plies.
 Lo que pidió la devolución de la Entrega 3 está en
 [`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md). El período de test
 ya fue observado en la exploración y en versiones previas del 04; las decisiones

@@ -39,7 +39,7 @@ El artefacto final se copia explícitamente y **no entra en Git**.
 4. Configurar `CORS_ORIGINS` con el origen exacto de la web, sin barra final. Para
    varios orígenes, separarlos por comas. Los dominios de previews se agregan
    explícitamente; no se habilitan todos los dominios de Internet.
-5. Comprobar `https://<dominio-del-space>/salud`: debe informar 46 columnas y el corte
+5. Comprobar `https://<dominio-del-space>/salud`: debe informar 48 columnas y el corte
    temporal del notebook 04. Guardar la URL real en el README al publicar.
 
 El servicio puede necesitar arrancar después de un período de reposo. Antes de la
