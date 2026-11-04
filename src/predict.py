@@ -36,12 +36,15 @@ CLOCKS = [
     "reloj_blancas_seg", "reloj_negras_seg", "reloj_frac_blancas", "reloj_frac_negras", "diferencia_reloj_seg",
     "gasto_reciente_blancas_seg", "gasto_reciente_negras_seg",
 ]
+# Si a cada lado le alcanza el material para dar mate. Es una regla del juego, no una
+# preferencia: entra siempre (ConReglaDeMate la necesita) y el notebook 04 sólo la mide.
+MATE = ["puede_dar_mate_blancas", "puede_dar_mate_negras"]
 # Posición y relojes en el corte (src/live_features.py). corte_ply es el ply actual.
 LIVE = [
     "corte_ply", "turno_blancas", "en_jaque", "movilidad", "promociones", "balance_material",
     "material_no_peon_frac", "material_blancas", "material_negras", "jaques_blancas", "jaques_negras",
     "capturas_blancas", "capturas_negras", "enroco_blancas", "enroco_negras", "derechos_enroque_blancas",
-    "derechos_enroque_negras", *CLOCKS,
+    "derechos_enroque_negras", *MATE, *CLOCKS,
 ]
 # Calidad de la posición más allá del conteo de material (src/live_features.py). El
 # notebook 04 prueba cada grupo por separado y deja los que superan su regla.

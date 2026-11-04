@@ -197,6 +197,10 @@ def _snapshot(
         row[f"ataques_al_rey_{suffix}"] = _king_attacks(board, color)
         row[f"peones_pasados_{suffix}"] = _passed_pawns(board, color)
         row[f"movilidad_{suffix}"] = _side_mobility(board, color)
+        # Rule of the game, read off the current board: with a lone king (or king and one minor
+        # piece) this side can never win, not even on time; python-chess only says "cannot"
+        # when no legal sequence could mate.
+        row[f"puede_dar_mate_{suffix}"] = not board.has_insufficient_material(color)
         if clocks is None:
             row[f"reloj_{suffix}_seg"] = None
             row[f"reloj_frac_{suffix}"] = None
