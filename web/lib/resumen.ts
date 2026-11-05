@@ -82,7 +82,15 @@ export type Resumen = {
       recall_empate: number;
       "confianza media": number;
     }[];
-    confusion_por_tramo: { tramo: string; real: string; predicho: string; filas: number; porcentaje_fila: number }[];
+    // porcentaje_columna is null when the model never predicted that class in the band.
+    confusion_por_tramo: {
+      tramo: string;
+      real: string;
+      predicho: string;
+      filas: number;
+      porcentaje_fila: number;
+      porcentaje_columna: number | null;
+    }[];
     importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
     duracion_test: Fila[];
     rango_rating: [number, number];

@@ -55,6 +55,12 @@ export default function Proyecto() {
   const tramoFinal = tramos[tramos.length - 1];
   const recall = (tramo: string, clase: string) =>
     modelo.confusion_por_tramo.find((f) => f.tramo === tramo && f.real === clase && f.predicho === clase)?.porcentaje_fila ?? 0;
+  // Of the times the model said `clase`, how often it happened; null if it never said it in the band.
+  const precision = (tramo: string, clase: string) =>
+    modelo.confusion_por_tramo.find((f) => f.tramo === tramo && f.real === clase && f.predicho === clase)
+      ?.porcentaje_columna ?? null;
+  // First band where the model predicts a draw at least once.
+  const primerTramoTablas = modelo.tramos.find((t) => precision(t, "Empate") !== null);
   const importancia = (columna: string, tramo: string) => {
     const fila = modelo.importancia_por_tramo.find((f) => f.columna === columna && f.tramo === tramo);
     if (!fila) throw new Error(`Falta la importancia de ${columna} en ${tramo}`);
@@ -409,7 +415,7 @@ export default function Proyecto() {
               <h3>La matriz de confusión, tramo por tramo</h3>
               <GraficoAltair
                 src="/app/graficos/confusion.json"
-                descripcion="Matriz de confusión del tramo elegido en el menú: de cada resultado real, qué porcentaje predijo el modelo."
+                descripcion="Matriz de confusión del tramo elegido en el menú, leída como recall (de cada resultado real, qué porcentaje predijo el modelo) o como precisión (de cada predicción, qué porcentaje pasó)."
               />
               <p>
                 Antes de mover, cuando casi no tiene información, el modelo se inclina por blancas: reconoce el{" "}
@@ -418,6 +424,22 @@ export default function Proyecto() {
                 {decimal(recall(tramoFinal.tramo, "Gana Blancas"), 1)} % y {decimal(recall(tramoFinal.tramo, "Gana Negras"), 1)}{" "}
                 %). Las tablas casi nunca son la opción más probable: recién entre los plies {tramoFinal.tramo} reconoce el{" "}
                 {decimal(recall(tramoFinal.tramo, "Empate"), 1)} % de ellas.
+              </p>
+              <p>
+                La precisión lee la matriz al revés: de las veces que el modelo dijo algo, cuántas pasó. Antes de mover,
+                cuando dice que ganan blancas acierta el {decimal(precision(tramoInicial.tramo, "Gana Blancas") ?? 0, 1)} %
+                de las veces, y cuando dice negras, el {decimal(precision(tramoInicial.tramo, "Gana Negras") ?? 0, 1)} %.
+                Al final sube a {decimal(precision(tramoFinal.tramo, "Gana Blancas") ?? 0, 1)} % y{" "}
+                {decimal(precision(tramoFinal.tramo, "Gana Negras") ?? 0, 1)} %.
+                {primerTramoTablas ? (
+                  <>
+                    {" "}
+                    Las tablas no tienen precisión hasta los plies {primerTramoTablas}, porque antes el modelo nunca las
+                    elige. Cuando las elige entre los plies {tramoFinal.tramo}, acierta el{" "}
+                    {decimal(precision(tramoFinal.tramo, "Empate") ?? 0, 1)} %: rara vez las dice, pero cuando lo hace no
+                    es al azar.
+                  </>
+                ) : null}
               </p>
             </>
           }

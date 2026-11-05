@@ -16,7 +16,7 @@ antes de llegar a este, y qué falta validar con datos reales de volumen.
 ```
 src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG, más el historial dentro del Pipeline, la validación y la predicción del modelo (history_transformer, model_validation, predict) y la construcción de la app (app_charts con Altair, build_app)
 dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
-notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado
+notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado · 05 comparación entre cortes (log-loss, accuracy, población común, intervalos y confusión con recall y precisión; mide el modelo del 04, no decide)
 models/      modelo entrenado para la app — lo regenera el notebook 04, no se versiona
 api/         API de la app (FastAPI): sirve predecir() y consulta la PubAPI de Chess.com (dependencias en api/requirements.txt)
 web/         app de la Entrega 4 (Next.js): portada y tallo con los hallazgos, Explorá, jugar con relojes y analizar partidas de cualquier usuario; web/public/app la genera `python -m src.build_app` y se versiona

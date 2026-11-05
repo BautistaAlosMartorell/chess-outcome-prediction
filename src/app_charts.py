@@ -157,30 +157,53 @@ def acierto_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     return con_tema((lineas + puntos).properties(height=320))
 
 
-def confusion_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
-    """Matriz de confusión de un tramo, elegido con un menú: de cada resultado real, qué se predijo.
+VISTAS_CONFUSION = ["recall", "precision"]
+NOMBRE_VISTA_CONFUSION = ["Recall: de cada resultado real, qué dijo", "Precisión: de lo que dijo, qué pasó"]
 
-    ``filas`` tiene una fila por (tramo, real, predicho) con ``porcentaje_fila`` y ``filas``.
+
+def confusion_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """Matriz de confusión de un tramo, con dos menús: el tramo y la forma de leerla.
+
+    - Recall: % de la fila. De cada resultado real, qué predijo el modelo.
+    - Precisión: % de la columna. De cada predicción del modelo, qué pasó. Una clase que el
+      modelo nunca predijo en el tramo no tiene precisión: la celda queda en "—".
+
+    ``filas`` tiene una fila por (tramo, real, predicho) con ``filas``, ``porcentaje_fila`` y
+    ``porcentaje_columna`` (``src.metricas_tramo.confusion_por_tramo``).
     """
     tramo = alt.param(name="tramo", value=tramos[0],
                       bind=alt.binding_select(options=tramos, name="Plies jugados "))
-    base = alt.Chart(filas).transform_filter(alt.datum.tramo == tramo).encode(
-        x=alt.X("predicho:N", sort=RESULT_ORDER, title="Lo que dijo el modelo",
-                axis=alt.Axis(labelAngle=0, orient="top")),
-        y=alt.Y("real:N", sort=RESULT_ORDER, title="Cómo terminó"),
+    vista = alt.param(name="vista", value=VISTAS_CONFUSION[0],
+                      bind=alt.binding_radio(options=VISTAS_CONFUSION, labels=NOMBRE_VISTA_CONFUSION, name=" "))
+    base = (
+        alt.Chart(filas)
+        .transform_filter(alt.datum.tramo == tramo)
+        .transform_calculate(valor=f"{vista.name} === 'precision' ? datum.porcentaje_columna : datum.porcentaje_fila")
+        .transform_calculate(medido="isValid(datum.valor) && isFinite(datum.valor)")
+        .encode(
+            x=alt.X("predicho:N", sort=RESULT_ORDER, title="Lo que dijo el modelo",
+                    axis=alt.Axis(labelAngle=0, orient="top")),
+            y=alt.Y("real:N", sort=RESULT_ORDER, title="Cómo terminó"),
+        )
     )
     celdas = base.mark_rect(stroke="#ffffff", strokeWidth=2).encode(
-        color=alt.Color("porcentaje_fila:Q", title="% de la fila", legend=None,
-                        scale=alt.Scale(domain=[0, 100], range=["#f6f1e7", COLOR_MODELO])),
+        color=alt.condition(
+            "datum.medido",
+            alt.Color("valor:Q", title="%", legend=None, scale=alt.Scale(domain=[0, 100], range=["#f6f1e7", COLOR_MODELO])),
+            alt.value(LINEA),
+        ),
         tooltip=[alt.Tooltip("real:N", title="Real"), alt.Tooltip("predicho:N", title="Predicho"),
-                 alt.Tooltip("porcentaje_fila:Q", title="% de la fila", format=".1f"),
+                 alt.Tooltip("porcentaje_fila:Q", title="% de la fila (recall)", format=".1f"),
+                 alt.Tooltip("porcentaje_columna:Q", title="% de la columna (precisión)", format=".1f"),
                  alt.Tooltip("filas:Q", title="Filas", format=",")],
     )
-    textos = base.mark_text(fontSize=15).encode(
-        text=alt.Text("porcentaje_fila:Q", format=".0f"),
-        color=alt.condition(alt.datum.porcentaje_fila > 55, alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
+    textos = base.transform_calculate(
+        texto="datum.medido ? format(datum.valor, '.0f') : '—'"
+    ).mark_text(fontSize=15).encode(
+        text=alt.Text("texto:N"),
+        color=alt.condition("datum.medido && datum.valor > 55", alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
     )
-    return con_tema((celdas + textos).add_params(tramo).properties(height=240))
+    return con_tema((celdas + textos).add_params(tramo, vista).properties(height=240))
 
 
 def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
