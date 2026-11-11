@@ -30,6 +30,10 @@ from src import app_charts
 from src.app_trivia import construir_trivia
 from src.app_data import REPORTE_EDA, REPORTE_MODELADO, leer_reporte
 from src.clean_data import DataCleaner
+from src.comparacion_cortes import (
+    diferencias_entre_cortes, intervalos, metricas_por_corte, poblacion_comun, replicas_bootstrap,
+)
+from src.comparacion_familias import FAMILIAS_POR_PEDAZO, diferencia_pareada, media_y_desvio, metricas_por_pedazo
 from src.metricas_tramo import TRAMOS, confusion_por_tramo, metricas_por_tramo, predicha
 from src.history_transformer import HISTORY_INPUTS, attach_player_histories, player_history_payloads
 from src.player_selection import load_selection
@@ -46,6 +50,13 @@ PARTIDAS_EXPLORA = 2000
 TOLERANCIA = 1e-6
 # Above this the page gets slow to load; the test in tests/test_build_app.py checks it too.
 MAXIMO_MB = 5.0
+# Comparison between cuts, as in notebook 04 (section 8): same common population and bootstrap.
+PLY_COMUN = 60
+REPLICAS = 1000
+SERIE_TODAS = "Todas las que siguen en juego"
+SERIE_COMUN = f"Las mismas partidas (llegan al ply {PLY_COMUN})"
+# Families shown in the app (notebook 05): the floor, the simple model and the two tuned ensembles.
+PISO_CV, SIMPLE_CV = "Piso (prior)", "Regresión logística"
 
 
 def raw_paths(config: dict[str, Any]) -> dict[str, Path]:
@@ -168,6 +179,63 @@ def por_tramo(pred: pd.DataFrame, reporte: dict[str, Any]) -> tuple[pd.DataFrame
     return metricas, confusion
 
 
+def comparacion_entre_cortes(pred: pd.DataFrame, clase_piso: str, cortes_referencia: list[int],
+                             random_state: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Accuracy y ganancia sobre el piso por corte, con IC 95 %, y los saltos entre cortes.
+
+    Lo mismo que la sección 8 del notebook 04, con las mismas filas, semilla y réplicas:
+    todas las partidas que siguen en juego en cada corte, y la población común (las que
+    llegan al ply 60, en todos sus cortes). Los saltos son sobre la población común.
+    """
+    comun = poblacion_comun(pred, PLY_COMUN)
+    filas, replicas_comun, puntual_comun = [], None, None
+    for serie, poblacion in [(SERIE_TODAS, pred), (SERIE_COMUN, comun)]:
+        puntual = metricas_por_corte(poblacion, clase_piso)
+        replicas = replicas_bootstrap(poblacion, clase_piso, n_replicas=REPLICAS, random_state=random_state)
+        ci = intervalos(replicas, puntual)
+        ci = ci[ci["metrica"].isin(["accuracy", "puntos sobre piso", "mejora log_loss"])]
+        ancho = ci.pivot(index="corte_ply", columns="metrica", values=["valor", "bajo", "alto"])
+        ancho.columns = [m if v == "valor" else f"{m} {v}" for v, m in ancho.columns]
+        ancho = ancho.join(puntual.set_index("corte_ply")[["partidas"]]).reset_index()
+        filas.append(ancho.assign(serie=serie))
+        if serie == SERIE_COMUN:
+            replicas_comun, puntual_comun = replicas, puntual
+    cortes = [c for c in cortes_referencia if c <= PLY_COMUN]
+    pares = list(zip(cortes[:-1], cortes[1:])) + [(cortes[0], cortes[-1])]
+    saltos = diferencias_entre_cortes(replicas_comun, puntual_comun, pares, metricas=["accuracy"])
+    return pd.concat(filas, ignore_index=True), saltos
+
+
+def familias_por_tramo(ruta: Path, reporte: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Log-loss y accuracy de cada familia por tramo, media ± desvío de los pedazos (notebook 05).
+
+    Lee lo que guardó el notebook 04 y, como el 05, falla si los ajustados no reproducen la
+    búsqueda del 04. Devuelve la tabla por tramo, las diferencias pedazo a pedazo del
+    elegido contra la logística y del otro ensamble contra el elegido, y el orden de los modelos.
+    """
+    pred = pd.read_parquet(ruta)
+    pred["modelo"] = pred["modelo"].astype(str)
+    elegido = f"{reporte['elegido']} ajustado"
+    otro = next(m for m in pred["modelo"].unique() if m.endswith(" ajustado") and m != elegido)
+    modelos = [PISO_CV, SIMPLE_CV, elegido, otro]
+    pred = pred[pred["modelo"].isin(modelos)]
+    grilla = pd.DataFrame(reporte["grilla"])
+    total = metricas_por_pedazo(pred).groupby("modelo")["log_loss"].mean()
+    for modelo in [elegido, otro]:
+        mejor = grilla.loc[grilla["familia"] == modelo.removesuffix(" ajustado"), "log_loss"].min()
+        if abs(total[modelo] - mejor) > TOLERANCIA:
+            raise ValueError(f"{modelo}: {total[modelo]:.6f} no coincide con la búsqueda del notebook 04 ({mejor:.6f})")
+    tabla = metricas_por_pedazo(pred, "tramo")
+    resumen_tramo = media_y_desvio(tabla, "tramo", ["log_loss", "accuracy"]).reset_index()
+    resumen_tramo["tramo"] = resumen_tramo["tramo"].astype(str)
+    diferencias = pd.concat([
+        diferencia_pareada(tabla, elegido, SIMPLE_CV, "tramo"),
+        diferencia_pareada(tabla, otro, elegido, "tramo"),
+    ], ignore_index=True)
+    diferencias["tramo"] = diferencias["tramo"].astype(str)
+    return resumen_tramo, diferencias, modelos
+
+
 def importancia_por_tramo(reporte: dict[str, Any]) -> pd.DataFrame:
     """Importancia por permutación (notebook 04) de las columnas líderes, una fila por (columna, tramo)."""
     largo = pd.DataFrame(reporte["importancia_por_tramo"])
@@ -234,7 +302,7 @@ def _registros(df: pd.DataFrame) -> list[dict[str, Any]]:
 def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, Any]], vivas: pd.DataFrame,
             eda: dict[str, Any], modelado: dict[str, Any], curva: pd.DataFrame, test: dict[str, float],
             artifact: dict[str, Any], n_explora: int, tramos: pd.DataFrame, confusion: pd.DataFrame,
-            importancia: pd.DataFrame) -> dict[str, Any]:
+            importancia: pd.DataFrame, comparaciones: dict[str, Any]) -> dict[str, Any]:
     """Los números que cita el texto de la app, todos calculados acá o leídos de los notebooks."""
     by_cut = curva.set_index("corte_ply")
     alive_60 = vivas[vivas["corte_ply"] == 60].set_index("TimeClass")
@@ -294,6 +362,7 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "confusion_por_tramo": _registros(confusion),
             "importancia_por_tramo": _registros(importancia),
             "rango_rating": artifact["rango_rating"],
+            **comparaciones,
         },
         "explora": {"partidas": n_explora, "niveles": list(config["elo"]["bandas"])},
     }
@@ -353,8 +422,19 @@ def main() -> None:
         curva.assign(serie="Modelo", log_loss=curva["modelo"]), curva.assign(serie="Piso", log_loss=curva["piso"]),
     ])[["serie", "corte_ply", "log_loss", "mejora", "partidas"]]
 
+    entre_cortes, saltos = comparacion_entre_cortes(pred, modelado["clase_piso"],
+                                                    config["live_prediction"]["cortes_referencia"], random_state)
+    familias, diferencias, modelos = familias_por_tramo(PROJECT_ROOT / FAMILIAS_POR_PEDAZO, modelado)
+    comparaciones = {
+        "ply_comun": PLY_COMUN,
+        "entre_cortes": _registros(entre_cortes),
+        "saltos_entre_cortes": _registros(saltos),
+        "familias_por_tramo": _registros(familias),
+        "familias_diferencias": _registros(diferencias),
+        "familias": modelos,
+    }
     escribir("resumen.json", resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
-                                     len(partidas), tramos, confusion, importancia))
+                                     len(partidas), tramos, confusion, importancia, comparaciones))
     escribir("graficos/datos.json", app_charts.partidas_vivas(vivas).to_dict())
     escribir("graficos/hallazgos.json", app_charts.senal_por_corte(eta2).to_dict())
     escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga).to_dict())
@@ -368,6 +448,8 @@ def main() -> None:
     escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict())
     escribir("graficos/explora.json",
              app_charts.explora(filas, partidas, list(config["elo"]["bandas"])))
+    escribir("graficos/cortes.json", app_charts.entre_cortes(entre_cortes, SERIE_TODAS, SERIE_COMUN).to_dict())
+    escribir("graficos/familias.json", app_charts.familias_por_tramo(familias, modelos, TRAMOS).to_dict())
     # Jugar and Analizar fill this one with the API's curve, move by move.
     escribir("graficos/curva.json", app_charts.curva_partida())
     logger.info("App construida en %.0f s", time.perf_counter() - started)

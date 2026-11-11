@@ -93,6 +93,33 @@ export type Resumen = {
     }[];
     importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
     rango_rating: [number, number];
+    // Comparison between cuts (notebook 04, section 8): test, bootstrap by game.
+    ply_comun: number;
+    entre_cortes: {
+      serie: string;
+      corte_ply: number;
+      partidas: number;
+      accuracy: number;
+      "accuracy bajo": number;
+      "accuracy alto": number;
+      "puntos sobre piso": number;
+      "puntos sobre piso bajo": number;
+      "puntos sobre piso alto": number;
+    }[];
+    saltos_entre_cortes: { desde: number; hasta: number; cambio: number; bajo: number; alto: number; "distinto de cero": boolean }[];
+    // The model families band by band, in cross-validation (notebook 05).
+    familias: string[];
+    familias_por_tramo: { modelo: string; tramo: string; log_loss: number; "± log_loss": number; accuracy: number }[];
+    familias_diferencias: {
+      tramo: string;
+      metrica: string;
+      modelo: string;
+      referencia: string;
+      diferencia: number;
+      "± diferencia": number;
+      "le gana": boolean;
+      pierde: boolean;
+    }[];
   };
   explora: { partidas: number; niveles: string[] };
 };

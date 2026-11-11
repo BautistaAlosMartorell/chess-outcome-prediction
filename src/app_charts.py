@@ -373,6 +373,69 @@ def curva_partida() -> dict:
                  alt.Tooltip("gana_blancas:Q", title="Gana blancas", format=".0%"),
                  alt.Tooltip("empate:Q", title="Tablas", format=".0%"),
                  alt.Tooltip("gana_negras:Q", title="Gana negras", format=".0%")],
-    ).add_params(hover)
+    ).properties(name="jugadas").add_params(hover)  # a fixed name keeps the spec stable between builds
     capas = alt.layer(areas, mitad, momentos, actual, guia, selector).add_params(ply_maximo)
     return con_tema(capas.properties(height=240)).to_dict()
+
+
+def entre_cortes(filas: pd.DataFrame, todas: str, comun: str) -> alt.Chart:
+    """Comparación entre cortes: aciertos del modelo en cada corte, con su IC 95 %.
+
+    ``filas`` tiene una fila por (serie, corte_ply) con ``accuracy``, ``accuracy bajo`` y
+    ``accuracy alto`` (bootstrap por partida). Las dos series son el mismo modelo sobre dos
+    poblaciones: todas las partidas que siguen en juego, y siempre las mismas (las que
+    llegan al ply 60). Por eso van del color del modelo y se distinguen por el trazo.
+    """
+    base = alt.Chart(filas).encode(
+        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[0, 120])),
+    )
+    trazo = alt.StrokeDash("serie:N", title=None, scale=alt.Scale(domain=[comun, todas], range=[[1, 0], [6, 4]]),
+                           legend=alt.Legend(labelLimit=0, symbolType="stroke", symbolStrokeColor=COLOR_MODELO))
+    eje_y = alt.Y("accuracy:Q", title="Aciertos del modelo (IC 95 %)", axis=alt.Axis(format="%"),
+                  scale=alt.Scale(domain=[0.45, 0.75]))
+    # The band shares the line's y scale (and its domain), so it never pulls the axis to zero.
+    banda = base.mark_area(opacity=0.18, color=COLOR_MODELO).encode(
+        y=alt.Y("accuracy bajo:Q", scale=alt.Scale(domain=[0.45, 0.75]), title=None), y2="accuracy alto:Q",
+        detail="serie:N",
+    )
+    linea = base.mark_line(strokeWidth=2.5, color=COLOR_MODELO).encode(y=eje_y, strokeDash=trazo)
+    puntos = base.mark_point(filled=True, size=40, color=COLOR_MODELO).encode(
+        y="accuracy:Q",
+        tooltip=[alt.Tooltip("serie:N", title="Partidas"), alt.Tooltip("corte_ply:Q", title="Plies jugados"),
+                 alt.Tooltip("partidas:Q", title="Partidas de test", format=","),
+                 alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%"),
+                 alt.Tooltip("accuracy bajo:Q", title="IC 95 %: desde", format=".1%"),
+                 alt.Tooltip("accuracy alto:Q", title="IC 95 %: hasta", format=".1%"),
+                 alt.Tooltip("puntos sobre piso:Q", title="Puntos sobre el piso", format=".1f")],
+    )
+    return con_tema((banda + linea + puntos).properties(height=300))
+
+
+# The chosen model keeps the model's color and the floor the floor's; the other two get their own.
+COLOR_LOGISTICA, COLOR_BOOSTING = "#3f6fa3", "#7a5c99"
+
+
+def familias_por_tramo(filas: pd.DataFrame, modelos: list[str], tramos: list[str]) -> alt.Chart:
+    """Las familias del notebook 04, tramo por tramo, en validación cruzada (notebook 05).
+
+    ``filas`` tiene una fila por (modelo, tramo) con ``log_loss`` y ``± log_loss``: media y
+    desvío de los pedazos. ``modelos`` va en orden: piso, logística, elegido, el otro ensamble.
+    """
+    escala = alt.Scale(domain=modelos, range=[COLOR_PISO, COLOR_LOGISTICA, COLOR_MODELO, COLOR_BOOSTING])
+    base = alt.Chart(filas).transform_calculate(
+        bajo="datum.log_loss - datum['± log_loss']", alto="datum.log_loss + datum['± log_loss']",
+    ).encode(
+        x=_eje_tramo(tramos),
+        xOffset=alt.XOffset("modelo:N", sort=modelos),
+        color=alt.Color("modelo:N", title=None, scale=escala, sort=modelos),
+    )
+    barras = base.mark_rule(strokeWidth=1.5).encode(y="bajo:Q", y2="alto:Q")
+    puntos = base.mark_point(filled=True, size=60).encode(
+        y=alt.Y("log_loss:Q", title="Log-loss en validación (media ± desvío; menos es mejor)",
+                scale=alt.Scale(zero=False)),
+        tooltip=[alt.Tooltip("modelo:N", title="Modelo"), alt.Tooltip("tramo:O", title="Plies"),
+                 alt.Tooltip("log_loss:Q", title="Log-loss", format=".4f"),
+                 alt.Tooltip("± log_loss:Q", title="Desvío", format=".4f"),
+                 alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%")],
+    )
+    return con_tema((barras + puntos).properties(height=320))

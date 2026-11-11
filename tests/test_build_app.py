@@ -143,7 +143,8 @@ class GeneratedFilesTest(unittest.TestCase):
     def test_files_exist_and_stay_light(self):
         for name in ["resumen.json", "graficos/datos.json", "graficos/hallazgos.json", "graficos/modelo.json",
                      "graficos/explora.json", "graficos/acierto.json", "graficos/confusion.json",
-                     "graficos/importancia.json", "graficos/curva.json"]:
+                     "graficos/importancia.json", "graficos/curva.json", "graficos/cortes.json",
+                     "graficos/familias.json"]:
             path = self.dir / name
             self.assertTrue(path.exists(), name)
             self.assertLess(path.stat().st_size / 1e6, MAXIMO_MB, name)
@@ -170,6 +171,27 @@ class GeneratedFilesTest(unittest.TestCase):
         self.assertEqual({p["name"] for p in spec["params"]}, {"hover", "ply_maximo"})
         for column in ["gana_blancas", "empate", "gana_negras"]:
             self.assertIn(column, text)
+
+
+    def test_cut_comparison_is_consistent(self):
+        model = self.resumen["modelo"]
+        common = {r["corte_ply"]: r for r in model["entre_cortes"] if r["serie"].startswith("Las mismas")}
+        everyone = {r["corte_ply"]: r for r in model["entre_cortes"] if not r["serie"].startswith("Las mismas")}
+        ply = model["ply_comun"]
+        # The common population is the same games in every cut, and at its last cut it is everyone left.
+        self.assertEqual({r["partidas"] for r in common.values()}, {everyone[ply]["partidas"]})
+        self.assertAlmostEqual(common[ply]["accuracy"], everyone[ply]["accuracy"])
+        for row in model["entre_cortes"]:
+            self.assertLessEqual(row["accuracy bajo"], row["accuracy"])
+            self.assertLessEqual(row["accuracy"], row["accuracy alto"])
+        total = next(s for s in model["saltos_entre_cortes"] if s["desde"] == 0 and s["hasta"] == ply)
+        self.assertAlmostEqual(total["cambio"], common[ply]["accuracy"] - common[0]["accuracy"])
+
+    def test_families_cover_every_band(self):
+        model = self.resumen["modelo"]
+        self.assertEqual(len(model["familias"]), 4)
+        self.assertEqual(len(model["familias_por_tramo"]), 4 * len(model["tramos"]))
+        self.assertEqual(model["familias"][2], f"{model['familia']} ajustado")
 
 
 if __name__ == "__main__":
