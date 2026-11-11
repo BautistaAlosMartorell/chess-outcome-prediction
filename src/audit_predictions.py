@@ -38,9 +38,6 @@ def summarize(frame: pd.DataFrame, groups: list[str]) -> list[dict]:
             row[f"pred_{label}"] = float(p[:, i].mean())
             row[f"real_{label}"] = float(actual[:, i].mean())
         row["max_error_pp"] = float(100 * np.abs(p.mean(axis=0) - actual.mean(axis=0)).max())
-        if "duration_pred" in group:
-            row["mae_plies"] = float((group["duration_pred"] - group["plies_restantes"]).abs().mean())
-            row["duration_bias_plies"] = float((group["duration_pred"] - group["plies_restantes"]).mean())
         output.append(row)
     return output
 
@@ -87,8 +84,6 @@ def run(root: Path) -> dict:
     # Bypassing history for controlled probes must match the complete Pipeline.
     np.testing.assert_allclose(p[:128], classifier.predict_proba(features.iloc[:128])[:, class_order], atol=1e-12)
     rows[["p0", "p1", "p2"]] = p
-    if "plies_restantes" in artifact:
-        rows["duration_pred"] = artifact["plies_restantes"].predict(features).clip(min=1)
     ratings = derived[["elo_blancas_previo", "elo_negras_previo"]]
     rows["cobertura"] = np.select(
         [ratings.notna().all(axis=1), ratings.notna().any(axis=1)],

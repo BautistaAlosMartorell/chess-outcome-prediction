@@ -132,7 +132,7 @@ no sobre "ajedrez online" en general.
 |---|---|---|
 | 1 | Datos tidy | La tabla base tiene una fila por partida; la de cortes, una fila por (partida, corte). Las dos con una columna por variable. |
 | 2 | Unidad alineada | La pregunta es sobre la partida en un momento dado, y la tabla de cortes es exactamente eso. |
-| 3 | Algo modelable | `resultado` en cada corte es el target de clasificación y `plies_restantes`, el de regresión. |
+| 3 | Algo modelable | `resultado` en cada corte es el target de clasificación. |
 | 4 | Descarga automatizada | La PubAPI se consulta sin intervención manual ni credenciales. |
 | 5 | Volumen | La corrida oficial produjo 100.396 partidas y 1.559.622 filas de cortes. |
 | 6 | Columnas informativas | Hay rating previo, color, apertura, ritmo, relojes, material y posición en cada corte, resultado y fecha. |
@@ -153,7 +153,8 @@ Dockerfile                                 imagen de Airflow con las dependencia
 notebooks/01_data_ingestion_verification.ipynb     Entrega 1: pipeline narrado y verificación
 notebooks/02_eda_hipotesis.ipynb                   Entrega 2: perfil y fugas, cuatro hipótesis antes de la partida (Parte A) y cuatro durante, sobre la tabla de cortes (Parte B), + anexo de matchmaking
 notebooks/03_prediccion_en_vivo.ipynb              Entrega 3 (exploración): curva por corte, desbalance de Empate y matchup de apertura
-notebooks/04_modelado.ipynb                        Entrega 3: modelado formal (piso, tres familias con CV temporal por partida, búsqueda aleatoria, ablación, calibración, test una vez, métricas por tramo) y modelo guardado para la app
+notebooks/04_modelado.ipynb                        Entrega 3: modelado formal (piso, tres familias con CV temporal por partida, búsqueda aleatoria, ablación, calibración, test una vez, métricas por tramo, comparación entre cortes con intervalos) y modelo guardado para la app
+notebooks/05_comparacion_familias.ipynb           Entrega 4: las familias del 04 corte por corte y tramo por tramo, con media ± desvío de los pedazos (no decide)
 src/download_data.py                       descarga idempotente por cuenta (el DAG la paraleliza con .expand())
 src/clean_data.py                          parseo de JSON + PGN y limpieza
 src/feature_engineering.py                 características analíticas derivadas (incluye el historial del matchup de apertura)
@@ -210,7 +211,7 @@ models/                                    modelo entrenado (lo regenera el note
 | Feature | Tipo | Descripción |
 |---|---|---|
 | `resultado` | category | Gana blancas, gana negras o empate. Target de clasificación. |
-| `cantidad_jugadas` | int | Cantidad de medio-movimientos o plies. Target de regresión. |
+| `cantidad_jugadas` | int | Cantidad de medio-movimientos o plies. Mira el final de la partida: no entra al modelo. |
 | `tiempo_base_seg`, `incremento_seg` | int | Componentes del control de tiempo. |
 | `diferencia_elo` | int | `WhiteElo - BlackElo`. |
 | `elo_promedio` | float | Rating promedio de ambos jugadores. |
@@ -233,7 +234,7 @@ por `GameUrl`.
 | Columna | Descripción |
 |---|---|
 | `corte_ply` | Plies jugados en el corte: 0, 5, 10, …, 120 (uno cada 5). El EDA y el notebook 03 usan los de referencia: 0, 10, 20, 30, 40 y 60. |
-| `resultado`, `plies_restantes` | Targets: resultado final y plies que faltan desde el corte. |
+| `resultado`, `plies_restantes` | `resultado` es el target. `plies_restantes` (plies que faltan desde el corte) queda en la tabla como descripción; la duración ya no se modela. |
 | `material_*`, `balance_material`, `material_no_peon_frac` | Material de cada bando (peón 1, caballo/alfil 3, torre 5, dama 9), su diferencia y la fracción de material sin peones que queda. |
 | `jaques_*`, `capturas_*`, `promociones` | Acumulados hasta el corte. |
 | `enroco_*`, `derechos_enroque_*`, `en_jaque`, `movilidad`, `turno_blancas` | Estado de la posición en el corte (`movilidad`: jugadas legales del bando que mueve). |
@@ -362,8 +363,7 @@ npm run dev
   hacerle clic se ve la curva de probabilidades de esa partida.
 - **Jugar:** dos personas en la misma computadora, con reloj. Después de cada jugada, la
   barra muestra la probabilidad de que ganen las blancas, de tablas o de que ganen las
-  negras, y cuántas jugadas faltan. Cada lado puede traer su ficha de Chess.com (rating y
-  últimas partidas).
+  negras. Cada lado puede traer su ficha de Chess.com (rating y últimas partidas).
 - **Analizar:** cualquier usuario de Chess.com (no sólo los de la muestra). La app trae
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
@@ -416,8 +416,9 @@ respondía al revés a la diferencia de rating. Sus hiperparámetros salen de un
 búsqueda aleatoria (`RandomizedSearchCV`) en el bosque y el boosting; se probó calibrar las
 probabilidades y ningún calibrador pasó la regla. Atrás del bosque va una regla del juego
 (`src/reglas.py`): un lado sin material para dar mate tiene 0 % de ganar. En test: log-loss
-0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos; duración: MAE 22,788
-frente a 28,357 plies.
+0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos. La duración restante,
+que la Entrega 3 modelaba como objetivo secundario, ya no se modela: el proyecto se concentra
+en quién gana.
 Lo que pidió la devolución de la Entrega 3 está en
 [`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md), junto con la
 verificación de realismo del modelo final y sus limitaciones conocidas (el rival casi sin reloj,

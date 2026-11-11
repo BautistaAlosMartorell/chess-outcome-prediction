@@ -7,7 +7,6 @@ export type Punto = {
   gana_blancas: number;
   empate: number;
   gana_negras: number;
-  plies_restantes?: number;
 };
 
 // Training cuts went up to this ply (move 60); past it the model extrapolates.

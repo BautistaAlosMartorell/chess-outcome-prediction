@@ -76,7 +76,6 @@ function Placa({ jugador, lado, reloj, activo }: { jugador: Jugador; lado: "blan
 }
 
 export function Marcador({ blancas, negras, relojes, activo, punto, final, mostrarCambio = true, compacto = false, ocultarPronostico = false }: Props) {
-  const restantes = punto?.plies_restantes;
   return (
     <section className={`${styles.marcador} ${compacto ? styles.compacto : ""}`} aria-label="Marcador">
       <Placa jugador={blancas} lado="blancas" reloj={relojes.blancas} activo={activo === "blancas"} />
@@ -91,8 +90,6 @@ export function Marcador({ blancas, negras, relojes, activo, punto, final, mostr
             ? final
             : punto && punto.ply > ULTIMO_PLY_ENTRENADO
               ? "Después de la jugada 60 el modelo extrapola: no vio posiciones tan avanzadas"
-              : restantes !== undefined
-              ? `Faltan unas ${Math.max(1, Math.round(restantes / 2))} jugadas por bando`
               : " "}
         </p>
       </div>

@@ -1,8 +1,8 @@
 """DAG del pipeline de partidas de ajedrez — Proyecto Integrador UTN FRM 2026.
 
 Pregunta de investigación:
-    ¿Qué combinación de ELO, apertura, modalidad de ritmo y color de piezas
-    predice el resultado y la duración de una partida de ajedrez online?
+    ¿Qué tan bien se predice el resultado de una partida de ajedrez online,
+    antes de que empiece y a medida que avanza?
 
 Fuente: PubAPI pública de Chess.com (sin autenticación).
 

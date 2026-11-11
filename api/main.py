@@ -65,10 +65,7 @@ def curva(pgn: str, contexto: dict[str, Any], modelo: dict[str, Any], en_curso: 
     prediction = predecir(pgn, contexto, modelo, en_curso=en_curso)
     points = []
     for row in prediction.to_dict(orient="records"):
-        point = {"ply": int(row["ply"]), **{CURVE_KEYS[label]: float(row[label]) for label in RESULT_ORDER}}
-        if "plies_restantes" in row:
-            point["plies_restantes"] = float(row["plies_restantes"])
-        points.append(point)
+        points.append({"ply": int(row["ply"]), **{CURVE_KEYS[label]: float(row[label]) for label in RESULT_ORDER}})
     return points
 
 

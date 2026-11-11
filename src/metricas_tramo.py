@@ -60,16 +60,31 @@ def metricas_por_tramo(
     return pd.DataFrame(rows)
 
 
+def porcentajes_de_confusion(filas: pd.DataFrame) -> pd.DataFrame:
+    """Agrega los dos porcentajes a una matriz larga (tramo, real, predicho, filas).
+
+    - ``porcentaje_fila``: de cada resultado real, qué se predijo (recall en la diagonal).
+    - ``porcentaje_columna``: de cada predicción, qué pasó (precisión en la diagonal). Queda
+      vacío (NaN) cuando el modelo nunca predijo esa clase en el tramo: no hay nada que medir.
+    """
+    filas = filas.copy()
+    por_real = filas.groupby(["tramo", "real"], sort=False)["filas"].transform("sum")
+    por_predicho = filas.groupby(["tramo", "predicho"], sort=False)["filas"].transform("sum")
+    filas["porcentaje_fila"] = (filas["filas"] / por_real * 100).astype(float)
+    filas["porcentaje_columna"] = (filas["filas"] / por_predicho.where(por_predicho > 0) * 100).astype(float)
+    return filas
+
+
 def confusion_por_tramo(y: Sequence[str], decided: Sequence[str], corte_ply: Sequence[int]) -> pd.DataFrame:
-    """Formato largo: (tramo, real, predicho) con el % de la fila real y el conteo."""
+    """Formato largo: (tramo, real, predicho) con el conteo, el % de la fila real y el % de la columna predicha."""
     y, decided, tramo = np.asarray(y), np.asarray(decided), tramo_de_corte(corte_ply)
     rows = []
     for label in TRAMOS:
         mask = tramo == label
+        if not mask.any():
+            continue  # e.g. a common population that stops before the late bands
         counts = confusion_matrix(y[mask], decided[mask], labels=RESULT_ORDER)
-        share = counts / counts.sum(axis=1, keepdims=True)
         for i, real in enumerate(RESULT_ORDER):
             for j, pred in enumerate(RESULT_ORDER):
-                rows.append({"tramo": label, "real": real, "predicho": pred,
-                             "filas": int(counts[i, j]), "porcentaje_fila": float(share[i, j] * 100)})
-    return pd.DataFrame(rows)
+                rows.append({"tramo": label, "real": real, "predicho": pred, "filas": int(counts[i, j])})
+    return porcentajes_de_confusion(pd.DataFrame(rows))

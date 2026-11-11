@@ -52,12 +52,29 @@ class MetricasTest(unittest.TestCase):
         by_real = confusion.groupby(["tramo", "real"])["porcentaje_fila"].sum()
         np.testing.assert_allclose(by_real.to_numpy(), 100)
 
+    def test_precision_columns_add_up_to_100_and_stay_empty_when_never_predicted(self):
+        # The model never says "Empate" here: that column has no precision, not a 0 %.
+        y = np.array(["Gana Blancas", "Gana Negras", "Empate", "Gana Blancas"])
+        decided = np.array(["Gana Blancas", "Gana Blancas", "Gana Negras", "Gana Blancas"])
+        confusion = confusion_por_tramo(y, decided, [0, 0, 0, 0]).set_index(["real", "predicho"])
+        self.assertAlmostEqual(confusion.loc[("Gana Blancas", "Gana Blancas"), "porcentaje_columna"], 200 / 3)
+        self.assertAlmostEqual(confusion.loc[("Gana Negras", "Gana Blancas"), "porcentaje_columna"], 100 / 3)
+        self.assertAlmostEqual(confusion.loc[("Empate", "Gana Negras"), "porcentaje_columna"], 100)
+        self.assertTrue(confusion.xs("Empate", level="predicho")["porcentaje_columna"].isna().all())
+        by_predicted = confusion.groupby(level="predicho")["porcentaje_columna"].sum(min_count=1).dropna()
+        np.testing.assert_allclose(by_predicted.to_numpy(), 100)
+
+    def test_bands_without_rows_are_left_out(self):
+        confusion = confusion_por_tramo(["Empate"], ["Empate"], [10])
+        self.assertEqual(confusion["tramo"].unique().tolist(), ["5–20"])
+
 
 class ChartsTest(unittest.TestCase):
     def test_band_charts_serialize_with_the_band_order(self):
         acierto = pd.DataFrame({"serie": ["Modelo", "Piso"] * 6, "tramo": np.repeat(TRAMOS, 2),
                                 "accuracy": 0.5, "filas": 10})
-        confusion = pd.DataFrame({"tramo": "0", "real": ["Empate"], "predicho": ["Empate"], "porcentaje_fila": [50.0], "filas": [1]})
+        confusion = pd.DataFrame({"tramo": "0", "real": ["Empate", "Gana Blancas"], "predicho": ["Empate", "Empate"],
+                                  "porcentaje_fila": [50.0, 10.0], "porcentaje_columna": [np.nan, 25.0], "filas": [1, 1]})
         importancia = pd.DataFrame({"nombre": list(app_charts.NOMBRE_COLUMNA.values()), "tramo": "0",
                                     "log_loss": 0.01, "accuracy": 0.01})
         specs = [app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict(),
@@ -67,6 +84,10 @@ class ChartsTest(unittest.TestCase):
             self.assertEqual(spec["config"]["background"], "transparent")
         self.assertEqual(specs[0]["layer"][0]["encoding"]["x"]["sort"], TRAMOS)
         self.assertEqual(specs[1]["params"][0]["bind"]["options"], TRAMOS)
+        self.assertEqual(specs[1]["params"][1]["bind"]["options"], app_charts.VISTAS_CONFUSION)
+        # An undefined precision travels as null, never as NaN (invalid JSON for the web).
+        rows = next(iter(specs[1]["datasets"].values()))
+        self.assertIsNone(rows[0]["porcentaje_columna"])
 
 
 if __name__ == "__main__":

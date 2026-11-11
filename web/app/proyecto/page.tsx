@@ -49,12 +49,35 @@ export default function Proyecto() {
   const elegido = modelo.comparacion.find((f) => f.variante === modelo.familia);
   const errores = modelo.errores_desde_ply_60;
 
+  // Professor's feedback on Entrega 3: compare the cuts, and the models at different cuts.
+  const comun = modelo.entre_cortes.filter((f) => f.serie.startsWith("Las mismas"));
+  const comunEn = (corte: number) => enCorte(comun, corte);
+  const saltoTotal = modelo.saltos_entre_cortes.find((s) => s.desde === 0 && s.hasta === modelo.ply_comun);
+  const saltosConsecutivos = modelo.saltos_entre_cortes.filter((s) => !(s.desde === 0 && s.hasta === modelo.ply_comun));
+  const primerSalto = saltosConsecutivos[0];
+  const [, simpleCv, elegidoCv, otroCv] = modelo.familias;
+  const contraSimple = modelo.familias_diferencias.filter(
+    (d) => d.metrica === "log_loss" && d.modelo === elegidoCv && d.referencia === simpleCv,
+  );
+  const ganaDesde = contraSimple.find((d) => d["le gana"]);
+  const otroContraElegido = modelo.familias_diferencias.filter(
+    (d) => d.metrica === "log_loss" && d.modelo === otroCv && d.referencia === elegidoCv,
+  );
+  const otroSeDistingue = otroContraElegido.some((d) => d["le gana"] || d.pierde);
+  const ultimaContraSimple = contraSimple[contraSimple.length - 1];
+
   // Professor's feedback on Entrega 3: fixed decision and importance, band by band.
   const tramos = modelo.test_por_tramo;
   const tramoInicial = tramos[0];
   const tramoFinal = tramos[tramos.length - 1];
   const recall = (tramo: string, clase: string) =>
     modelo.confusion_por_tramo.find((f) => f.tramo === tramo && f.real === clase && f.predicho === clase)?.porcentaje_fila ?? 0;
+  // Of the times the model said `clase`, how often it happened; null if it never said it in the band.
+  const precision = (tramo: string, clase: string) =>
+    modelo.confusion_por_tramo.find((f) => f.tramo === tramo && f.real === clase && f.predicho === clase)
+      ?.porcentaje_columna ?? null;
+  // First band where the model predicts a draw at least once.
+  const primerTramoTablas = modelo.tramos.find((t) => precision(t, "Empate") !== null);
   const importancia = (columna: string, tramo: string) => {
     const fila = modelo.importancia_por_tramo.find((f) => f.columna === columna && f.tramo === tramo);
     if (!fila) throw new Error(`Falta la importancia de ${columna} en ${tramo}`);
@@ -274,6 +297,29 @@ export default function Proyecto() {
                 Quedó el {modelo.familia.toLowerCase()}
                 {elegido ? `, con ${decimal(Number(elegido.log_loss))} en validación` : ""}.
               </p>
+              <h3>Las familias, tramo por tramo</h3>
+              <p>
+                La comparación de arriba promedia todos los cortes. Separada por tramo, con los mismos pedazos y los
+                ajustes de la búsqueda de abajo (sólo describe: no vuelve a elegir):
+              </p>
+              <GraficoAltair
+                src="/app/graficos/familias.json"
+                descripcion="Log-loss en validación de cada familia de modelos por tramo de plies, con su desvío entre pedazos: el piso, la regresión logística y los dos ensambles ajustados."
+              />
+              <p>
+                {ganaDesde ? (
+                  <>
+                    Antes de los {plies(ganaDesde.tramo)} el {elegidoCv.toLowerCase()} no se distingue de la logística:
+                    con poca posición para leer, el rating y el contexto le sirven igual a un modelo simple. Desde los{" "}
+                    {plies(ganaDesde.tramo)} el {elegidoCv.toLowerCase()} le gana por más que el desvío, y la ventaja crece hasta{" "}
+                    {decimal(-ultimaContraSimple.diferencia, 4)} ± {decimal(ultimaContraSimple["± diferencia"], 4)} menos de
+                    log-loss entre los {plies(ultimaContraSimple.tramo)}.{" "}
+                  </>
+                ) : null}
+                {otroSeDistingue
+                  ? `El ${otroCv.toLowerCase()} se separa del elegido en algún tramo; el modelo se eligió con toda la partida.`
+                  : `El ${otroCv.toLowerCase()} no se distingue del elegido en ningún tramo: la elección no cambiaría en ninguno.`}
+              </p>
               <h3>El ajuste de hiperparámetros</h3>
               <p>
                 Búsqueda aleatoria (RandomizedSearchCV) con los mismos pedazos, en los dos ensambles:{" "}
@@ -361,6 +407,11 @@ export default function Proyecto() {
                 de los rivales que ya traían los archivos descargados, y el modelo usa la diferencia y el promedio de
                 rating: {modelo.columnas_finales} columnas en total.
               </p>
+              <p>
+                Además, la regla de mate de arriba, y lo que pidió la devolución: las métricas por tramo de jugadas con
+                la matriz de confusión leída como recall y como precisión (en «¿Acertó?»), la comparación entre cortes
+                sobre las mismas partidas, y las familias tramo por tramo (arriba).
+              </p>
             </>
           }
         />
@@ -409,7 +460,7 @@ export default function Proyecto() {
               <h3>La matriz de confusión, tramo por tramo</h3>
               <GraficoAltair
                 src="/app/graficos/confusion.json"
-                descripcion="Matriz de confusión del tramo elegido en el menú: de cada resultado real, qué porcentaje predijo el modelo."
+                descripcion="Matriz de confusión del tramo elegido en el menú, leída como recall (de cada resultado real, qué porcentaje predijo el modelo) o como precisión (de cada predicción, qué porcentaje pasó)."
               />
               <p>
                 Antes de mover, cuando casi no tiene información, el modelo se inclina por blancas: reconoce el{" "}
@@ -419,6 +470,59 @@ export default function Proyecto() {
                 %). Las tablas casi nunca son la opción más probable: recién entre los plies {tramoFinal.tramo} reconoce el{" "}
                 {decimal(recall(tramoFinal.tramo, "Empate"), 1)} % de ellas.
               </p>
+              <p>
+                La precisión lee la matriz al revés: de las veces que el modelo dijo algo, cuántas pasó. Antes de mover,
+                cuando dice que ganan blancas acierta el {decimal(precision(tramoInicial.tramo, "Gana Blancas") ?? 0, 1)} %
+                de las veces, y cuando dice negras, el {decimal(precision(tramoInicial.tramo, "Gana Negras") ?? 0, 1)} %.
+                Al final sube a {decimal(precision(tramoFinal.tramo, "Gana Blancas") ?? 0, 1)} % y{" "}
+                {decimal(precision(tramoFinal.tramo, "Gana Negras") ?? 0, 1)} %.
+                {primerTramoTablas ? (
+                  <>
+                    {" "}
+                    Las tablas no tienen precisión hasta los plies {primerTramoTablas}, porque antes el modelo nunca las
+                    elige. Cuando las elige entre los plies {tramoFinal.tramo}, acierta el{" "}
+                    {decimal(precision(tramoFinal.tramo, "Empate") ?? 0, 1)} %: rara vez las dice, pero cuando lo hace no
+                    es al azar.
+                  </>
+                ) : null}
+              </p>
+              <h3>¿La mejora es del modelo o de las partidas que quedan?</h3>
+              <p>
+                En cada corte quedan sólo las partidas que siguen en juego, y las largas tienen menos victorias blancas y
+                más tablas. Para separar las dos cosas se mide también sobre las mismas{" "}
+                {entero(comunEn(0).partidas)} partidas de test (las que llegan al ply {modelo.ply_comun}), en todos sus
+                cortes hasta ese ply. Las bandas son intervalos de 95 %: se sortean partidas con reposición mil veces.
+              </p>
+              <GraficoAltair
+                src="/app/graficos/cortes.json"
+                descripcion="Aciertos del modelo en cada corte con su intervalo de 95 %, sobre todas las partidas que siguen en juego y sobre las mismas partidas hasta el ply 60."
+              />
+              <p>
+                Sobre las mismas partidas, los aciertos pasan de {pct(comunEn(0).accuracy)} antes de mover a{" "}
+                {pct(comunEn(modelo.ply_comun).accuracy)} en el ply {modelo.ply_comun}
+                {saltoTotal ? (
+                  <>
+: +{decimal(saltoTotal.cambio * 100, 1)} puntos [{decimal(saltoTotal.bajo * 100, 1)};{" "}
+                    {decimal(saltoTotal.alto * 100, 1)}]
+                  </>
+                ) : null}
+                . La mejora es del modelo, no de las partidas que quedan. Antes de mover ya le saca{" "}
+                {decimal(comunEn(0)["puntos sobre piso"], 1)} puntos al piso [{decimal(comunEn(0)["puntos sobre piso bajo"], 1)};{" "}
+                {decimal(comunEn(0)["puntos sobre piso alto"], 1)}].
+                {primerSalto && !primerSalto["distinto de cero"]
+                  ? ` El salto de ${primerSalto.desde} a ${primerSalto.hasta} plies no se distingue de cero; desde ahí, cada uno supera su intervalo.`
+                  : ""}
+              </p>
+              <Tabla
+                filas={modelo.saltos_entre_cortes}
+                columnas={[
+                  { titulo: "Desde el ply", valor: (f) => String(f.desde), numerica: true },
+                  { titulo: "Hasta el ply", valor: (f) => String(f.hasta), numerica: true },
+                  { titulo: "Cambio en aciertos (puntos)", valor: (f) => `${f.cambio > 0 ? "+" : ""}${decimal(f.cambio * 100, 1)}`, numerica: true },
+                  { titulo: "IC 95 %", valor: (f) => `[${decimal(f.bajo * 100, 1)}; ${decimal(f.alto * 100, 1)}]`, numerica: true },
+                  { titulo: "¿Distinto de cero?", valor: (f) => (f["distinto de cero"] ? "sí" : "no") },
+                ]}
+              />
             </>
           }
         />
@@ -514,7 +618,7 @@ export default function Proyecto() {
               <p>
                 El puesto de la Entrega 3 es entre todas las columnas del modelo, en todo el test. El de cada tramo es
                 entre las cinco columnas que lideran en algún momento (rating, material, reloj y los relojes de cada
-                lado). Las hipótesis sobre la duración no aparecen: la duración quedó como objetivo secundario.
+                lado). Las hipótesis sobre la duración no aparecen: el proyecto se concentra en quién gana y la duración no se modela.
               </p>
             </>
           }

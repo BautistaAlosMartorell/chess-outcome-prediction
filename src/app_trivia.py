@@ -76,8 +76,7 @@ def construir_trivia(test, pred, games, paths, artifact, random_state, limit=60)
         np.testing.assert_allclose([point[r] for r in RESULT_ORDER],
                                    [expected[c] for c in ["p_blancas", "p_empate", "p_negras"]], atol=1e-9, rtol=0)
         public_curve = [{"ply": int(r["ply"]), "gana_blancas": float(r["Gana Blancas"]),
-                         "empate": float(r["Empate"]), "gana_negras": float(r["Gana Negras"]),
-                         **({"plies_restantes": float(r["plies_restantes"])} if "plies_restantes" in r else {})}
+                         "empate": float(r["Empate"]), "gana_negras": float(r["Gana Negras"])}
                         for r in curve.to_dict("records") if r["ply"] <= 120]
         game = metadata.loc[url]
         analysis = {

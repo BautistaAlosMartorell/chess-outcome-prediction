@@ -82,12 +82,56 @@ export type Resumen = {
       recall_empate: number;
       "confianza media": number;
     }[];
-    confusion_por_tramo: { tramo: string; real: string; predicho: string; filas: number; porcentaje_fila: number }[];
+    // porcentaje_columna is null when the model never predicted that class in the band.
+    confusion_por_tramo: {
+      tramo: string;
+      real: string;
+      predicho: string;
+      filas: number;
+      porcentaje_fila: number;
+      porcentaje_columna: number | null;
+    }[];
     importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
-    duracion_test: Fila[];
     rango_rating: [number, number];
+    // Comparison between cuts (notebook 04, section 8): test, bootstrap by game.
+    ply_comun: number;
+    entre_cortes: {
+      serie: string;
+      corte_ply: number;
+      partidas: number;
+      accuracy: number;
+      "accuracy bajo": number;
+      "accuracy alto": number;
+      "puntos sobre piso": number;
+      "puntos sobre piso bajo": number;
+      "puntos sobre piso alto": number;
+    }[];
+    saltos_entre_cortes: { desde: number; hasta: number; cambio: number; bajo: number; alto: number; "distinto de cero": boolean }[];
+    // The model families band by band, in cross-validation (notebook 05).
+    familias: string[];
+    familias_por_tramo: { modelo: string; tramo: string; log_loss: number; "± log_loss": number; accuracy: number }[];
+    familias_diferencias: {
+      tramo: string;
+      metrica: string;
+      modelo: string;
+      referencia: string;
+      diferencia: number;
+      "± diferencia": number;
+      "le gana": boolean;
+      pierde: boolean;
+    }[];
   };
-  explora: { partidas: number; niveles: string[] };
+  explora: {
+    partidas: number;
+    niveles: string[];
+    // The guide's numbers, on the same sample at one cut (src/build_app.py, guia_explora).
+    corte: number;
+    partidas_en_corte: number;
+    acierto: number;
+    errores: number;
+    errores_tablas: number;
+    errores_eligio_mas_material: number;
+  };
 };
 
 export const RESUMEN = datos as unknown as Resumen;
