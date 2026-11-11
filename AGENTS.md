@@ -6,8 +6,9 @@ Este archivo lo leen **Codex** y **OpenCode**; Claude Code entra por `CLAUDE.md`
 ## El proyecto
 
 Proyecto Integrador de Ciencia de Datos (UTN FRM 2026): qué tan bien se puede predecir
-el **resultado** y la **duración restante** de una partida de ajedrez online real
-(PubAPI pública de Chess.com) **antes de que empiece y a medida que avanza**. La unidad
+el **resultado** de una partida de ajedrez online real (PubAPI pública de Chess.com)
+**antes de que empiece y a medida que avanza**. La duración restante fue un objetivo
+secundario hasta la Entrega 3 y ya no se modela: el proyecto se concentra en quién gana. La unidad
 de modelado es la partida en un momento dado (partida × corte de plies). Trabajo
 grupal de 5-6 personas, con cuatro entregas parciales entre septiembre y noviembre de
 2026. Leé el README — tiene contexto largo sobre por qué el tema cambió dos veces
@@ -16,7 +17,7 @@ antes de llegar a este, y qué falta validar con datos reales de volumen.
 ```
 src/         módulos del pipeline (descarga, parseo de PGN, features) reusados por el notebook y el DAG, más el historial dentro del Pipeline, la validación y la predicción del modelo (history_transformer, model_validation, predict) y la construcción de la app (app_charts con Altair, build_app)
 dags/        DAG de Airflow que orquesta el pipeline (tareas 1:1 con src/ + verificación de calidad + dataset de cortes)
-notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado · 05 comparación entre cortes (log-loss, accuracy, población común, intervalos y confusión con recall y precisión; mide el modelo del 04, no decide)
+notebooks/   01 pipeline narrado · 02 EDA antes y durante la partida · 03 predicción en vivo (exploración) · 04 modelado (incluye la comparación entre cortes: log-loss, accuracy, población común, intervalos y confusión con recall y precisión) · 05 las familias de modelos corte por corte y tramo por tramo (lee las predicciones por pedazo que guarda el 04; no decide)
 models/      modelo entrenado para la app — lo regenera el notebook 04, no se versiona
 api/         API de la app (FastAPI): sirve predecir() y consulta la PubAPI de Chess.com (dependencias en api/requirements.txt)
 web/         app de la Entrega 4 (Next.js): portada y tallo con los hallazgos, Explorá, jugar con relojes y analizar partidas de cualquier usuario; web/public/app la genera `python -m src.build_app` y se versiona

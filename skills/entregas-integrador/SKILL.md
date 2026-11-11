@@ -11,8 +11,9 @@ Documento fuente completo: `Kit_de_arranque_Proyecto_Integrador_2026.md` en la r
 ## El proyecto
 
 Qué tan bien se puede predecir el **resultado** (`resultado`: gana blancas/negras/
-empate) y la **duración restante** (`plies_restantes`) de una partida de ajedrez online
-real **antes de que empiece y a medida que avanza**. Antes de empezar se conocen el nivel,
+empate) de una partida de ajedrez online real **antes de que empiece y a medida que
+avanza**. La duración restante (`plies_restantes`) fue objetivo secundario hasta la
+Entrega 3; desde la Entrega 4 no se modela. Antes de empezar se conocen el nivel,
 el ritmo (bullet/blitz/rapid) y el color; durante la partida se suman la apertura, la
 posición y los relojes.
 Unidad de análisis: la partida en un momento dado (partida × corte de plies: uno cada
