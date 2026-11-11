@@ -368,6 +368,8 @@ def main() -> None:
     escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict())
     escribir("graficos/explora.json",
              app_charts.explora(filas, partidas, list(config["elo"]["bandas"])))
+    # Jugar and Analizar fill this one with the API's curve, move by move.
+    escribir("graficos/curva.json", app_charts.curva_partida())
     logger.info("App construida en %.0f s", time.perf_counter() - started)
 
 

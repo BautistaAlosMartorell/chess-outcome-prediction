@@ -143,7 +143,7 @@ class GeneratedFilesTest(unittest.TestCase):
     def test_files_exist_and_stay_light(self):
         for name in ["resumen.json", "graficos/datos.json", "graficos/hallazgos.json", "graficos/modelo.json",
                      "graficos/explora.json", "graficos/acierto.json", "graficos/confusion.json",
-                     "graficos/importancia.json"]:
+                     "graficos/importancia.json", "graficos/curva.json"]:
             path = self.dir / name
             self.assertTrue(path.exists(), name)
             self.assertLess(path.stat().st_size / 1e6, MAXIMO_MB, name)
@@ -159,6 +159,17 @@ class GeneratedFilesTest(unittest.TestCase):
         rows = next(v for k, v in spec["datasets"].items() if k != "partidas" and len(v) > 1)
         total = np.array([[r[c] for c in PROBAS] for r in rows]).sum(axis=1)
         np.testing.assert_allclose(total, 1, atol=0.002)
+
+
+    def test_curve_spec_has_what_the_web_fills(self):
+        # web/components/Curva.tsx fills these datasets and params by name, move by move.
+        text = (self.dir / "graficos/curva.json").read_text(encoding="utf-8")
+        spec = json.loads(text)
+        for dataset in ["curva", "momentos", "actual"]:
+            self.assertIn(f'"name": "{dataset}"', text.replace('":"', '": "'), dataset)
+        self.assertEqual({p["name"] for p in spec["params"]}, {"hover", "ply_maximo"})
+        for column in ["gana_blancas", "empate", "gana_negras"]:
+            self.assertIn(column, text)
 
 
 if __name__ == "__main__":

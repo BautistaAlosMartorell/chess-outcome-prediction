@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Punto } from "@/lib/api";
 import type { Momento } from "@/lib/movimiento";
 import styles from "./Curva.module.css";
@@ -13,166 +13,120 @@ type Props = {
   onElegir?: (ply: number) => void;
   // Changing this key replays the left-to-right reveal (a newly opened game).
   revelar?: string;
+  // The home page demo shows the chart without its frame and title.
+  compacta?: boolean;
 };
 
-const ALTO = 240;
-const MARGEN = { izq: 40, der: 78, arriba: 18, abajo: 30 };
-// The x axis starts this wide so the first moves don't stretch across the whole chart.
+// The Altair spec written by src/build_app.py (app_charts.curva_partida): it has no data.
+const SPEC = "/app/graficos/curva.json";
+// The x axis starts this wide so the first moves don't stretch across the whole chart (same as the spec).
 const PLIES_MINIMOS = 40;
 
-const BANDAS = [
-  { clave: "blancas", nombre: "Blancas", clase: styles.bandaBlancas },
-  { clave: "tablas", nombre: "Tablas", clase: styles.bandaTablas },
-  { clave: "negras", nombre: "Negras", clase: styles.bandaNegras },
-] as const;
+type Vista = {
+  data: (nombre: string, valores: object[]) => Vista;
+  signal: { (nombre: string): unknown; (nombre: string, valor: unknown): Vista };
+  runAsync: () => Promise<Vista>;
+  addEventListener: (tipo: string, handler: () => void) => void;
+  finalize: () => void;
+};
 
-function pct(p: number) {
-  return `${Math.round(p * 100)} %`;
+let specCargada: Promise<object> | null = null;
+function cargarSpec() {
+  specCargada ??= fetch(SPEC).then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))));
+  specCargada.catch(() => {
+    specCargada = null; // let the next mount retry
+  });
+  return specCargada;
 }
 
-function nombreJugada(ply: number) {
-  if (ply === 0) return "Antes de mover";
-  return `Jugada ${Math.ceil(ply / 2)} de las ${ply % 2 ? "blancas" : "negras"}`;
+function describir(m: Momento) {
+  const puntos = Math.round(Math.abs(m.delta) * 100);
+  return `Jugada ${Math.ceil(m.ply / 2)}: las blancas ${m.delta > 0 ? "suben" : "bajan"} ${puntos} puntos`;
 }
 
-export function Curva({ curva, actual, momentos = [], onElegir, revelar }: Props) {
+// The hovered ply, as Vega-Lite resolves a point selection on "ply": {ply: [n]}.
+function plyElegido(valor: unknown): number | undefined {
+  const ply = (valor as { ply?: unknown } | null)?.ply;
+  const n = Array.isArray(ply) ? ply[0] : ply;
+  return typeof n === "number" ? n : undefined;
+}
+
+// Draws the Altair chart once and, on every move, only swaps its data.
+export function Curva({ curva, actual, momentos = [], onElegir, revelar, compacta = false }: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
-  const recorte = useId();
-  const [ancho, setAncho] = useState(640);
-  const [hover, setHover] = useState<number | null>(null);
+  const [vista, setVista] = useState<Vista | null>(null);
+  const [error, setError] = useState(false);
+  const elegir = useRef(onElegir);
+  elegir.current = onElegir;
 
   useEffect(() => {
     const el = contenedor.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setAncho(Math.max(280, entry.contentRect.width)));
-    observer.observe(el);
-    return () => observer.disconnect();
+    let vigente = true;
+    let creada: Vista | undefined;
+    Promise.all([cargarSpec(), import("vega-embed")])
+      .then(([spec, { default: embed }]) => {
+        if (!vigente) return;
+        return embed(el, spec as never, {
+          actions: false,
+          renderer: "svg",
+          config: { font: getComputedStyle(document.body).fontFamily },
+        }).then((resultado) => {
+          creada = resultado.view as unknown as Vista;
+          if (!vigente) return creada.finalize();
+          creada.addEventListener("click", () => {
+            const ply = plyElegido(creada?.signal("hover"));
+            if (ply !== undefined) elegir.current?.(ply);
+          });
+          setVista(creada);
+        });
+      })
+      .catch(() => vigente && setError(true));
+    return () => {
+      vigente = false;
+      creada?.finalize();
+    };
   }, []);
 
-  const dibujable = curva.length >= 2;
-  const ultimo = curva.length ? curva[curva.length - 1].ply : 0;
-  const dominio = Math.max(ultimo, PLIES_MINIMOS);
-  const anchoUtil = ancho - MARGEN.izq - MARGEN.der;
-  const altoUtil = ALTO - MARGEN.arriba - MARGEN.abajo;
-  const x = (ply: number) => MARGEN.izq + (ply / dominio) * anchoUtil;
-  const y = (p: number) => ALTO - MARGEN.abajo - p * altoUtil;
+  useEffect(() => {
+    if (!vista) return;
+    const ultimo = curva.length ? curva[curva.length - 1].ply : 0;
+    const visibles = curva.length >= 2 ? momentos : [];
+    vista
+      .data("curva", curva)
+      .data("momentos", visibles.map((m) => ({ ply: m.ply, descripcion: describir(m) })))
+      .data("actual", actual !== undefined && curva.length >= 2 ? [{ ply: actual }] : [])
+      .signal("ply_maximo", Math.max(ultimo, PLIES_MINIMOS));
+    vista.runAsync();
+  }, [vista, curva, actual, momentos]);
 
-  // Cumulative bounds from the bottom: white, then draw, then black up to 1.
-  const limites = curva.map((p) => [0, p.gana_blancas, p.gana_blancas + p.empate, 1]);
-  const area = (banda: number) => {
-    if (!dibujable) return "";
-    const arriba = curva.map((p, i) => `${x(p.ply)},${y(limites[i][banda + 1])}`);
-    const abajo = curva.map((p, i) => `${x(p.ply)},${y(limites[i][banda])}`).reverse();
-    return `M${arriba.join("L")}L${abajo.join("L")}Z`;
-  };
-
-  const puntoHover = hover !== null ? curva.find((p) => p.ply === hover) : undefined;
-
-  function plyDesdeEvento(event: React.MouseEvent<SVGSVGElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    // The SVG scales to its box: convert screen pixels back to chart units.
-    const px = (event.clientX - rect.left) * (ancho / rect.width);
-    const ply = Math.round(((px - MARGEN.izq) / anchoUtil) * dominio);
-    return Math.min(Math.max(ply, curva[0]?.ply ?? 0), ultimo);
-  }
-
-  const ticks = Array.from({ length: Math.floor(dominio / 20) + 1 }, (_, i) => i * 20);
-  const final = dibujable ? limites[limites.length - 1] : null;
+  // A new key replays the reveal: restart the CSS animation on the same element.
+  useEffect(() => {
+    const el = contenedor.current;
+    if (!el || !revelar) return;
+    el.classList.remove(styles.revelado);
+    void el.offsetWidth;
+    el.classList.add(styles.revelado);
+  }, [revelar]);
 
   return (
-    <figure className={styles.figura}>
-      <figcaption className={styles.titulo}>
-        <span>Cómo se movió la partida</span>
-        <ul className={styles.leyenda}>
-          {BANDAS.map((b) => (
-            <li key={b.clave}>
-              <span className={`${styles.muestra} ${b.clase}`} aria-hidden="true" />
-              {b.nombre}
-            </li>
-          ))}
-          {momentos.length ? (
-            <li>
-              <span className={styles.muestraMomento} aria-hidden="true" />
-              Momento clave
-            </li>
-          ) : null}
-        </ul>
-      </figcaption>
-      <div ref={contenedor} className={styles.lienzo}>
-        <svg
-          viewBox={`0 0 ${ancho} ${ALTO}`}
+    <figure className={compacta ? styles.compacta : styles.figura}>
+      {compacta ? null : (
+        <figcaption className={styles.titulo}>
+          <span>Cómo se movió la partida</span>
+          {momentos.length ? <span className={styles.nota}>Línea punteada: momento clave</span> : null}
+        </figcaption>
+      )}
+      <div className={styles.lienzo}>
+        <div
+          ref={contenedor}
+          className={`${styles.grafico} ${onElegir ? styles.clicable : ""}`}
           role="img"
-          aria-label="Área apilada: probabilidad de que ganen las blancas, de tablas y de que ganen las negras en cada jugada. Los valores están en la planilla."
-          onPointerMove={(e) => dibujable && setHover(plyDesdeEvento(e))}
-          onPointerLeave={() => setHover(null)}
-          onClick={(e) => dibujable && onElegir?.(plyDesdeEvento(e))}
-          className={onElegir ? styles.clicable : undefined}
-        >
-          <defs>
-            <clipPath id={recorte}>
-              <rect key={revelar} x={MARGEN.izq} y={0} width={anchoUtil} height={ALTO} className={revelar ? styles.revelado : undefined} />
-            </clipPath>
-          </defs>
-          <rect x={MARGEN.izq} y={MARGEN.arriba} width={anchoUtil} height={altoUtil} rx={6} className={styles.vacio} />
-          <g clipPath={`url(#${recorte})`}>
-            {BANDAS.map((b, i) => (
-              <path key={b.clave} d={area(i)} className={`${b.clase} ${styles.banda}`} />
-            ))}
-          </g>
-          <line x1={MARGEN.izq} x2={ancho - MARGEN.der} y1={y(0.5)} y2={y(0.5)} className={styles.mitad} />
-          <rect x={MARGEN.izq} y={MARGEN.arriba} width={anchoUtil} height={altoUtil} rx={6} className={styles.marco} />
-          {[0, 0.5, 1].map((p) => (
-            <text key={p} x={MARGEN.izq - 8} y={y(p) + 4} className={styles.ejeY}>
-              {p * 100}
-            </text>
-          ))}
-          {ticks.map((t) => (
-            <text key={t} x={x(t)} y={ALTO - 8} className={styles.ejeX}>
-              {t / 2}
-            </text>
-          ))}
-          {final
-            ? BANDAS.map((b, i) => {
-                if (final[i + 1] - final[i] < 0.07) return null; // too thin to label beside its band
-                return (
-                  <text key={b.clave} x={ancho - MARGEN.der + 10} y={y((final[i] + final[i + 1]) / 2) + 4} className={styles.etiqueta}>
-                    {b.nombre}
-                  </text>
-                );
-              })
-            : null}
-          {dibujable
-            ? momentos.map((m) => (
-                <g key={m.ply} className={styles.momento}>
-                  <line x1={x(m.ply)} x2={x(m.ply)} y1={MARGEN.arriba} y2={ALTO - MARGEN.abajo} />
-                  <circle cx={x(m.ply)} cy={MARGEN.arriba - 8} r={5} />
-                </g>
-              ))
-            : null}
-          {actual !== undefined && dibujable ? (
-            <line x1={x(actual)} x2={x(actual)} y1={MARGEN.arriba} y2={ALTO - MARGEN.abajo} className={styles.actual} />
-          ) : null}
-          {puntoHover ? (
-            <line x1={x(puntoHover.ply)} x2={x(puntoHover.ply)} y1={MARGEN.arriba} y2={ALTO - MARGEN.abajo} className={styles.guia} />
-          ) : null}
-        </svg>
-        {puntoHover ? (
-          <div className={styles.tooltip} style={{ left: Math.min(x(puntoHover.ply) + 14, ancho - 200), top: MARGEN.arriba + 6 }}>
-            <strong>{nombreJugada(puntoHover.ply)}</strong>
-            <span>
-              <i className={styles.bandaBlancas} /> Blancas {pct(puntoHover.gana_blancas)}
-            </span>
-            <span>
-              <i className={styles.bandaTablas} /> Tablas {pct(puntoHover.empate)}
-            </span>
-            <span>
-              <i className={styles.bandaNegras} /> Negras {pct(puntoHover.gana_negras)}
-            </span>
-          </div>
-        ) : null}
-        {!dibujable ? <p className={styles.vacioTexto}>La curva se dibuja a medida que avanza la partida.</p> : null}
+          aria-label="Área apilada: probabilidad de que ganen las blancas, de tablas y de que ganen las negras en cada jugada."
+        />
+        {curva.length < 2 && !error ? <p className={styles.vacioTexto}>La curva se dibuja a medida que avanza la partida.</p> : null}
+        {error ? <p className={styles.vacioTexto}>No se pudo cargar el gráfico. Probá recargar la página.</p> : null}
       </div>
-      <p className={styles.ejeTitulo}>Número de jugada</p>
     </figure>
   );
 }

@@ -310,3 +310,69 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
         spec = alt.vconcat(panorama, detalle, spacing=36).resolve_legend(color="independent").configure(**TEMA).to_dict()
     spec["datasets"]["partidas"] = partidas.to_dict(orient="records")
     return spec
+
+
+# Probabilities of one game, as the API sends them (one row per ply).
+CLAVE_RESULTADO = {"gana_blancas": "Gana Blancas", "empate": "Empate", "gana_negras": "Gana Negras"}
+# The x axis starts this wide so the first moves don't stretch across the whole chart.
+PLIES_MINIMOS = 40
+
+
+def curva_partida() -> dict:
+    """Jugar y Analizar: cómo se movieron las tres probabilidades del modelo en una partida.
+
+    La spec no trae datos: la web llena tres datasets con nombre en cada jugada, sin
+    volver a dibujar el gráfico. ``curva`` son las filas que devuelve la API
+    (``ply``, ``gana_blancas``, ``empate``, ``gana_negras``); ``momentos``, los plies donde
+    más se movió la probabilidad de blancas; ``actual``, el ply que muestra el tablero.
+    El param ``ply_maximo`` estira el eje x hasta el último ply (al menos 40).
+    ``hover`` es el ply más cercano al mouse: la web lo lee al hacer clic para mover el tablero.
+    """
+    ply_maximo = alt.param(name="ply_maximo", value=PLIES_MINIMOS)
+    hover = alt.selection_point(name="hover", fields=["ply"], on="pointerover", clear="pointerout", empty=False)
+    eje_x = alt.X("ply:Q", title="Número de jugada",
+                  scale=alt.Scale(domainMin=0, domainMax=alt.ExprRef(expr="ply_maximo"), nice=False),
+                  # One move is two plies: the axis counts moves, with ticks every 10 or 20 plies
+                  # so that labels are whole moves.
+                  axis=alt.Axis(labelExpr="datum.value / 2", grid=False, values=alt.ExprRef(
+                      expr="sequence(0, ply_maximo + 1, ply_maximo > 120 ? 20 : 10)")))
+    base = alt.Chart(alt.Data(name="curva"))
+
+    areas = base.transform_fold(
+        list(CLAVE_RESULTADO), as_=["clave", "probabilidad"],
+    ).transform_calculate(
+        resultado=f"{CLAVE_RESULTADO}[datum.clave]",
+        # White at the bottom, black at the top, as on the bar above the board.
+        orden="{'gana_blancas': 0, 'empate': 1, 'gana_negras': 2}[datum.clave]",
+    ).mark_area(stroke=BORDE_PUNTO, strokeWidth=0.6).encode(
+        x=eje_x,
+        y=alt.Y("probabilidad:Q", stack="zero", title="Probabilidad según el modelo",
+                scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format="%", values=[0, 0.5, 1])),
+        color=alt.Color("resultado:N", title=None, scale=ESCALA_RESULTADO),
+        order=alt.Order("orden:Q"),
+    )
+    mitad = alt.Chart(alt.Data(values=[{"y": 0.5}])).mark_rule(
+        color=FONDO_TEXTO, strokeDash=[2, 5], opacity=0.7,
+    ).encode(y="y:Q")
+    momentos = alt.Chart(alt.Data(name="momentos")).mark_rule(
+        color=COLOR_MODELO, strokeDash=[3, 3],
+    ).encode(x=alt.X("ply:Q"), tooltip=[alt.Tooltip("descripcion:N", title="Momento clave")])
+    actual = alt.Chart(alt.Data(name="actual")).mark_rule(color=COLOR_MODELO, strokeWidth=3).encode(x=alt.X("ply:Q"))
+
+    # One invisible full-height bar per ply picks the ply under the mouse and carries the
+    # tooltip; the rule shows which one it is.
+    por_jugada = base.transform_calculate(
+        jugada="datum.ply == 0 ? 'Antes de mover' : 'Jugada ' + ceil(datum.ply / 2) + "
+               "' de las ' + (datum.ply % 2 ? 'blancas' : 'negras')",
+        desde="datum.ply - 0.5", hasta="datum.ply + 0.5",
+    )
+    guia = base.transform_filter(hover).mark_rule(color=FONDO_TEXTO, opacity=0.8).encode(x=alt.X("ply:Q"))
+    selector = por_jugada.mark_rect(opacity=0).encode(
+        x=alt.X("desde:Q"), x2="hasta:Q",
+        tooltip=[alt.Tooltip("jugada:N", title="Momento"),
+                 alt.Tooltip("gana_blancas:Q", title="Gana blancas", format=".0%"),
+                 alt.Tooltip("empate:Q", title="Tablas", format=".0%"),
+                 alt.Tooltip("gana_negras:Q", title="Gana negras", format=".0%")],
+    ).add_params(hover)
+    capas = alt.layer(areas, mitad, momentos, actual, guia, selector).add_params(ply_maximo)
+    return con_tema(capas.properties(height=240)).to_dict()
