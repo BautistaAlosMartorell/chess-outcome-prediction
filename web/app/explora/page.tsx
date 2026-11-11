@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GraficoAltair } from "@/components/GraficoAltair";
-import { RESUMEN, entero } from "@/lib/resumen";
+import { RESUMEN, entero, pct } from "@/lib/resumen";
 import styles from "./explora.module.css";
 
 export const metadata: Metadata = { title: "Explorá · Ajedrez en vivo" };
+
+const guia = RESUMEN.explora;
 
 export default function Explora() {
   return (
@@ -18,8 +20,16 @@ export default function Explora() {
         </p>
         <ul className={styles.pasos}>
           <li>
-            <strong>Mové el deslizador</strong> para avanzar la partida: al principio todo se amontona en el centro, y
-            los puntos se separan a medida que aparecen las diferencias.
+            <strong>Empezá por el panorama, con el deslizador en 0:</strong> antes de mover nadie tiene material de
+            más, así que todos los puntos están en la misma columna y los colores se mezclan. Llevalo a{" "}
+            {guia.corte} plies: los puntos se abren a los costados y, cuanto más lejos del centro, más se separan los
+            colores. Eso es lo que aprende el modelo.
+          </li>
+          <li>
+            <strong>Mirá dónde se equivoca:</strong> en {guia.corte} plies acierta el {pct(guia.acierto, 0)} de estas{" "}
+            {entero(guia.partidas_en_corte)} partidas. Elegí «Se equivocó»: el {pct(guia.errores_tablas, 0)} de los
+            errores son tablas, que casi nunca elige, y en el {pct(guia.errores_eligio_mas_material, 0)} de las demás
+            eligió al que iba arriba en material y perdió igual.
           </li>
           <li>
             <strong>Elegí un ritmo o un nivel</strong> para quedarte con esas partidas.

@@ -121,7 +121,17 @@ export type Resumen = {
       pierde: boolean;
     }[];
   };
-  explora: { partidas: number; niveles: string[] };
+  explora: {
+    partidas: number;
+    niveles: string[];
+    // The guide's numbers, on the same sample at one cut (src/build_app.py, guia_explora).
+    corte: number;
+    partidas_en_corte: number;
+    acierto: number;
+    errores: number;
+    errores_tablas: number;
+    errores_eligio_mas_material: number;
+  };
 };
 
 export const RESUMEN = datos as unknown as Resumen;

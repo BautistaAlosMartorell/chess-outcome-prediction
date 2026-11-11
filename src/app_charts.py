@@ -226,12 +226,17 @@ def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     return con_tema((lineas + puntos).properties(height=340))
 
 
+# Explorá's third control: every game, or only those where the model's most probable class was right or wrong.
+ACIERTO = ["Todas", "Acertó", "Se equivocó"]
+
+
 def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> dict:
     """Explorá: las partidas de test en un corte, y la curva del modelo de la que se elija.
 
     ``filas`` tiene una fila por (id, corte_ply) con la posición y las tres probabilidades
     del modelo; ``partidas``, una por id con los datos de la partida. Los controles son
-    params de Altair: el deslizador elige el corte; los menús, el ritmo y el nivel.
+    params de Altair: el deslizador elige el corte; los menús, el ritmo y el nivel; los botones,
+    si se ven todas las partidas o sólo las que el modelo acertó o erró en ese corte.
 
     Devuelve la spec ya serializada: la tabla de partidas va una sola vez, como dataset
     con nombre, en lugar de repetirse adentro de cada vista que la consulta.
@@ -243,6 +248,8 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     nivel = alt.param(name="nivel", value="todos",
                       bind=alt.binding_select(options=["todos", *niveles], name="Nivel "))
     elegida = alt.selection_point(name="elegida", fields=["id"], on="click", clear="dblclick", empty=False)
+    acierto = alt.param(name="acierto", value=ACIERTO[0],
+                        bind=alt.binding_radio(options=ACIERTO, name="Partidas "))
 
     datos_partida = alt.LookupData(
         data=alt.Data(name="partidas"), key="id",
@@ -259,6 +266,14 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
         # Material is an integer: a fixed per-game jitter (computed in the build) separates the points.
         material_visible="datum.balance_material + datum.desplazamiento",
         ventaja="datum.p_blancas - datum.p_negras",
+        # The model's fixed decision, the most probable class (ties as numpy's argmax: white, draw, black).
+        prediccion="datum.p_blancas >= datum.p_empate && datum.p_blancas >= datum.p_negras ? 'Gana Blancas' : "
+                   "(datum.p_empate >= datum.p_negras ? 'Empate' : 'Gana Negras')",
+    ).transform_calculate(
+        acerto="datum.prediccion == datum.resultado",
+    ).transform_filter(
+        (acierto == ACIERTO[0]) | ((acierto == ACIERTO[1]) & alt.datum.acerto)
+        | ((acierto == ACIERTO[2]) & ~alt.datum.acerto)
     ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
         x=alt.X("material_visible:Q", title="Material de blancas − negras (puntos)",
                 scale=alt.Scale(domain=[-15, 15], clamp=True)),
@@ -274,9 +289,10 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
             alt.Tooltip("p_blancas:Q", title="Modelo: gana blancas", format=".0%"),
             alt.Tooltip("p_empate:Q", title="Modelo: tablas", format=".0%"),
             alt.Tooltip("p_negras:Q", title="Modelo: gana negras", format=".0%"),
+            alt.Tooltip("prediccion:N", title="El modelo elige"),
             alt.Tooltip("resultado:N", title="Resultado real"), alt.Tooltip("final:N", title="Terminó por"),
         ],
-    ).add_params(corte, ritmo, nivel, elegida).properties(height=380, width=ANCHO_EXPLORA)
+    ).add_params(corte, ritmo, nivel, acierto, elegida).properties(height=380, width=ANCHO_EXPLORA)
 
     detalle_base = base.transform_filter(elegida).transform_fold(
         ["p_blancas", "p_empate", "p_negras"], as_=["clave", "probabilidad"],

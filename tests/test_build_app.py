@@ -194,5 +194,13 @@ class GeneratedFilesTest(unittest.TestCase):
         self.assertEqual(model["familias"][2], f"{model['familia']} ajustado")
 
 
+    def test_explora_guide_numbers(self):
+        guide = self.resumen["explora"]
+        self.assertGreater(guide["partidas"], guide["partidas_en_corte"])  # the sample size is not overwritten
+        self.assertAlmostEqual(guide["errores"], round((1 - guide["acierto"]) * guide["partidas_en_corte"]))
+        spec = json.loads((self.dir / "graficos/explora.json").read_text(encoding="utf-8"))
+        self.assertIn("acierto", {p["name"] for p in spec["params"]})
+
+
 if __name__ == "__main__":
     unittest.main()

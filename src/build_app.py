@@ -295,6 +295,24 @@ def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int) 
     return filas.sort_values(["id", "corte_ply"]).reset_index(drop=True), partidas
 
 
+def guia_explora(filas: pd.DataFrame, partidas: pd.DataFrame, corte: int = 60) -> dict[str, Any]:
+    """Los números que cita la guía de Explorá, sobre la misma muestra que muestra el gráfico."""
+    en_corte = filas[filas["corte_ply"] == corte].merge(partidas[["id", "resultado"]], on="id", how="left",
+                                                         validate="many_to_one")
+    assert en_corte["resultado"].notna().all(), "Una fila de Explorá sin su partida"
+    elegida = predicha(en_corte[COLUMNAS_PROBA].to_numpy(), CLASES)
+    acerto = elegida == en_corte["resultado"].astype(str).to_numpy()
+    errores = en_corte[~acerto].assign(elegida=elegida[~acerto])
+    decididas = errores[errores["resultado"] != "Empate"]
+    arriba = ((decididas["elegida"] == "Gana Blancas") & (decididas["balance_material"] > 0)) | (
+        (decididas["elegida"] == "Gana Negras") & (decididas["balance_material"] < 0))
+    return {
+        "corte": corte, "partidas_en_corte": len(en_corte), "acierto": float(acerto.mean()), "errores": int((~acerto).sum()),
+        "errores_tablas": float((errores["resultado"] == "Empate").mean()),
+        "errores_eligio_mas_material": float(arriba.mean()),
+    }
+
+
 def _registros(df: pd.DataFrame) -> list[dict[str, Any]]:
     return json.loads(df.to_json(orient="records", force_ascii=False))
 
@@ -302,7 +320,7 @@ def _registros(df: pd.DataFrame) -> list[dict[str, Any]]:
 def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, Any]], vivas: pd.DataFrame,
             eda: dict[str, Any], modelado: dict[str, Any], curva: pd.DataFrame, test: dict[str, float],
             artifact: dict[str, Any], n_explora: int, tramos: pd.DataFrame, confusion: pd.DataFrame,
-            importancia: pd.DataFrame, comparaciones: dict[str, Any]) -> dict[str, Any]:
+            importancia: pd.DataFrame, comparaciones: dict[str, Any], guia: dict[str, Any]) -> dict[str, Any]:
     """Los números que cita el texto de la app, todos calculados acá o leídos de los notebooks."""
     by_cut = curva.set_index("corte_ply")
     alive_60 = vivas[vivas["corte_ply"] == 60].set_index("TimeClass")
@@ -364,7 +382,7 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "rango_rating": artifact["rango_rating"],
             **comparaciones,
         },
-        "explora": {"partidas": n_explora, "niveles": list(config["elo"]["bandas"])},
+        "explora": {"partidas": n_explora, "niveles": list(config["elo"]["bandas"]), **guia},
     }
 
 
@@ -434,7 +452,8 @@ def main() -> None:
         "familias": modelos,
     }
     escribir("resumen.json", resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
-                                     len(partidas), tramos, confusion, importancia, comparaciones))
+                                     len(partidas), tramos, confusion, importancia, comparaciones,
+                                     guia_explora(filas, partidas)))
     escribir("graficos/datos.json", app_charts.partidas_vivas(vivas).to_dict())
     escribir("graficos/hallazgos.json", app_charts.senal_por_corte(eta2).to_dict())
     escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga).to_dict())
