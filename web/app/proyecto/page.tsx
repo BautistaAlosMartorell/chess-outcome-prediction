@@ -536,7 +536,7 @@ export default function Proyecto() {
               <p>
                 El puesto de la Entrega 3 es entre todas las columnas del modelo, en todo el test. El de cada tramo es
                 entre las cinco columnas que lideran en algún momento (rating, material, reloj y los relojes de cada
-                lado). Las hipótesis sobre la duración no aparecen: la duración quedó como objetivo secundario.
+                lado). Las hipótesis sobre la duración no aparecen: el proyecto se concentra en quién gana y la duración no se modela.
               </p>
             </>
           }

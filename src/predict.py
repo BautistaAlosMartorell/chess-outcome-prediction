@@ -100,8 +100,7 @@ def predecir(
     observaciones de ``player_history_payloads``); el transformador deriva las columnas
     al consultar ese inicio y excluye cierres simultáneos, solapados o futuros.
     ``modelo`` es el
-    artefacto del notebook 04: ``resultado`` (clasificador), ``columnas`` y, si está,
-    ``plies_restantes`` (regresor).
+    artefacto del notebook 04: ``resultado`` (clasificador) y ``columnas``.
 
     Devuelve una fila por ply en el que la partida sigue en curso: en una partida
     terminada, todos los plies anteriores al final. Con ``en_curso=True`` (una partida
@@ -130,6 +129,4 @@ def predecir(
     for label in RESULT_ORDER:
         # Order by the model's own classes_, never by position.
         result[label] = proba[:, classes.index(label)] if label in classes else 0.0
-    if "plies_restantes" in modelo:
-        result["plies_restantes"] = modelo["plies_restantes"].predict(features).clip(min=1)
     return result

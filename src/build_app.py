@@ -293,7 +293,6 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "test_por_tramo": _registros(tramos),
             "confusion_por_tramo": _registros(confusion),
             "importancia_por_tramo": _registros(importancia),
-            "duracion_test": modelado["duracion_test"],
             "rango_rating": artifact["rango_rating"],
         },
         "explora": {"partidas": n_explora, "niveles": list(config["elo"]["bandas"])},

@@ -92,7 +92,6 @@ export type Resumen = {
       porcentaje_columna: number | null;
     }[];
     importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
-    duracion_test: Fila[];
     rango_rating: [number, number];
   };
   explora: { partidas: number; niveles: string[] };

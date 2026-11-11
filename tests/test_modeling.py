@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.dummy import DummyClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
 
@@ -50,17 +50,15 @@ class PredecirTest(unittest.TestCase):
         y = ["Gana Blancas"] * 3 + ["Empate"] + ["Gana Negras"] * 2
         return {
             "resultado": DummyClassifier(strategy="prior").fit(X, y),
-            "plies_restantes": DummyRegressor(strategy="constant", constant=0).fit(X, [0] * 6),
             "columnas": columns,
         }
 
     def test_one_row_per_ply_with_probabilities_by_name(self) -> None:
         result = predecir(_pgn(MOVES), self.CONTEXT, self._model())
         self.assertEqual(result["ply"].tolist(), list(range(len(MOVES))))  # the game is over at ply 22
-        self.assertEqual(list(result.columns), ["ply", *RESULT_ORDER, "plies_restantes"])
+        self.assertEqual(list(result.columns), ["ply", *RESULT_ORDER])
         np.testing.assert_allclose(result[RESULT_ORDER].sum(axis=1), 1)
         np.testing.assert_allclose(result.loc[0, RESULT_ORDER].to_numpy(dtype=float), [3 / 6, 1 / 6, 2 / 6])
-        self.assertTrue((result["plies_restantes"] >= 1).all())  # a game in progress has at least one ply left
 
     def test_predecir_passes_raw_history_through_the_saved_pipeline(self) -> None:
         columns = ["elo_blancas_previo"]
