@@ -2,7 +2,7 @@
 
 Configuración lista para publicar; **esta PR no publica servicios**. La web está en
 `web/` y la inferencia en `api/`. El mismo artefacto que genera el notebook 04 sirve
-las probabilidades y la duración: no se sustituye por una referencia más pequeña.
+las probabilidades: no se sustituye por una referencia más pequeña.
 
 ## Verificar la API en Docker
 

@@ -363,8 +363,7 @@ npm run dev
   hacerle clic se ve la curva de probabilidades de esa partida.
 - **Jugar:** dos personas en la misma computadora, con reloj. Después de cada jugada, la
   barra muestra la probabilidad de que ganen las blancas, de tablas o de que ganen las
-  negras, y cuántas jugadas faltan. Cada lado puede traer su ficha de Chess.com (rating y
-  últimas partidas).
+  negras. Cada lado puede traer su ficha de Chess.com (rating y últimas partidas).
 - **Analizar:** cualquier usuario de Chess.com (no sólo los de la muestra). La app trae
   sus últimas partidas por la PubAPI y reproduce la elegida con la barra. Se puede
   compartir un link directo: `/analizar?usuario=hikaru&partida=<url>&ply=40`.
