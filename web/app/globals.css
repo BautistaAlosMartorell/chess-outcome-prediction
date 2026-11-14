@@ -24,6 +24,8 @@
   --separacion: clamp(16px, 3vw, 36px);
   --rebote: cubic-bezier(0.34, 1.4, 0.5, 1);
   --suave: cubic-bezier(0.22, 0.8, 0.3, 1);
+  /* Confident arrival: fast start, long deceleration. For entrances, not for feedback. */
+  --llegada: cubic-bezier(0.16, 1, 0.3, 1);
   --sombra: 0 8px 28px rgb(23 59 50 / 7%);
   color-scheme: light;
 }
@@ -91,19 +93,153 @@ button {
   }
 }
 
-/* Vega's tooltip (charts made with Altair), in the app's colors. It lives outside any
+/* Vega's tooltip (charts made with Altair), laid out by lib/tooltip.ts. It lives outside any
    component, so it can't go in a CSS module. */
 #vg-tooltip-element.vg-tooltip {
-  background: var(--panel-alto);
+  max-width: 320px;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--panel);
   color: var(--texto);
-  border: 1px solid var(--linea);
-  border-radius: 8px;
   font-family: inherit;
-  box-shadow: var(--sombra);
+  font-size: 0.875rem;
+  line-height: 1.35;
+  box-shadow: 0 14px 40px rgb(23 59 50 / 22%), 0 0 0 1px var(--linea);
 }
 
-#vg-tooltip-element.vg-tooltip td.key {
+#vg-tooltip-element.vg-tooltip.visible {
+  animation: tt-entra 150ms var(--llegada);
+}
+
+@keyframes tt-entra {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+
+.tt {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 13px;
+  min-width: 180px;
+}
+
+.tt-cab {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tt-cab span {
   color: var(--texto-suave);
+}
+
+.tt-sub {
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+}
+
+.tt-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.tt-fila span {
+  color: var(--texto-suave);
+}
+
+.tt-punto {
+  align-self: center;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--tablas);
+}
+
+.tt-punto.tt-blancas,
+.tt-pista b.tt-blancas {
+  background: var(--blancas);
+}
+
+.tt-punto.tt-tablas,
+.tt-pista b.tt-tablas {
+  background: var(--tablas);
+}
+
+.tt-punto.tt-negras,
+.tt-pista b.tt-negras {
+  background: var(--negras);
+}
+
+/* The model's three probabilities as bars; the one it picks is in bold. */
+.tt-barras {
+  display: grid;
+  gap: 5px;
+  padding: 8px 0 2px;
+}
+
+.tt-barra {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  color: var(--texto-suave);
+}
+
+.tt-barra em {
+  font-style: normal;
+  text-align: right;
+}
+
+.tt-elegida {
+  color: var(--texto);
+  font-weight: 700;
+}
+
+.tt-pista {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  overflow: hidden;
+}
+
+.tt-pista b {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  box-shadow: inset 0 0 0 1px var(--tablas);
+  border-radius: 4px;
+}
+
+.tt-veredicto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px -14px -13px;
+  padding: 9px 14px;
+  border-radius: 0 0 16px 16px;
+  font-size: 0.82rem;
+}
+
+.tt-bien {
+  background: var(--panel-alto);
+  color: var(--reloj);
+}
+
+.tt-mal {
+  background: #fce6dd;
+  color: var(--apuro);
+}
+
+.tt-veredicto svg {
+  flex: none;
 }
 
 button:disabled { cursor: default; opacity: .5; }
@@ -111,3 +247,13 @@ button, a, input { -webkit-tap-highlight-color: transparent; }
 button, select { font: inherit; }
 button { min-height: 42px; }
 a { text-underline-offset: 4px; }
+
+/* Visible to screen readers only: the animated copy of a number is hidden from them. */
+.solo-lectura {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
