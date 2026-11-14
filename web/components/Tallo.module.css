@@ -1,11 +1,19 @@
+/* A section reads top to bottom: stage, question, three numbers, chart, the answer in one line,
+   and chips that open the text (what you see, why it is here, how we know). Mobile is the base. */
 .seccion {
   display: grid;
-  gap: 18px;
-  padding: clamp(20px, 3vw, 32px);
-  border-radius: 24px;
+  gap: 20px;
+  padding: clamp(20px, 4vw, 44px);
+  border-radius: 28px;
   background: var(--panel);
-  box-shadow: inset 0 0 0 1px var(--linea);
+  box-shadow: var(--sombra), inset 0 0 0 1px var(--linea);
   min-width: 0;
+  scroll-margin-top: 76px;
+}
+
+.encabezado {
+  display: grid;
+  gap: 20px;
 }
 
 .etapa {
@@ -17,39 +25,86 @@
   text-transform: uppercase;
 }
 
-.titulo {
+/* The question is what a reader scans for: the largest type on the page after the hero. */
+.pregunta {
   margin: 0;
-  max-width: 34ch;
+  max-width: 22ch;
   font-stretch: 112%;
   font-weight: 800;
-  font-size: clamp(1.45rem, 2.6vw, 2rem);
-  line-height: 1.15;
+  font-size: clamp(2.2rem, 7vw, 3.6rem);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
   text-wrap: balance;
 }
 
-.queMirar {
-  max-width: 72ch;
-  color: var(--texto-suave);
+.respuesta {
+  margin: 0;
+  max-width: 62ch;
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  line-height: 1.45;
+  text-wrap: pretty;
 }
 
-.queMirar p {
-  margin: 0 0 8px;
-}
-
-.comoLoSabemos {
-  border-radius: 10px;
-  background: var(--fondo-hondo);
+.cifras {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  margin: 4px 0 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--linea);
   box-shadow: inset 0 0 0 1px var(--linea);
 }
 
-.comoLoSabemos summary {
-  padding: 12px 16px;
-  font-weight: 700;
-  cursor: pointer;
+.cifras > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 20px;
+  background: var(--fondo-hondo);
 }
 
-.comoLoSabemos summary:hover {
+.cifras dd {
+  margin: 0;
   color: var(--reloj);
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  line-height: 1;
+}
+
+.cifras dt {
+  color: var(--texto-suave);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.bloque {
+  min-width: 0;
+  max-width: 68ch;
+  color: var(--texto-suave);
+}
+
+.bloque h3 {
+  margin: 0 0 6px;
+  color: var(--texto);
+  font-size: 1rem;
+}
+
+.bloque p {
+  margin: 0 0 8px;
+}
+
+.extra {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--linea);
+}
+
+@media (min-width: 720px) {
+  .cifras {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
 }
 
 .evidencia {
@@ -107,5 +162,3 @@
   color: var(--reloj);
   font-weight: 700;
 }
-
-.seccion { box-shadow: var(--sombra), inset 0 0 0 1px var(--linea); }

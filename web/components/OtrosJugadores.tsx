@@ -76,7 +76,7 @@ export function OtrosJugadores({ analisis, ply }: Props) {
       <h2 className={styles.titulo}>¿Y si la jugaran otros?</h2>
       <p className={styles.nota}>
         Mismo tablero y mismos relojes, otros jugadores. Escribí dos usuarios de Chess.com (se usa su rating actual de{" "}
-        {partida.ritmo}) o directamente dos ratings.
+        {partida.ritmo}) o dos ratings.
       </p>
       <form onSubmit={comparar}>
         <div className={`${styles.campo} ${propios.campos}`}>
@@ -106,7 +106,7 @@ export function OtrosJugadores({ analisis, ply }: Props) {
           </div>
           <p className={styles.nota}>
             Solo cambia el rating previo de cada lado: la forma reciente de los jugadores nuevos no se usa. Es lo que el
-            modelo asocia a ese nivel en esta posición, no cómo jugarían ellos desde acá.
+            modelo asocia a ese nivel en esta posición.
             {pocoVisto ? " En rapid el modelo vio muy pocas partidas de este nivel: tomalo como una extrapolación." : ""}
           </p>
         </div>

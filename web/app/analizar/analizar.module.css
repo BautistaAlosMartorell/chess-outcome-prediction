@@ -1,5 +1,42 @@
+/* Before anyone is searched the page has two halves: the search on the left and, on the right,
+   a game being analysed, so the empty space shows what the result will be. */
+.entrada {
+  display: grid;
+  gap: var(--separacion);
+}
+
+.entrada > * {
+  min-width: 0;
+}
+
 .buscador {
-  max-width: 760px;
+  align-content: start;
+}
+
+.tituloGrande {
+  font-stretch: 118%;
+  font-weight: 800;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.muestra {
+  display: grid;
+}
+
+@media (min-width: 960px) {
+  .entrada[data-vacio] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: clamp(24px, 4vw, 56px);
+  }
+
+  .entrada[data-vacio] .buscador {
+    padding: clamp(24px, 3vw, 40px);
+    gap: 22px;
+  }
 }
 
 .buscador > * {

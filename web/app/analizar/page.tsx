@@ -14,6 +14,7 @@ import { Planilla } from "@/components/Planilla";
 import { Tablero } from "@/components/Tablero";
 import { analizar, ApiError, traerFicha, traerPartidas, type Analisis, type Ficha, type ResumenPartida } from "@/lib/api";
 import { momentosClave } from "@/lib/movimiento";
+import { DemoEnVivo } from "@/components/DemoEnVivo";
 import propios from "./analizar.module.css";
 
 const FINALES: Record<string, string> = {
@@ -201,8 +202,9 @@ function Analizar() {
   return (
     <div className={styles.pagina}>
       {verResumen && analisis ? <VisorResumen analisis={analisis} onCerrar={() => setVerResumen(false)} /> : null}
+      <div className={propios.entrada} data-vacio={!ficha && !analisis ? "true" : undefined}>
       <form className={`${styles.panel} ${propios.buscador}`} onSubmit={buscar}>
-        <label htmlFor="usuario" className={styles.titulo}>
+        <label htmlFor="usuario" className={!ficha && !analisis ? propios.tituloGrande : styles.titulo}>
           Analizar una partida de Chess.com
         </label>
         <div className={styles.campo}>
@@ -210,7 +212,7 @@ function Analizar() {
             id="usuario"
             value={usuario}
             onChange={(e) => setUsuario(e.target.value)}
-            placeholder="Usuario de Chess.com, por ejemplo hikaru"
+            placeholder="Usuario, por ejemplo hikaru"
             autoComplete="off"
             spellCheck={false}
           />
@@ -220,6 +222,12 @@ function Analizar() {
         </div>
         <p className={styles.nota}>Trae sus últimas partidas rated de bullet, blitz y rapid. Funciona con cualquier cuenta pública.</p>
       </form>
+      {!ficha && !analisis ? (
+        <div className={propios.muestra}>
+          <DemoEnVivo />
+        </div>
+      ) : null}
+      </div>
       {error ? <p className={styles.error}>{error}</p> : null}
 
       {analisis ? (

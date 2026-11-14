@@ -93,6 +93,10 @@ export type Resumen = {
     }[];
     importancia_por_tramo: { columna: string; nombre: string; tramo: string; log_loss: number; accuracy: number }[];
     rango_rating: [number, number];
+    // Where the model hits and misses: accuracy by band and by how the position looked (material or clock).
+    situaciones: { eje: string; tramo: string; situacion: string; rango: string; orden: number; filas: number; accuracy: number; parte: number }[];
+    // How the games of the last band ended, when the model was right and when it was wrong.
+    como_terminan: { decision: string; final: string; filas: number; parte: number }[];
     // Comparison between cuts (notebook 04, section 8): test, bootstrap by game.
     ply_comun: number;
     entre_cortes: {

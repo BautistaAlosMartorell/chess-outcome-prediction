@@ -28,7 +28,7 @@ export default function Inicio() {
             la <span>ves?</span>
           </h1>
           <p className={styles.bajada}>
-            Un tablero, dos relojes y un final que todavía no conocés.
+            Una posición real, dos relojes y tres resultados posibles.
           </p>
           <p className={styles.descripcion}>
             Elegí quién gana. Descubrí qué pronostica el modelo. Y mirá qué pasó
@@ -48,7 +48,7 @@ export default function Inicio() {
         </div>
         <div className={styles.escena}>
           <div className={styles.destacado}>
-            <span aria-hidden="true">✦</span> El reloj también juega.
+            El reloj pesa en el resultado.
           </div>
           <div className={styles.tarjetaTablero}>
             <div className={styles.cabeceraTablero}>
@@ -73,8 +73,8 @@ export default function Inicio() {
       </section>
       <section className={styles.descubri} aria-labelledby="descubri">
         <div className={styles.encabezado}>
-          <p className={styles.etiqueta}>Seguí la curiosidad</p>
-          <h2>Hay más de una forma de entrar en la partida.</h2>
+          <p className={styles.etiqueta}>Tres formas de entrar</p>
+          <h2>Analizá tus partidas, explorá los datos o leé el recorrido.</h2>
         </div>
         <div className={styles.opciones}>
           <Link href="/analizar" className={styles.tarjeta}>
@@ -93,7 +93,7 @@ export default function Inicio() {
             <span className={styles.icono} aria-hidden="true">
               ♙
             </span>
-            <h3>Cada partida cuenta algo.</h3>
+            <h3>Cada punto es una partida.</h3>
             <p>
               Explorá posiciones, resultados y cómo cambian las probabilidades.
             </p>

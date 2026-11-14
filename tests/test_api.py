@@ -173,6 +173,10 @@ class ApiTest(unittest.TestCase):
         self.client.app.state.modelo["rango_rating"] = [100.0, 3500.0]
         self.assertEqual(self.client.get("/salud").json()["rango_rating"], [100.0, 3500.0])
 
+    def test_health_answers_on_both_paths(self) -> None:
+        self.assertEqual(self.client.get("/health").status_code, 200)
+        self.assertEqual(self.client.get("/health").json(), self.client.get("/salud").json())
+
     def test_time_class_follows_chess_com(self) -> None:
         self.assertEqual([ritmo(60, 0), ritmo(180, 2), ritmo(300, 0), ritmo(600, 0)], ["bullet", "blitz", "blitz", "rapid"])
 

@@ -1,0 +1,12 @@
+.revelar[data-listo] {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 650ms var(--llegada) var(--retraso, 0ms),
+    transform 800ms var(--llegada) var(--retraso, 0ms);
+}
+
+.revelar[data-listo][data-visto] {
+  opacity: 1;
+  transform: none;
+}
