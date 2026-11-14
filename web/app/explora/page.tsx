@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { GraficoAltair } from "@/components/GraficoAltair";
+import { Despliegues } from "@/components/Despliegues";
+import { ExploraGrafico } from "@/components/ExploraGrafico";
 import { RESUMEN, entero, pct } from "@/lib/resumen";
 import styles from "./explora.module.css";
 
@@ -18,35 +19,63 @@ export default function Explora() {
           izquierda, las negras tienen más material; arriba, el modelo le da más chances a las blancas. El color es
           cómo terminó de verdad.
         </p>
-        <ul className={styles.pasos}>
-          <li>
-            <strong>Empezá por el panorama, con el deslizador en 0:</strong> antes de mover nadie tiene material de
-            más, así que todos los puntos están en la misma columna y los colores se mezclan. Llevalo a{" "}
-            {guia.corte} plies: los puntos se abren a los costados y, cuanto más lejos del centro, más se separan los
-            colores. Eso es lo que aprende el modelo.
-          </li>
-          <li>
-            <strong>Mirá dónde se equivoca:</strong> en {guia.corte} plies acierta el {pct(guia.acierto, 0)} de estas{" "}
-            {entero(guia.partidas_en_corte)} partidas. Elegí «Se equivocó»: el {pct(guia.errores_tablas, 0)} de los
-            errores son tablas, que casi nunca elige, y en el {pct(guia.errores_eligio_mas_material, 0)} de las demás
-            eligió al que iba arriba en material y perdió igual.
-          </li>
-          <li>
-            <strong>Elegí un ritmo o un nivel</strong> para quedarte con esas partidas.
-          </li>
-          <li>
-            <strong>Pasá el mouse</strong> por un punto para ver la partida y lo que dijo el modelo;{" "}
-            <strong>hacé clic</strong> para ver abajo cómo cambiaron sus probabilidades de principio a fin (doble clic
-            para soltarla).
-          </li>
-        </ul>
+        <Despliegues
+          items={[
+            {
+              id: "panorama",
+              titulo: "Empezá por el panorama",
+              icono: "ver",
+              contenido: (
+                <p>
+                  Con el deslizador en 0, antes de mover nadie tiene material de más: todos los puntos están en la misma
+                  columna y los colores se mezclan. Llevalo a {guia.corte} plies: los puntos se abren a los costados y,
+                  cuanto más lejos del centro, más se separan los colores. Eso es lo que aprende el modelo.
+                </p>
+              ),
+            },
+            {
+              id: "errores",
+              titulo: "Dónde se equivoca",
+              icono: "error",
+              contenido: (
+                <p>
+                  En {guia.corte} plies acierta el {pct(guia.acierto, 0)} de estas {entero(guia.partidas_en_corte)}{" "}
+                  partidas. Elegí «Se equivocó»: el {pct(guia.errores_tablas, 0)} de los errores son tablas (reconoce
+                  el {pct(RESUMEN.modelo.test.recall_empate, 0)} de ellas), y en el{" "}
+                  {pct(guia.errores_eligio_mas_material, 0)} de las demás eligió al que iba arriba en material y perdió
+                  igual.
+                </p>
+              ),
+            },
+            {
+              id: "filtros",
+              titulo: "Eje, ritmo y nivel",
+              icono: "filtro",
+              contenido: (
+                <p>
+                  Elegí un ritmo o un nivel para quedarte con esas partidas. Con «Eje horizontal» pasás del material al
+                  reloj y el modelo queda fijo arriba: si se apoya en el reloj, los puntos se ordenan igual. Con
+                  «Reproducir», el corte avanza solo y ves cómo se abren los puntos a medida que la partida sigue.
+                </p>
+              ),
+            },
+            {
+              id: "mouse",
+              titulo: "Mouse y clic",
+              icono: "puntero",
+              contenido: (
+                <p>
+                  Pasá el mouse por un punto para ver la partida y lo que dijo el modelo. Hacé clic para ver abajo cómo
+                  cambiaron sus probabilidades de principio a fin (doble clic para soltarla).
+                </p>
+              ),
+            },
+          ]}
+        />
       </header>
 
       <section className={styles.grafico} aria-label="Partidas de test y probabilidades del modelo">
-        <GraficoAltair
-          src="/app/graficos/explora.json"
-          descripcion="Dispersión de partidas de test: material contra la ventaja que da el modelo, coloreada por el resultado real, con controles de corte, ritmo y nivel, y la curva de probabilidades de la partida elegida."
-        />
+        <ExploraGrafico niveles={RESUMEN.explora.niveles} />
       </section>
 
       <p className={styles.nota}>
