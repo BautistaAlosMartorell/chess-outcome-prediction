@@ -48,8 +48,8 @@ export function AvisoRango({ blancas, negras, rango }: Props) {
     <aside className={styles.aviso} aria-label="Sobre la predicción antes de mover">
       {motivos.length ? (
         <p>
-          <strong>Fuera de lo que vio el modelo.</strong> {motivos.join(" ")} Antes de mover, la barra no sabe qué hacer
-          con esto: durante la partida, lo que pesa es el tablero y los relojes.
+          <strong>Fuera de lo que vio el modelo.</strong> {motivos.join(" ")} Antes de mover, la predicción para estos
+          ratings es una extrapolación. Durante la partida pesan el tablero y los relojes.
         </p>
       ) : null}
       {ambos ? (
