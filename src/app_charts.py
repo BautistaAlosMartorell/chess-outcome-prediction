@@ -36,6 +36,9 @@ ESCALA_VARIABLE = alt.Scale(domain=list(COLOR_VARIABLE), range=list(COLOR_VARIAB
 # Vega-Lite only sizes single and layered views to their container: the web resizes the
 # two views of Explorá itself, starting from this width.
 ANCHO_EXPLORA = 640
+# The web gives each view of a vconcat the container's width, but never less than 260 px (Explorá needs it).
+# These stacked charts stay readable narrower, so on a phone they fit instead of scrolling sideways.
+ANCHO_MINIMO_ANGOSTO = {"anchoMinimo": 160}
 EJE_CORTE = alt.Axis(title="Plies jugados", values=list(range(0, 121, 20)))
 
 TEMA = {
@@ -96,26 +99,37 @@ def senal_por_corte(eta2: pd.DataFrame) -> alt.Chart:
     return con_tema((regla + etiqueta + lineas).properties(height=300))
 
 
-def modelo_contra_piso(curva: pd.DataFrame) -> alt.Chart:
-    """El modelo: log-loss en test del modelo y del piso en cada corte (menor es mejor).
+def modelo_contra_piso(curva: pd.DataFrame) -> dict:
+    """El modelo: arriba el error crudo del modelo y del piso, abajo cuánto le saca (en %).
 
     ``curva`` tiene una fila por (serie, corte_ply) con ``log_loss``, ``mejora`` (fracción
-    sobre el piso, repetida en las dos series) y ``partidas``.
+    sobre el piso, repetida en las dos series) y ``partidas``. El error crudo se muestra
+    tal cual (menor es mejor): el piso empeora al final porque las partidas largas
+    terminan distinto, no porque el modelo falle. Las barras de abajo leen lo mismo como
+    lo que importa: qué parte del error del piso se evita.
     """
-    base = alt.Chart(curva).encode(
-        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[0, 120])),
-        y=alt.Y("log_loss:Q", title="Error de las probabilidades (log-loss, menor es mejor)",
-                scale=alt.Scale(zero=False)),
+    crudo = alt.Chart(curva).encode(
+        # Same x domain as the bars below, so a cut sits above its own bar.
+        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[-3, 123])),
+        y=alt.Y("log_loss:Q", title="Error (log-loss, menos es mejor)", scale=alt.Scale(zero=False)),
         color=alt.Color("serie:N", title=None, scale=ESCALA_SERIE),
     )
-    lineas = base.mark_line(strokeWidth=2.5)
-    puntos = base.mark_point(filled=True, size=40).encode(
+    lineas = crudo.mark_line(strokeWidth=2.5)
+    puntos = crudo.mark_point(filled=True, size=40).encode(
         tooltip=[alt.Tooltip("serie:N", title="Serie"), alt.Tooltip("corte_ply:Q", title="Plies"),
                  alt.Tooltip("log_loss:Q", title="Log-loss", format=".3f"),
                  alt.Tooltip("mejora:Q", title="Mejora sobre el piso", format=".1%"),
                  alt.Tooltip("partidas:Q", title="Partidas de test", format=",")],
     )
-    return con_tema((lineas + puntos).properties(height=320))
+    barras = alt.Chart(curva[curva["serie"] == "Modelo"]).mark_bar(color=COLOR_MODELO, opacity=0.85, size=14).encode(
+        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[-3, 123])),
+        y=alt.Y("mejora:Q", title="Error que evita el modelo", axis=alt.Axis(format="%", tickCount=4)),
+        tooltip=[alt.Tooltip("corte_ply:Q", title="Plies"),
+                 alt.Tooltip("mejora:Q", title="Menos error que el piso", format=".1%"),
+                 alt.Tooltip("partidas:Q", title="Partidas de test", format=",")],
+    )
+    return alt.vconcat((lineas + puntos).properties(height=240), barras.properties(height=120),
+                       spacing=20, usermeta=ANCHO_MINIMO_ANGOSTO).configure(**TEMA).to_dict()
 
 
 # Professor's feedback on Entrega 3: fixed-decision metrics and importance, band by band.
@@ -206,28 +220,105 @@ def confusion_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     return con_tema((celdas + textos).add_params(tramo, vista).properties(height=240))
 
 
-def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
-    """En qué se apoya el modelo en cada tramo: importancia por permutación de las columnas líderes.
+def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> dict:
+    """En qué se apoya el modelo en cada tramo: una columna por mini gráfico, todos a la misma escala.
 
     ``filas`` tiene una fila por (nombre, tramo) con ``log_loss`` (cuánto empeora al
-    desordenar la columna) y ``accuracy`` (puntos de aciertos que se pierden, 0 a 1).
+    desordenar la columna: la importancia) y ``accuracy`` (puntos de aciertos que se
+    pierden, 0 a 1). Con las cinco líneas juntas se pisaban y se leía "sube = empeora":
+    separadas y con el mismo eje y, la forma de cada una es lo que se compara, y el
+    tamaño de la mancha dice cuánto pesa frente a las otras.
+    """
+    tope = float(filas["log_loss"].max()) * 1.15
+    vistas = []
+    for nombre in ["Diferencia de rating previo", "Material (blancas − negras)", "Reloj (blancas − negras)",
+                   "Reloj de blancas", "Reloj de negras"]:
+        color = COLOR_COLUMNA[nombre]
+        base = alt.Chart(filas[filas["nombre"] == nombre]).encode(
+            x=alt.X("tramo:O", sort=tramos, title="Plies jugados (tramo)" if nombre == "Reloj de negras" else None,
+                    axis=alt.Axis(labelAngle=0, labels=nombre == "Reloj de negras", ticks=nombre == "Reloj de negras")),
+            y=alt.Y("log_loss:Q", title="Importancia", scale=alt.Scale(domain=[0, tope]),
+                    axis=alt.Axis(values=[0, round(tope / 2, 2)], format=".2f")),
+        )
+        area = base.mark_area(color=color, opacity=0.22, interpolate="monotone")
+        linea = base.mark_line(color=color, strokeWidth=2.5, interpolate="monotone")
+        puntos = base.mark_point(color=color, filled=True, size=55).encode(
+            tooltip=[alt.Tooltip("nombre:N", title="Columna"), alt.Tooltip("tramo:O", title="Plies"),
+                     alt.Tooltip("log_loss:Q", title="Importancia (log-loss que empeora)", format=".4f"),
+                     alt.Tooltip("accuracy:Q", title="Aciertos que se pierden", format=".1%")],
+        )
+        vistas.append((area + linea + puntos).properties(
+            height=84, title=alt.TitleParams(nombre, anchor="start", color=color, fontSize=14, fontWeight="bold")))
+    # Vega-Lite sizes concat views itself: the web gives each one the container's width.
+    return alt.vconcat(*vistas, spacing=14, usermeta=ANCHO_MINIMO_ANGOSTO).resolve_scale(y="shared").configure(**TEMA).to_dict()
+
+
+EJES_SITUACION = ["Material", "Reloj"]
+
+
+def acierto_por_situacion(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """¿En qué situaciones acierta el modelo? Mapa de calor: tramo de jugadas por situación.
+
+    ``filas`` tiene una fila por (eje, tramo, situacion) con ``orden`` (0 es la más pareja),
+    ``rango`` (qué diferencia es), ``filas`` y ``accuracy``. Un menú cambia el eje de la situación: la ventaja de material
+    o la de reloj. El color y el número son el % de aciertos; una celda vacía es una situación que no
+    aparece en ese tramo (antes de mover el material siempre está parejo).
+    """
+    eje = alt.param(name="eje", value=EJES_SITUACION[0],
+                    bind=alt.binding_radio(options=EJES_SITUACION, name="Situación según el "))
+    base = alt.Chart(filas).transform_filter(alt.datum.eje == eje).transform_calculate(
+        texto="format(datum.accuracy * 100, '.0f')",
+    ).encode(
+        x=alt.X("tramo:O", sort=tramos, title="Plies jugados (tramo)",
+                axis=alt.Axis(labelAngle=0, orient="top", labelFontSize=11)),
+        y=alt.Y("situacion:N", sort=alt.EncodingSortField("orden", order="ascending"), title=None,
+                axis=alt.Axis(labelLimit=120)),
+    )
+    celdas = base.mark_rect(stroke="#ffffff", strokeWidth=2).encode(
+        color=alt.Color("accuracy:Q", title="Aciertos", legend=None,
+                        scale=alt.Scale(domain=[0.3, 0.95], range=["#f6f1e7", COLOR_MODELO], clamp=True)),
+        tooltip=[alt.Tooltip("situacion:N", title="Situación"), alt.Tooltip("rango:N", title="Diferencia"),
+                 alt.Tooltip("tramo:O", title="Plies"), alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%"),
+                 alt.Tooltip("filas:Q", title="Filas de test", format=","),
+                 alt.Tooltip("parte:Q", title="Parte de las filas del tramo", format=".0%")],
+    )
+    textos = base.mark_text(fontSize=14).encode(
+        text="texto:N",
+        color=alt.condition("datum.accuracy > 0.7", alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
+    )
+    return con_tema((celdas + textos).add_params(eje).properties(height=170))
+
+
+COLOR_FINAL = {"Acertó": COLOR_MODELO, "Se equivocó": "#d95640"}
+
+
+def como_terminan(filas: pd.DataFrame, finales: list[str]) -> alt.Chart:
+    """Cómo terminaron las partidas en que el modelo acertó y en las que se equivocó (tramo final).
+
+    ``filas`` tiene una fila por (decision, final) con ``parte`` (fracción de las filas de
+    esa decisión, 0 a 1) y ``filas``. Si los errores se concentran en un final (por tiempo,
+    tablas), ese final es una de las razones del error.
     """
     base = alt.Chart(filas).encode(
-        x=_eje_tramo(tramos),
-        y=alt.Y("log_loss:Q", title="Cuánto empeora el error al desordenarla (log-loss)"),
-        color=alt.Color("nombre:N", title=None, scale=ESCALA_COLUMNA, sort=list(COLOR_COLUMNA)),
+        y=alt.Y("final:N", sort=finales, title=None),
+        yOffset=alt.YOffset("decision:N", sort=list(COLOR_FINAL)),
+        x=alt.X("parte:Q", title="Parte de las filas de cada grupo", axis=alt.Axis(format="%", values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
+                scale=alt.Scale(domain=[0, 0.6])),
+        color=alt.Color("decision:N", title=None, scale=alt.Scale(domain=list(COLOR_FINAL), range=list(COLOR_FINAL.values()))),
     )
-    lineas = base.mark_line(strokeWidth=2.5)
-    puntos = base.mark_point(filled=True, size=55).encode(
-        tooltip=[alt.Tooltip("nombre:N", title="Columna"), alt.Tooltip("tramo:O", title="Plies"),
-                 alt.Tooltip("log_loss:Q", title="Log-loss que empeora", format=".4f"),
-                 alt.Tooltip("accuracy:Q", title="Aciertos que se pierden", format=".1%")],
+    barras = base.mark_bar().encode(
+        tooltip=[alt.Tooltip("decision:N", title="El modelo"), alt.Tooltip("final:N", title="La partida terminó"),
+                 alt.Tooltip("parte:Q", title="Parte del grupo", format=".1%"),
+                 alt.Tooltip("filas:Q", title="Filas de test", format=",")],
     )
-    return con_tema((lineas + puntos).properties(height=340))
+    textos = base.mark_text(align="left", dx=4, fontSize=12).encode(text=alt.Text("parte:Q", format=".0%"))
+    return con_tema((barras + textos).properties(height=200))
 
 
 # Explorá's third control: every game, or only those where the model's most probable class was right or wrong.
 ACIERTO = ["Todas", "Acertó", "Se equivocó"]
+# Explorá's horizontal axis: material (points) or clock (fraction of the base time).
+EJES_X = ["Material", "Reloj"]
 
 
 def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> dict:
@@ -250,6 +341,8 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     elegida = alt.selection_point(name="elegida", fields=["id"], on="click", clear="dblclick", empty=False)
     acierto = alt.param(name="acierto", value=ACIERTO[0],
                         bind=alt.binding_radio(options=ACIERTO, name="Partidas "))
+    # What the horizontal axis shows: the model's answer stays on the vertical one.
+    eje_x = alt.param(name="eje_x", value=EJES_X[0], bind=alt.binding_radio(options=EJES_X, name="Eje horizontal "))
 
     datos_partida = alt.LookupData(
         data=alt.Data(name="partidas"), key="id",
@@ -265,6 +358,7 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(
         # Material is an integer: a fixed per-game jitter (computed in the build) separates the points.
         material_visible="datum.balance_material + datum.desplazamiento",
+        x_valor="eje_x == 'Reloj' ? datum.dif_reloj : datum.balance_material + datum.desplazamiento",
         ventaja="datum.p_blancas - datum.p_negras",
         # The model's fixed decision, the most probable class (ties as numpy's argmax: white, draw, black).
         prediccion="datum.p_blancas >= datum.p_empate && datum.p_blancas >= datum.p_negras ? 'Gana Blancas' : "
@@ -275,8 +369,12 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
         (acierto == ACIERTO[0]) | ((acierto == ACIERTO[1]) & alt.datum.acerto)
         | ((acierto == ACIERTO[2]) & ~alt.datum.acerto)
     ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
-        x=alt.X("material_visible:Q", title="Material de blancas − negras (puntos)",
-                scale=alt.Scale(domain=[-15, 15], clamp=True)),
+        x=alt.X("x_valor:Q",
+                # An axis title can't follow a param: one title that reads right for both axes.
+                title="Ventaja de blancas sobre negras: material (puntos) o reloj (% del tiempo base)",
+                # nice=False: with a domain given as an expression Vega would round it up to ±20.
+                scale=alt.Scale(domain=alt.ExprRef(expr="eje_x == 'Reloj' ? [-1, 1] : [-15, 15]"), clamp=True, nice=False),
+                axis=alt.Axis(labelExpr="eje_x == 'Reloj' ? (datum.value == 0 ? '0 %' : format(datum.value * 100, '+d') + ' %') : datum.label")),
         y=alt.Y("ventaja:Q", title="Lo que dice el modelo: P(blancas) − P(negras)",
                 scale=alt.Scale(domain=[-1, 1]), axis=alt.Axis(format="+.0%")),
         color=alt.Color("resultado:N", title="Cómo terminó", scale=ESCALA_RESULTADO),
@@ -286,13 +384,14 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
             alt.Tooltip("TimeClass:N", title="Ritmo"), alt.Tooltip("nivel_promedio:N", title="Nivel"),
             alt.Tooltip("corte_ply:Q", title="Plies jugados"),
             alt.Tooltip("balance_material:Q", title="Material (bl − ng)"),
+            alt.Tooltip("dif_reloj:Q", title="Reloj (bl − ng)", format="+.0%"),
             alt.Tooltip("p_blancas:Q", title="Modelo: gana blancas", format=".0%"),
             alt.Tooltip("p_empate:Q", title="Modelo: tablas", format=".0%"),
             alt.Tooltip("p_negras:Q", title="Modelo: gana negras", format=".0%"),
             alt.Tooltip("prediccion:N", title="El modelo elige"),
             alt.Tooltip("resultado:N", title="Resultado real"), alt.Tooltip("final:N", title="Terminó por"),
         ],
-    ).add_params(corte, ritmo, nivel, acierto, elegida).properties(height=380, width=ANCHO_EXPLORA)
+    ).add_params(corte, ritmo, nivel, acierto, eje_x, elegida).properties(height=380, width=ANCHO_EXPLORA)
 
     detalle_base = base.transform_filter(elegida).transform_fold(
         ["p_blancas", "p_empate", "p_negras"], as_=["clave", "probabilidad"],
@@ -303,7 +402,11 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     curva = detalle_base.mark_area(opacity=0.95, interpolate="monotone").encode(
         x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[0, 120])),
         y=alt.Y("probabilidad:Q", stack="normalize", title="Probabilidad según el modelo", axis=alt.Axis(format="%")),
-        color=alt.Color("prediccion:N", title="Según el modelo", scale=ESCALA_RESULTADO),
+        # Without its own title and pinned to the right end of the strip above the view: the chosen
+        # game's title takes the rest of that strip, so the two never overlap.
+        color=alt.Color("prediccion:N", title=None, scale=ESCALA_RESULTADO,
+                        legend=alt.Legend(orient="none", direction="horizontal", legendX=alt.ExprRef(expr="width - 270"),
+                                          legendY=-34)),
         order=alt.Order("orden:Q"),
         tooltip=[alt.Tooltip("corte_ply:Q", title="Plies"), alt.Tooltip("prediccion:N", title="Resultado"),
                  alt.Tooltip("probabilidad:Q", title="Probabilidad", format=".0%")],
@@ -313,7 +416,8 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(c=corte.name)  # the slider's value, as a data field
     titulo = base.transform_filter(elegida).transform_filter(alt.datum.corte_ply == 0).mark_text(
         align="left", baseline="bottom", fontSize=13, dy=-8, color=FONDO_TEXTO,
-        limit=alt.ExprRef(expr="width"),
+        # Leave the legend its corner on wide charts.
+        limit=alt.ExprRef(expr="width > 640 ? width - 290 : width"),
     ).encode(x=alt.value(0), y=alt.value(0), text="titulo:N")
     # Until a game is chosen, the lower view says how to choose one (the selection's store is empty).
     aviso = alt.Chart(pd.DataFrame({"texto": ["Elegí una partida de arriba\npara ver sus probabilidades"]})).transform_filter(
