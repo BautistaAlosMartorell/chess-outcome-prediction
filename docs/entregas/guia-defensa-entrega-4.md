@@ -60,26 +60,32 @@ Un test (`tests/test_build_app.py`) verifica que coincidan.
 
 ### El modelo: `modelo_contra_piso`
 
-| Componente | Qué es | Por qué |
+Son dos vistas, una arriba de la otra (`vconcat`), con el mismo dominio de `x`:
+
+| Componente | Arriba: «Error que evita el modelo» | Abajo: el error en crudo |
 |---|---|---|
-| Datos | Log-loss de test por corte del modelo y del piso, recalculada por el build y verificada contra el 04 | Coincide con la tabla de la sección 8 del 04 |
-| Marca | Línea + punto | Evolución por corte |
-| x | `corte_ply`, cuantitativa | |
-| y | `log_loss`, cuantitativa, sin cero (`zero=False`) | La diferencia entre las líneas es lo que importa; con cero se aplastaría |
-| color | `serie` (Modelo / Piso), `ESCALA_SERIE` | El modelo en ámbar, el color de "lo que está pasando" en toda la app |
-| Tooltip | Log-loss, mejora sobre el piso, partidas de test en el corte | |
+| Datos | `mejora` por corte: qué fracción del error del piso evita el modelo (solo la serie Modelo) | Log-loss de test por corte del modelo y del piso, recalculada por el build y verificada contra el 04 |
+| Marca | Barra | Línea + punto |
+| x | `corte_ply`, cuantitativa (dominio −3 a 123, igual que abajo) | `corte_ply`, cuantitativa |
+| y | `mejora`, formato %, **arranca de cero** | `log_loss`, sin cero (`zero=False`): la diferencia entre las líneas es lo que importa |
+| color | Verde del modelo | `serie` (Modelo / Piso), `ESCALA_SERIE` |
+| Tooltip | Menos error que el piso y partidas de test del corte | Log-loss, mejora sobre el piso y partidas de test |
+
+Va primero la vista de arriba porque arranca de cero y se lee como un logro. El error en
+crudo, con el eje sin cero, hace subir al piso al final (las partidas largas terminan
+distinto) y a primera vista parece que el modelo empeora.
 
 ### Explorá: `explora`
 
 | Componente | Qué es | Por qué |
 |---|---|---|
-| Datos | Dos tablas: `filas` (una por partida y corte: material y las tres probabilidades) y `partidas` (una por partida: jugadores, ritmo, nivel, resultado). Se unen con `transform_lookup` por `id` | La tabla de partidas va una sola vez (dataset con nombre): el archivo pesa ~4 MB en lugar de 17 |
+| Datos | Dos tablas: `filas` (una por partida y corte: material, diferencia de reloj y las tres probabilidades) y `partidas` (una por partida: jugadores, ritmo, nivel, resultado y `dif_rating`). Se unen con `transform_lookup` por `id` | La tabla de partidas va una sola vez (dataset con nombre): el archivo pesa ~4 MB en lugar de 17 |
 | Marca (arriba) | Círculo | Una partida = un punto |
-| x | `material_visible` = material + un desplazamiento fijo por partida (`transform_calculate`) | El material es entero: sin desplazamiento, los puntos se apilan en columnas |
+| x | `x_valor` (`transform_calculate`), según el param `eje_x`: **Material** (material + un desplazamiento fijo por partida), **Reloj** (`dif_reloj`, % del tiempo base) o **Rating** (`dif_rating`, puntos). Dominios ±15, ±100 % y ±400; los puntos sin valor se sacan con `isValid(datum.x_valor)` | El material es entero: sin desplazamiento, los puntos se apilan en columnas. Un solo canal cambia de variable: el modelo queda fijo en `y` |
 | y | `ventaja` = P(blancas) − P(negras) (`transform_calculate`), de −100 % a +100 % | Lo que dice el modelo en un solo eje |
 | color | `resultado` real, `ESCALA_RESULTADO` | Los mismos colores que la barra de Jugar y Analizar |
 | tamaño | Condición: más grande si es la partida elegida | |
-| Tooltip | Jugadores, ritmo, nivel, corte, material, las tres probabilidades, resultado y cómo terminó | Detalle a pedido, con el modelo |
+| Tooltip | Jugadores, ritmo, nivel, corte, material, reloj, rating previo (o «sin dato»), las tres probabilidades, lo que elige el modelo, resultado y cómo terminó | Detalle a pedido, con el modelo |
 | Marca (abajo) | Área apilada normalizada de las tres probabilidades de la partida elegida, a lo largo de todos los cortes (`transform_fold`), y una regla en el corte del deslizador | Es la barra de la app, desplegada en el tiempo |
 
 ## Qué toca cada control
@@ -89,7 +95,13 @@ Un test (`tests/test_build_app.py`) verifica que coincidan.
 | Deslizador "Plies jugados" | `corte` (`binding_range`, 0–120, paso 5) | El **filtro** del panorama (`datum.corte_ply == corte`) y la posición de la regla ámbar del detalle |
 | Menú "Ritmo" | `ritmo` (`binding_select`) | El **filtro** del panorama (`ritmo == 'todos' \|\| datum.TimeClass == ritmo`) |
 | Menú "Nivel" | `nivel` (`binding_select`) | El **filtro** del panorama, igual con `nivel_promedio` |
+| Botones "Eje horizontal" | `eje_x` (Material / Reloj / Rating) | El **canal x** del panorama: qué variable, su dominio y las etiquetas del eje (`x_valor`). Con Rating, además, el **filtro** `isValid`: solo quedan las partidas con rating previo de los dos jugadores |
+| Botones "Partidas" | `acierto` (Todas / Acertó / Se equivocó) | El **filtro** del panorama: compara la clase más probable con el resultado real en el corte elegido |
 | Clic en un punto | `elegida` (`selection_point` sobre `id`) | El **filtro** del gráfico de abajo y el **tamaño** del punto elegido. Doble clic la suelta |
+
+La página no usa los controles que Altair dibuja: `web/components/ExploraGrafico.tsx` los
+reemplaza por controles propios (incluido «Reproducir», que avanza el corte solo) y escribe
+cada valor en el param correspondiente de la vista de Vega.
 
 ## Una decisión de diseño que cambió
 
@@ -99,6 +111,15 @@ Un test (`tests/test_build_app.py`) verifica que coincidan.
   con lo que Chess.com devuelve *hoy*, así que la curva no coincidía con la del notebook.
   Ahora el detalle es un segundo gráfico de Altair, con las probabilidades del modelo tal
   como las mide el 04.
+- **«El modelo», orden de las vistas:** la primera versión mostraba arriba el error en crudo
+  (log-loss, eje sin cero). Como el error del piso sube al final, el gráfico parecía decir
+  que todo andaba mal, y el profesor lo marcó. Ahora van primero las barras de «error que
+  evita el modelo», que arrancan de cero, y el error en crudo queda abajo, sin retocar.
+- **Explorá, ejes:** la primera versión sólo mostraba el material. El profesor pidió cambiar
+  los ejes, con lo que dice el modelo fijo, para ver si algo explica los errores. Ahora el
+  eje horizontal es material, reloj o rating previo. Con el rating se ven 951 de las 2.000
+  partidas, las que tienen el rating previo de los dos jugadores (a la otra mitad le falta
+  alguno: `diferencia_rating` en `src/build_app.py`), y la página lo avisa.
 - **Peso de Explorá:** la primera spec pesaba 17,6 MB, porque Altair repetía los datos
   dentro de cada capa. Con la tabla de partidas como dataset con nombre y los campos de
   la partida fuera de cada fila, quedó en ~4 MB (430 KB comprimido).

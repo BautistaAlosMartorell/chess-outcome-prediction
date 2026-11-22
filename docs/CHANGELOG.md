@@ -1,5 +1,26 @@
 # Changelog
 
+## Resolver la devolución de la Entrega 4 en la app (2026-11-22)
+
+Rama `ejes-explora`, a partir de la devolución del profesor sobre la app.
+
+- Explorá: el eje horizontal suma el rating previo (blancas menos negras) a material y reloj.
+  Con ese eje se ven las partidas que tienen el rating previo de los dos jugadores
+  (951 de 2.000) y la página lo avisa. Nueva `diferencia_rating` en `src/build_app.py` y
+  `dif_rating` por partida en `explora.json`.
+- «El modelo»: las barras de «error que evita el modelo», que arrancan de cero, van arriba
+  del error en crudo.
+- `/proyecto`: la portada dice para qué sirve la app y define el piso; la tarjeta de la
+  Entrega 4 del recorrido deja de decir «una sola cifra de error» (ya se mostraba por
+  corte); «Las hipótesis» tiene un título que afirma y una tabla en lenguaje llano, con las
+  medidas originales en «Cómo lo sabemos».
+- Los datos de `web/public/app/` conservan las probabilidades de `main`; sólo cambian
+  `explora.json`, `modelo.json` y `resumen.json`. Quedan pendientes elegir el modelo oficial,
+  subir los notebooks 04 y 05 y volver a correr `build_app`.
+- Documentar: `docs/entregas/devolucion-entrega-4.md`, la guía de defensa y el README.
+- Verificar los tests de Python que tocan la app, los de la web, el typecheck, el build de
+  producción y las pantallas en el navegador.
+
 ## Integrar la interfaz existente y preparar la PR de Entrega 4 (2026-10-23)
 
 - Recuperar los cinco commits de `feat/trivia-resumen-visual` que no entraron en el

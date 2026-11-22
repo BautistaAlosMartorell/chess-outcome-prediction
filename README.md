@@ -359,8 +359,11 @@ npm run dev
 ```
 
 - **Explorá:** 2.000 partidas de test en un gráfico de Altair. Un deslizador elige el
-  corte y dos menús, el ritmo y el nivel. Cada punto muestra lo que dijo el modelo, y al
-  hacerle clic se ve la curva de probabilidades de esa partida.
+  corte (con un botón que lo hace avanzar solo) y hay controles para el ritmo, el nivel y si
+  se ven las partidas que el modelo acertó o erró. El eje horizontal se elige entre material,
+  reloj y rating previo; con el rating se ven las partidas que tienen el de los dos jugadores.
+  Cada punto muestra lo que dijo el modelo, y al hacerle clic se ve la curva de
+  probabilidades de esa partida.
 - **Jugar:** dos personas en la misma computadora, con reloj. Después de cada jugada, la
   barra muestra la probabilidad de que ganen las blancas, de tablas o de que ganen las
   negras. Cada lado puede traer su ficha de Chess.com (rating y últimas partidas).
@@ -419,6 +422,8 @@ probabilidades y ningún calibrador pasó la regla. Atrás del bosque va una reg
 0,790 frente a 0,936 del piso (15,58 % menos) y 62,3 % de aciertos. La duración restante,
 que la Entrega 3 modelaba como objetivo secundario, ya no se modela: el proyecto se concentra
 en quién gana.
+Lo que pidió la devolución de la Entrega 4 sobre la app, y cómo se resolvió, está en
+[`docs/entregas/devolucion-entrega-4.md`](docs/entregas/devolucion-entrega-4.md).
 Lo que pidió la devolución de la Entrega 3 está en
 [`docs/entregas/devolucion-entrega-3.md`](docs/entregas/devolucion-entrega-3.md), junto con la
 verificación de realismo del modelo final y sus limitaciones conocidas (el rival casi sin reloj,
