@@ -147,6 +147,10 @@ export default function Proyecto() {
             Dice cómo suelen terminar partidas así entre personas, con el reloj corriendo. No evalúa quién juega
             mejor: no es un motor de ajedrez.
           </p>
+          <p className={styles.aclaracion}>
+            Para qué sirve esta app: para ver por qué el modelo anda como anda y dónde se equivoca. Cada sección
+            arranca con una pregunta, la responde con un gráfico y muestra con qué datos se sabe.
+          </p>
         </div>
         <DemoEnVivo />
       </section>
@@ -257,7 +261,7 @@ export default function Proyecto() {
             { valor: pct(reloj60.eta2_controlado, 0), texto: "explica el reloj, a igual material" },
             { valor: "40 a 60", texto: "plies en que las dos superan el umbral de señal débil" },
           ]}
-          titulo={`Al principio, ni el material ni el reloj separan al ganador; a las 30 jugadas cada uno explica alrededor del ${pct(material60, 0)} del resultado, y el reloj suma aunque el material esté parejo.`}
+          titulo={`Al principio, ni el material ni el reloj separan al ganador; a las 30 jugadas el material explica el ${pct(material60, 0)} del resultado y el reloj, a igual material, el ${pct(reloj60.eta2_controlado, 0)}: el reloj suma aunque el material esté parejo.`}
           grafico="/app/graficos/hallazgos.json"
           descripcionGrafico="Dos líneas, material y reloj, con la parte del resultado que explica cada una (η²) en los plies 10 a 60."
           queMirar={
@@ -814,6 +818,13 @@ export default function Proyecto() {
                 que la posición lo desempata.
               </p>
             </>
+          }
+          porQue={
+            <p>
+              En la Entrega 2 cada hipótesis se midió sola. El modelo las puso juntas y la importancia por tramo dice en
+              qué momento de la partida pesa cada una. Con los tres pasos a la vista se puede decir qué se confirmó, qué
+              no y por qué el peso cambia a medida que avanza la partida.
+            </p>
           }
           evidencia={
             <>
