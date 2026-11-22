@@ -37,6 +37,30 @@ function ordinal(n: number) {
   return `${n}.º`;
 }
 
+// The exploratory hypotheses in plain words (keyed by the id before the " · " in resumen.json).
+// The measures themselves stay in the "Cómo lo sabemos" table, straight from the data.
+const HIPOTESIS_CLARA: Record<string, { nombre: string; veredicto: string }> = {
+  H1: {
+    nombre: "La diferencia de rating separa al ganador",
+    veredicto: "Inconclusa: da una señal moderada y no se aclara ni separando por nivel de los jugadores.",
+  },
+  "H1′": {
+    nombre: "El material separa al ganador",
+    veredicto: "Parcialmente confirmada: separa, pero tarde en la partida y con fuerza moderada.",
+  },
+  "H2′": {
+    nombre: "El reloj suma, aunque el material esté parejo",
+    veredicto: "Se sostiene: aporta información propia, no repite la del material, y pesa mucho más en bullet que en rapid.",
+  },
+};
+
+function hipotesisClara(h: { hipotesis: string }) {
+  const clave = h.hipotesis.split(" · ")[0];
+  const clara = HIPOTESIS_CLARA[clave];
+  if (!clara) throw new Error(`Falta la explicación de ${h.hipotesis}`);
+  return clara;
+}
+
 function porNombre(filas: Record<string, unknown>[], clave: string, prefijo: string) {
   const fila = filas.find((f) => String(f[clave]).startsWith(prefijo));
   if (!fila) throw new Error(`Falta ${prefijo} en resumen.json`);
@@ -150,6 +174,11 @@ export default function Proyecto() {
           <p className={styles.aclaracion}>
             Para qué sirve esta app: para ver por qué el modelo anda como anda y dónde se equivoca. Cada sección
             arranca con una pregunta, la responde con un gráfico y muestra con qué datos se sabe.
+          </p>
+          <p className={styles.aclaracion}>
+            El piso de las cifras es un modelo sin información: dice siempre las proporciones generales de resultados
+            (cuántas ganan las blancas, cuántas las negras y cuántas terminan en tablas). Si el modelo no le gana, no
+            sirve.
           </p>
         </div>
         <DemoEnVivo />
@@ -784,7 +813,7 @@ export default function Proyecto() {
           id="hipotesis"
           etapa="Las hipótesis, de punta a punta"
           pregunta="¿Qué pasó con las hipótesis del principio?"
-          titulo="Las hipótesis del análisis exploratorio, vistas otra vez con el modelo: cuáles pesan y en qué momento de la partida."
+          titulo="El rating pesa antes de mover y el material y el reloj, hacia el final: el modelo usa lo que el análisis exploratorio sólo insinuaba."
           queMirar={
             <>
               <p>
@@ -795,28 +824,28 @@ export default function Proyecto() {
               <Tabla
                 filas={hallazgos.en_el_modelo}
                 columnas={[
-                  { titulo: "Hipótesis", valor: (h) => <strong>{h.hipotesis}</strong> },
-                  { titulo: "Exploratorio (Entrega 2)", valor: (h) => `${h.decision}. ${h.medida}.` },
+                  { titulo: "Hipótesis", valor: (h) => <strong>{hipotesisClara(h).nombre}</strong> },
+                  { titulo: "Qué dijo el análisis (Entrega 2)", valor: (h) => hipotesisClara(h).veredicto },
                   {
-                    titulo: "En el modelo (Entrega 3)",
+                    titulo: "Importancia en el modelo (Entrega 3)",
                     valor: (h) => {
                       const puesto = modelo.importancia.findIndex((f) => f.columna === h.columna) + 1;
                       return puesto > 0
-                        ? `${ordinal(puesto)} columna más importante de ${modelo.columnas_finales} (${h.nombre.toLowerCase()})`
+                        ? `${puesto}.ª columna de ${modelo.columnas_finales} (${h.nombre.toLowerCase()})`
                         : `Fuera de las 10 más importantes (${h.nombre.toLowerCase()})`;
                     },
                   },
                   {
-                    titulo: "Tramo por tramo (Entrega 4)",
+                    titulo: "Cuándo importa (Entrega 4)",
                     valor: (h) => `${ordinal(h.puesto[tramoInicial.tramo])} antes de mover → ${ordinal(h.puesto[tramoFinal.tramo])} entre los plies ${tramoFinal.tramo}`,
                   },
                 ]}
               />
               <p>
-                <strong>{color.hipotesis}.</strong> {color.decision}. En el modelo aparece en cómo decide sin
-                información: antes de mover, el piso dice siempre {ETIQUETA_RESULTADO[modelo.clase_piso]} y acierta el{" "}
-                {pct(tramoInicial["accuracy piso"])}, y el modelo reconoce más victorias de blancas que de negras hasta
-                que la posición lo desempata.
+                <strong>Ventaja del color.</strong> Las blancas ganan más que las negras, y la ventaja no cambia con el
+                ritmo. En el modelo aparece en cómo decide sin información: antes de mover, el piso dice siempre{" "}
+                {ETIQUETA_RESULTADO[modelo.clase_piso]} y acierta el {pct(tramoInicial["accuracy piso"])}, y el modelo
+                reconoce más victorias de blancas que de negras hasta que la posición lo desempata.
               </p>
             </>
           }
@@ -829,6 +858,19 @@ export default function Proyecto() {
           }
           evidencia={
             <>
+              <h3>Las medidas del análisis exploratorio</h3>
+              <p>
+                Lo que dijo cada hipótesis en la Entrega 2, con el número que la sostiene y la decisión tal como se
+                escribió entonces. η² es la parte del resultado que explica cada variable.
+              </p>
+              <Tabla
+                filas={[...hallazgos.en_el_modelo, color]}
+                columnas={[
+                  { titulo: "Hipótesis", valor: (h) => <strong>{String(h.hipotesis)}</strong> },
+                  { titulo: "Medida", valor: (h) => String(h.medida) },
+                  { titulo: "Decisión del análisis", valor: (h) => String(h.decision) },
+                ]}
+              />
               <h3>Cómo leer los puestos</h3>
               <p>
                 El puesto de la Entrega 3 es entre todas las columnas del modelo, en todo el test. El de cada tramo es

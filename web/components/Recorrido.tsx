@@ -37,8 +37,8 @@ const PASOS: Paso[] = [
   {
     entrega: "Entrega 4",
     titulo: "Explicar el modelo y llevarlo a una app",
-    antes: "Una sola cifra de error para toda la partida, y la duración restante como objetivo secundario.",
-    ahora: "Sólo quién gana, medido tramo por tramo, con la importancia de cada columna y una regla de mate dentro del modelo.",
+    antes: "El error del modelo en cada corte de la partida, sin decir cuántas veces acierta ni qué confunde con qué, y la duración restante como objetivo secundario.",
+    ahora: "Sólo quién gana, medido tramo por tramo: cuántas veces acierta, qué confunde y en qué se fija, con una regla de mate dentro del modelo.",
     porque: "Un modelo con rey solo que ganaba 17 % por reloj mostró que faltaba una regla del juego. La duración distraía de la pregunta principal.",
   },
 ];
