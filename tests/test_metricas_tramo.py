@@ -79,10 +79,12 @@ class ChartsTest(unittest.TestCase):
                                     "log_loss": 0.01, "accuracy": 0.01})
         specs = [app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict(),
                  app_charts.confusion_por_tramo(confusion, TRAMOS).to_dict(),
-                 app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict()]
+                 app_charts.importancia_por_tramo(importancia, TRAMOS)]
         for spec in specs:
             self.assertEqual(spec["config"]["background"], "transparent")
         self.assertEqual(specs[0]["layer"][0]["encoding"]["x"]["sort"], TRAMOS)
+        # One small chart per column, all on the same y scale.
+        self.assertEqual(len(specs[2]["vconcat"]), len(app_charts.NOMBRE_COLUMNA))
         self.assertEqual(specs[1]["params"][0]["bind"]["options"], TRAMOS)
         self.assertEqual(specs[1]["params"][1]["bind"]["options"], app_charts.VISTAS_CONFUSION)
         # An undefined precision travels as null, never as NaN (invalid JSON for the web).

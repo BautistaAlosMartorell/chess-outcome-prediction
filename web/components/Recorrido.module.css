@@ -1,0 +1,78 @@
+.lista {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  min-width: 0;
+}
+
+.paso {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.paso h3 {
+  margin: 0;
+  font-stretch: 112%;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.entrega {
+  margin: 0;
+  color: var(--reloj);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.paso dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.paso dt {
+  color: var(--texto);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.paso dd {
+  margin: 2px 0 0;
+  color: var(--texto-suave);
+}
+
+/* The last step is where the project stands today: the one that leads. */
+.paso:last-child {
+  background: var(--panel-alto);
+}
+
+@media (min-width: 760px) {
+  .lista {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .lista {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.porque {
+  align-self: end;
+}

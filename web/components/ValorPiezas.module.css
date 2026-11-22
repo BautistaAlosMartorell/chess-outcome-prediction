@@ -1,0 +1,48 @@
+.figura {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.figura figcaption {
+  font-weight: 700;
+}
+
+.figura ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.figura li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 10px;
+}
+
+.nombre {
+  color: var(--texto-suave);
+}
+
+.barra {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--verde);
+}
+
+.valor {
+  text-align: right;
+}
+
+.figura p {
+  margin: 0;
+  max-width: 64ch;
+  color: var(--texto-suave);
+}

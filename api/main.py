@@ -114,6 +114,8 @@ def create_app(modelo: dict[str, Any] | None = None, cliente: chesscom.ChessComC
             raise HTTPException(404, "No existe ese usuario en Chess.com") from error
 
     @app.get("/salud")
+    # Probes and hosting platforms ask for /health by default: same answer, kept out of the docs.
+    @app.get("/health", include_in_schema=False)
     def salud() -> dict[str, Any]:
         modelo_actual = app.state.modelo
         return {"modelo": modelo_actual.get("familia"), "entrenado_hasta": modelo_actual.get("entrenado_hasta"),

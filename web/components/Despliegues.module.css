@@ -1,0 +1,131 @@
+.despliegues,
+.compacto {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.fila {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 10px;
+}
+
+.ficha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px 10px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--linea);
+  color: var(--texto);
+  font-weight: 700;
+  text-align: left;
+  transition: background-color 180ms var(--suave), box-shadow 180ms var(--suave), transform 180ms var(--suave);
+}
+
+.ficha:hover {
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--tablas);
+}
+
+.ficha:active {
+  transform: scale(0.98);
+}
+
+.ficha[aria-expanded="true"] {
+  background: var(--panel-alto);
+  box-shadow: inset 0 0 0 2px var(--reloj);
+}
+
+.icono {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--panel-alto);
+  color: var(--reloj);
+  transition: background-color 180ms var(--suave), color 180ms var(--suave);
+}
+
+.ficha[aria-expanded="true"] .icono {
+  background: var(--reloj);
+  color: #ffffff;
+}
+
+.titulo {
+  flex: 1;
+  min-width: 0;
+}
+
+.flecha {
+  flex: none;
+  color: var(--texto-suave);
+  transition: transform 260ms var(--suave);
+}
+
+.ficha[aria-expanded="true"] .flecha {
+  transform: rotate(180deg);
+}
+
+/* The panel opens by growing its grid row: no measured heights, no layout script. */
+.panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 280ms var(--suave);
+}
+
+.panel[data-abierto="true"] {
+  grid-template-rows: 1fr;
+}
+
+.interior {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.contenido {
+  margin-top: 10px;
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.panel[data-abierto="false"] .contenido {
+  margin-top: 0;
+  padding-block: 0;
+}
+
+.compacto .fila {
+  grid-template-columns: 1fr;
+}
+
+.compacto .ficha {
+  min-height: 44px;
+  gap: 10px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+}
+
+.compacto .icono {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.compacto .contenido {
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--texto-suave);
+}
+
+.compacto .contenido p {
+  margin: 0;
+}

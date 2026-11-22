@@ -139,7 +139,7 @@ function Trivia() {
           {expo
             ? "Desafío para el curso · una posición"
             : revisando
-              ? "El momento de la verdad"
+              ? "Revelación"
               : "Tres posiciones. Tu intuición contra el modelo."}
         </p>
         <h1 ref={titulo} tabIndex={-1}>

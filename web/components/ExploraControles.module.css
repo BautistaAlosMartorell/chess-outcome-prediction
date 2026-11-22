@@ -1,0 +1,274 @@
+.panel {
+  display: grid;
+  gap: 22px;
+  margin-bottom: 18px;
+  padding: 18px 20px 20px;
+  border-radius: 20px;
+  background: var(--fondo-hondo);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+/* ---- the slider: a big readout and a filled track */
+.deslizador {
+  display: grid;
+  gap: 8px;
+}
+
+.cabecera {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cabecera label {
+  font-weight: 700;
+}
+
+.valor {
+  color: var(--reloj);
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.jugada {
+  color: var(--texto-suave);
+}
+
+.deslizador input[type="range"] {
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.deslizador input[type="range"]::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(to right, var(--reloj) var(--avance), var(--linea) var(--avance));
+}
+
+.deslizador input[type="range"]::-moz-range-track {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(to right, var(--reloj) var(--avance), var(--linea) var(--avance));
+}
+
+.deslizador input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -9px;
+  border: 4px solid #ffffff;
+  border-radius: 50%;
+  background: var(--reloj);
+  box-shadow: 0 2px 8px rgb(23 59 50 / 28%);
+  transition: transform 160ms var(--suave);
+}
+
+.deslizador input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 4px solid #ffffff;
+  border-radius: 50%;
+  background: var(--reloj);
+  box-shadow: 0 2px 8px rgb(23 59 50 / 28%);
+}
+
+.deslizador input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+.deslizador input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(0.96);
+}
+
+.deslizador input[type="range"]:focus-visible {
+  outline: 3px solid var(--verde);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The tick labels sit under the track: 14 px in from each end, where the thumb's centre travels. */
+.marcas {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -6px;
+  padding-inline: 14px;
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+}
+
+.reproducir {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-height: 40px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--reloj);
+  color: #ffffff;
+  font-weight: 700;
+  transition: background-color 180ms var(--suave), transform 180ms var(--suave);
+}
+
+.reproducir:hover {
+  background: #184d3e;
+}
+
+.reproducir:active {
+  transform: scale(0.97);
+}
+
+.reproducir:focus-visible {
+  outline: 3px solid var(--verde);
+  outline-offset: 2px;
+}
+
+/* ---- the filters */
+.filtros {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px 28px;
+}
+
+.grupo {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.grupo legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--texto-suave);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* The level chips take the whole row, under the three segmented controls. */
+.ancho {
+  grid-column: 1 / -1;
+}
+
+.segmentos {
+  display: flex;
+  width: 100%;
+  padding: 4px;
+  gap: 4px;
+  border-radius: 16px;
+  background: var(--linea);
+}
+
+.fichas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segmentos .opcion {
+  flex: 1;
+}
+
+.opcion {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+
+.opcion input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.opcion span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--texto);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 180ms var(--suave), color 180ms var(--suave), transform 180ms var(--suave);
+}
+
+.fichas .opcion span {
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+.opcion:hover span {
+  background: rgb(255 255 255 / 70%);
+}
+
+.fichas .opcion:hover span {
+  box-shadow: inset 0 0 0 1px var(--tablas);
+}
+
+.opcion input:active + span {
+  transform: scale(0.97);
+}
+
+.opcion input:checked + span {
+  background: var(--reloj);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.opcion input:focus-visible + span {
+  outline: 3px solid var(--verde);
+  outline-offset: 2px;
+}
+
+.puntoAcierto,
+.puntoError {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--reloj);
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.puntoError {
+  background: var(--apuro);
+}
+
+.opcion input:checked + span .puntoAcierto,
+.opcion input:checked + span .puntoError {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 85%);
+}
+
+.opcion input:checked + span .puntoAcierto {
+  background: #bfe8d6;
+}
+
+.opcion input:checked + span .puntoError {
+  background: #ffb4a2;
+}
+
+@media (min-width: 900px) {
+  .segmentos {
+    display: inline-flex;
+    width: auto;
+  }
+
+  .opcion span {
+    padding: 0 16px;
+  }
+
+  .filtros {
+    grid-template-columns: auto auto auto;
+    justify-content: start;
+    align-items: start;
+  }
+}

@@ -22,9 +22,9 @@
   margin: 0;
   font-stretch: 122%;
   font-weight: 800;
-  /* The central idea is a full sentence, not a slogan: smaller than a headline. */
-  font-size: clamp(1.4rem, 2.1vw, 1.9rem);
-  line-height: 1.1;
+  /* The central idea is one sentence, and the largest type on the page. */
+  font-size: clamp(1.9rem, 3.2vw, 2.7rem);
+  line-height: 1.05;
   letter-spacing: -0.02em;
   text-wrap: balance;
   overflow-wrap: break-word;

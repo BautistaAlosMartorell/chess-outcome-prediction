@@ -34,7 +34,7 @@ from src.comparacion_cortes import (
     diferencias_entre_cortes, intervalos, metricas_por_corte, poblacion_comun, replicas_bootstrap,
 )
 from src.comparacion_familias import FAMILIAS_POR_PEDAZO, diferencia_pareada, media_y_desvio, metricas_por_pedazo
-from src.metricas_tramo import TRAMOS, confusion_por_tramo, metricas_por_tramo, predicha
+from src.metricas_tramo import TRAMOS, confusion_por_tramo, metricas_por_tramo, predicha, tramo_de_corte
 from src.history_transformer import HISTORY_INPUTS, attach_player_histories, player_history_payloads
 from src.player_selection import load_selection
 from src.predict import MODEL_PATH, PRE_GAME, RESULT_ORDER, cargar_modelo, model_input_frame
@@ -179,6 +179,61 @@ def por_tramo(pred: pd.DataFrame, reporte: dict[str, Any]) -> tuple[pd.DataFrame
     return metricas, confusion
 
 
+# How a position is described to answer "when does the model miss?". Both read only the position
+# at the cut (the same information the model has), never how the game ended.
+SITUACIONES = ["Parejo", "Ventaja chica", "Ventaja grande"]
+SITUACION_MATERIAL = ([-1, 2, 5, np.inf], ["hasta 2 puntos", "3 a 5 puntos", "6 puntos o más"])
+SITUACION_RELOJ = ([-1, 0.1, 0.3, np.inf], ["menos del 10 % del tiempo base", "10 a 30 % del tiempo base",
+                                            "más del 30 % del tiempo base"])
+FINALES = ["Mate", "Abandono", "Por tiempo", "Tablas"]
+# Chess.com's Termination values, grouped by how the game ended for a person at the board.
+FINAL_DE = {"checkmate": "Mate", "resignation": "Abandono", "abandoned": "Abandono", "time": "Por tiempo"}
+TRAMO_FINAL = TRAMOS[-1]
+
+
+def filas_con_contexto(pred: pd.DataFrame, test: pd.DataFrame, games: pd.DataFrame) -> pd.DataFrame:
+    """Cada fila de test con lo que hace falta para ver cuándo acierta el modelo: tramo, situación y final."""
+    assert (pred["GameUrl"].to_numpy() == test["GameUrl"].to_numpy()).all(), "pred y test no están alineados"
+    assert (pred["corte_ply"].to_numpy() == test["corte_ply"].to_numpy()).all(), "pred y test no están alineados"
+    out = pred[["GameUrl", "corte_ply", "balance_material", "resultado", *COLUMNAS_PROBA]].copy()
+    out["resultado"] = out["resultado"].astype(str)
+    # Before the first move both clocks are equal: no difference.
+    out["dif_reloj"] = (test["reloj_frac_blancas"] - test["reloj_frac_negras"]).abs().fillna(0).to_numpy()
+    out["tramo"] = tramo_de_corte(out["corte_ply"])
+    out["acerto"] = predicha(out[COLUMNAS_PROBA].to_numpy(), CLASES) == out["resultado"].to_numpy()
+    termination = games.set_index("GameUrl")["Termination"].astype(str)
+    out["termination"] = out["GameUrl"].map(termination)
+    assert out["termination"].notna().all(), "Una fila de test sin su partida"
+    out["final"] = out["termination"].map(FINAL_DE).fillna("Tablas")
+    return out
+
+
+def acierto_por_situacion(contexto: pd.DataFrame) -> pd.DataFrame:
+    """Aciertos por (eje, tramo, situación): la ventaja de material y la de reloj, tramo por tramo."""
+    filas = []
+    for eje, serie, (limites, nombres) in [("Material", contexto["balance_material"].abs(), SITUACION_MATERIAL),
+                                           ("Reloj", contexto["dif_reloj"], SITUACION_RELOJ)]:
+        # The row label is short (Parejo, Ventaja chica, Ventaja grande); the range lives in `rango`.
+        situacion = pd.cut(serie, limites, labels=SITUACIONES)
+        agrupado = contexto.assign(situacion=situacion).groupby(["tramo", "situacion"], observed=True)
+        tabla = agrupado["acerto"].agg(filas="size", accuracy="mean").reset_index()
+        tabla["situacion"] = tabla["situacion"].astype(str)
+        tabla["parte"] = tabla["filas"] / tabla.groupby("tramo")["filas"].transform("sum")
+        tabla["orden"] = tabla["situacion"].map({n: i for i, n in enumerate(SITUACIONES)})
+        tabla["rango"] = tabla["orden"].map(dict(enumerate(nombres)))
+        filas.append(tabla.assign(eje=eje))
+    return pd.concat(filas, ignore_index=True)
+
+
+def como_terminan(contexto: pd.DataFrame) -> pd.DataFrame:
+    """En el tramo final: cómo terminaron las partidas donde el modelo acertó y donde se equivocó."""
+    final = contexto[contexto["tramo"] == TRAMO_FINAL].assign(
+        decision=lambda d: np.where(d["acerto"], "Acertó", "Se equivocó"))
+    tabla = final.groupby(["decision", "final"]).size().rename("filas").reset_index()
+    tabla["parte"] = tabla["filas"] / tabla.groupby("decision")["filas"].transform("sum")
+    return tabla
+
+
 def comparacion_entre_cortes(pred: pd.DataFrame, clase_piso: str, cortes_referencia: list[int],
                              random_state: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Accuracy y ganancia sobre el piso por corte, con IC 95 %, y los saltos entre cortes.
@@ -288,10 +343,11 @@ def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int) 
         "desplazamiento": rng.uniform(-0.35, 0.35, len(ids)).round(2),
     })
     # Per-game fields live in `partidas`; each (game, cut) row keeps only what changes with the cut.
-    filas = pred.loc[pred["GameUrl"].isin(ids.index), ["GameUrl", "corte_ply", "balance_material",
+    filas = pred.loc[pred["GameUrl"].isin(ids.index), ["GameUrl", "corte_ply", "balance_material", "dif_reloj",
                                                         "p_blancas", "p_empate", "p_negras"]].copy()
     filas.insert(0, "id", filas.pop("GameUrl").map(ids))
     filas[["p_blancas", "p_empate", "p_negras"]] = filas[["p_blancas", "p_empate", "p_negras"]].round(3)
+    filas["dif_reloj"] = filas["dif_reloj"].round(3)
     return filas.sort_values(["id", "corte_ply"]).reset_index(drop=True), partidas
 
 
@@ -320,7 +376,8 @@ def _registros(df: pd.DataFrame) -> list[dict[str, Any]]:
 def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, Any]], vivas: pd.DataFrame,
             eda: dict[str, Any], modelado: dict[str, Any], curva: pd.DataFrame, test: dict[str, float],
             artifact: dict[str, Any], n_explora: int, tramos: pd.DataFrame, confusion: pd.DataFrame,
-            importancia: pd.DataFrame, comparaciones: dict[str, Any], guia: dict[str, Any]) -> dict[str, Any]:
+            importancia: pd.DataFrame, comparaciones: dict[str, Any], guia: dict[str, Any],
+            situaciones: pd.DataFrame, finales: pd.DataFrame) -> dict[str, Any]:
     """Los números que cita el texto de la app, todos calculados acá o leídos de los notebooks."""
     by_cut = curva.set_index("corte_ply")
     alive_60 = vivas[vivas["corte_ply"] == 60].set_index("TimeClass")
@@ -380,6 +437,8 @@ def resumen(games: pd.DataFrame, config: dict[str, Any], pasos: list[dict[str, A
             "confusion_por_tramo": _registros(confusion),
             "importancia_por_tramo": _registros(importancia),
             "rango_rating": artifact["rango_rating"],
+            "situaciones": _registros(situaciones),
+            "como_terminan": _registros(finales),
             **comparaciones,
         },
         "explora": {"partidas": n_explora, "niveles": list(config["elo"]["bandas"]), **guia},
@@ -414,6 +473,9 @@ def main() -> None:
 
     train, test = filas_de_test(games, cuts, paths, artifact)
     pred = predecir_test(train, test, artifact)
+    # Explorá's second horizontal axis: white's clock minus black's, as a fraction of the base time.
+    assert (pred["GameUrl"].to_numpy() == test["GameUrl"].to_numpy()).all(), "pred y test no están alineados"
+    pred["dif_reloj"] = (test["reloj_frac_blancas"] - test["reloj_frac_negras"]).fillna(0).to_numpy()
     curva = curva_de_test(pred)
     test_metrics = verificar_contra_notebook(pred, curva, modelado)
     logger.info("Test reconstruido: log-loss %.4f contra %.4f del piso, igual que el notebook 04",
@@ -440,6 +502,9 @@ def main() -> None:
         curva.assign(serie="Modelo", log_loss=curva["modelo"]), curva.assign(serie="Piso", log_loss=curva["piso"]),
     ])[["serie", "corte_ply", "log_loss", "mejora", "partidas"]]
 
+    contexto = filas_con_contexto(pred, test, games)
+    situaciones, finales = acierto_por_situacion(contexto), como_terminan(contexto)
+
     entre_cortes, saltos = comparacion_entre_cortes(pred, modelado["clase_piso"],
                                                     config["live_prediction"]["cortes_referencia"], random_state)
     familias, diferencias, modelos = familias_por_tramo(PROJECT_ROOT / FAMILIAS_POR_PEDAZO, modelado)
@@ -453,10 +518,10 @@ def main() -> None:
     }
     escribir("resumen.json", resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
                                      len(partidas), tramos, confusion, importancia, comparaciones,
-                                     guia_explora(filas, partidas)))
+                                     guia_explora(filas, partidas), situaciones, finales))
     escribir("graficos/datos.json", app_charts.partidas_vivas(vivas).to_dict())
     escribir("graficos/hallazgos.json", app_charts.senal_por_corte(eta2).to_dict())
-    escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga).to_dict())
+    escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga))
     acierto = pd.concat([
         tramos.assign(serie=serie, accuracy=tramos[columna])
         for serie, columna in [("Modelo", "accuracy"), ("Regla del material", "accuracy regla material"),
@@ -464,7 +529,9 @@ def main() -> None:
     ])[["serie", "tramo", "accuracy", "filas"]]
     escribir("graficos/acierto.json", app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict())
     escribir("graficos/confusion.json", app_charts.confusion_por_tramo(confusion, TRAMOS).to_dict())
-    escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict())
+    escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS))
+    escribir("graficos/situaciones.json", app_charts.acierto_por_situacion(situaciones, TRAMOS).to_dict())
+    escribir("graficos/como_terminan.json", app_charts.como_terminan(finales, FINALES).to_dict())
     escribir("graficos/explora.json",
              app_charts.explora(filas, partidas, list(config["elo"]["bandas"])))
     escribir("graficos/cortes.json", app_charts.entre_cortes(entre_cortes, SERIE_TODAS, SERIE_COMUN).to_dict())

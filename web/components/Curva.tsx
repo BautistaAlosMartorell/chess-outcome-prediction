@@ -1,5 +1,6 @@
 "use client";
 
+import { OPCIONES_TOOLTIP } from "@/lib/tooltip";
 import { useEffect, useRef, useState } from "react";
 import type { Punto } from "@/lib/api";
 import type { Momento } from "@/lib/movimiento";
@@ -70,6 +71,10 @@ export function Curva({ curva, actual, momentos = [], onElegir, revelar, compact
         return embed(el, spec as never, {
           actions: false,
           renderer: "svg",
+          tooltip: OPCIONES_TOOLTIP,
+          // The chart starts with empty datasets and gets its data move by move: Vega warns "Infinite
+          // extent" on every empty draw. Errors still show; only that warning is left out.
+          logLevel: 1,
           config: { font: getComputedStyle(document.body).fontFamily },
         }).then((resultado) => {
           creada = resultado.view as unknown as Vista;

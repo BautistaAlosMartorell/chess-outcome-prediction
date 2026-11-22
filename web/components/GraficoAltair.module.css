@@ -67,3 +67,27 @@
 .error {
   color: var(--apuro);
 }
+
+/* The chart is drawn left to right, the way a game moves: a mask opens over it the first time it is seen.
+   Once it has run, the mask is gone (tooltips and controls are never clipped). */
+.figura[data-listo]:not([data-visto]) .grafico {
+  clip-path: inset(0 100% 0 0);
+}
+
+.figura[data-visto] .grafico {
+  animation: barrido 1100ms var(--llegada) backwards;
+}
+
+@keyframes barrido {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.sinControles .grafico :global(.vega-bindings) {
+  display: none;
+}

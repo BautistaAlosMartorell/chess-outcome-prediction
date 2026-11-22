@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { DemoEnVivo } from "@/components/DemoEnVivo";
 import { GraficoAltair } from "@/components/GraficoAltair";
-import { SeccionTallo, Tabla } from "@/components/Tallo";
+import { Cifra } from "@/components/Cifra";
+import { Indice } from "@/components/Indice";
+import { Recorrido } from "@/components/Recorrido";
+import { SeccionTallo, SeccionTexto, Tabla } from "@/components/Tallo";
+import { ValorPiezas } from "@/components/ValorPiezas";
 import { RESUMEN, decimal, enCorte, entero, pct } from "@/lib/resumen";
 import styles from "./page.module.css";
 
@@ -91,6 +95,22 @@ export default function Proyecto() {
   const cruce = modelo.tramos.find((t) => lider(t).columna === "balance_material") ?? tramoFinal.tramo;
   const color = porNombre(hallazgos.hipotesis_durante, "hipotesis", "H4′");
 
+  // Where the model misses in the last band: by how the position looked and how the game ended.
+  const situacion = (eje: string, orden: number, tramo: string) => {
+    const fila = modelo.situaciones.find((f) => f.eje === eje && f.orden === orden && f.tramo === tramo);
+    if (!fila) throw new Error(`Falta la situación ${eje} ${orden} en ${tramo}`);
+    return fila;
+  };
+  const parejo = situacion("Material", 0, tramoFinal.tramo);
+  const ventajaGrande = situacion("Material", 2, tramoFinal.tramo);
+  const termino = (decision: string, final: string) => {
+    const fila = modelo.como_terminan.find((f) => f.decision === decision && f.final === final);
+    if (!fila) throw new Error(`Falta ${decision} / ${final} en resumen.json`);
+    return fila.parte;
+  };
+  const erroresEnTablas = termino("Se equivocó", "Tablas");
+  const aciertosEnTablas = termino("Acertó", "Tablas");
+
   return (
     <div className={styles.inicio}>
       <Link href="/">← Volver al inicio</Link>
@@ -101,35 +121,68 @@ export default function Proyecto() {
             que avanza?
           </p>
           <h1 id="idea" className={styles.titulo}>
-            Antes de mover, el resultado apenas se adivina mejor que contando cuántas ganan las blancas; con el
-            material y los relojes, el modelo acierta cada vez mejor.
+            Quién gana una partida se adivina un poco antes de mover, y mucho mejor a medida que avanza.
           </h1>
           <dl className={styles.cifras}>
             <div>
               <dt>partidas reales de Chess.com, de {portada.cuentas} jugadores</dt>
-              <dd className="cifra">{entero(portada.partidas)}</dd>
+              <dd className="cifra">
+                <Cifra valor={entero(portada.partidas)} />
+              </dd>
             </div>
             <div>
               <dt>menos error que el piso antes de la primera jugada</dt>
-              <dd className="cifra">{pct(portada.mejora_antes_de_mover)}</dd>
+              <dd className="cifra">
+                <Cifra valor={pct(portada.mejora_antes_de_mover)} />
+              </dd>
             </div>
             <div>
               <dt>menos error que el piso a las 30 jugadas (ply 60)</dt>
-              <dd className="cifra">{pct(portada.mejora_ply_60)}</dd>
+              <dd className="cifra">
+                <Cifra valor={pct(portada.mejora_ply_60)} />
+              </dd>
             </div>
           </dl>
           <p className={styles.aclaracion}>
-            No es un motor: no dice quién juega mejor, sino cómo suelen terminar partidas así entre personas, con el
-            reloj corriendo. Abajo, cómo llegamos a esto; después, explorá los datos y probá el modelo.
+            Dice cómo suelen terminar partidas así entre personas, con el reloj corriendo. No evalúa quién juega
+            mejor: no es un motor de ajedrez.
           </p>
         </div>
         <DemoEnVivo />
       </section>
 
+      <Indice
+        capitulos={[
+          { id: "seccion-recorrido", titulo: "Cómo cambió el proyecto" },
+          { id: "seccion-los-datos", titulo: "Los datos" },
+          { id: "seccion-lo-que-encontramos", titulo: "Lo que encontramos" },
+          { id: "seccion-el-modelo", titulo: "El modelo" },
+          { id: "seccion-acierta", titulo: "Cuántas acierta" },
+          { id: "seccion-se-equivoca", titulo: "Por qué falla" },
+          { id: "seccion-en-que-se-fija", titulo: "En qué se fija" },
+          { id: "seccion-hipotesis", titulo: "Las hipótesis" },
+        ]}
+      />
+
       <div className={styles.tallo}>
+        <SeccionTexto
+          id="recorrido"
+          etapa="El recorrido"
+          pregunta="¿Cómo llegamos hasta acá?"
+          titulo="Cuatro entregas, cuatro correcciones. Cada tarjeta dice qué teníamos, qué cambiamos y por qué."
+        >
+          <Recorrido />
+        </SeccionTexto>
+
         <SeccionTallo
           id="los-datos"
           etapa="Los datos"
+          pregunta="¿Con qué datos trabajamos?"
+          cifras={[
+            { valor: entero(portada.partidas), texto: "partidas reales de Chess.com" },
+            { valor: String(portada.cuentas), texto: "cuentas, en seis bandas de nivel" },
+            { valor: entero(datos.filas_cortes), texto: "filas: cada partida, en cada corte de plies" },
+          ]}
           titulo={`Seguimos ${entero(portada.partidas)} partidas jugada a jugada, y se van terminando: a las 30 jugadas sigue en juego el ${pct(datos.siguen_al_ply_60_total, 0)}; a las 60, el ${pct(datos.siguen_al_ply_120_total, 0)}.`}
           grafico="/app/graficos/datos.json"
           descripcionGrafico="Líneas por ritmo: porcentaje de partidas que siguen en juego en cada corte de plies, de 0 a 120."
@@ -144,6 +197,12 @@ export default function Proyecto() {
                 en jugadas: más tiempo para pensar, menos partidas que se estiran.
               </p>
             </>
+          }
+          porQue={
+            <p>
+              Antes de mostrar nada del modelo hay que saber de qué partidas habla. Si no se ve que las partidas se van
+              terminando, un número del ply 120 parece describir a todas y describe sólo a las más largas.
+            </p>
           }
           evidencia={
             <>
@@ -192,6 +251,12 @@ export default function Proyecto() {
         <SeccionTallo
           id="lo-que-encontramos"
           etapa="Lo que encontramos"
+          pregunta="¿Qué separa al ganador, antes de modelar?"
+          cifras={[
+            { valor: pct(material60, 0), texto: "del resultado explica el material a las 30 jugadas" },
+            { valor: pct(reloj60.eta2_controlado, 0), texto: "explica el reloj, a igual material" },
+            { valor: "40 a 60", texto: "plies en que las dos superan el umbral de señal débil" },
+          ]}
           titulo={`Al principio, ni el material ni el reloj separan al ganador; a las 30 jugadas cada uno explica alrededor del ${pct(material60, 0)} del resultado, y el reloj suma aunque el material esté parejo.`}
           grafico="/app/graficos/hallazgos.json"
           descripcionGrafico="Dos líneas, material y reloj, con la parte del resultado que explica cada una (η²) en los plies 10 a 60."
@@ -208,6 +273,13 @@ export default function Proyecto() {
                 material.
               </p>
             </>
+          }
+          porQue={
+            <p>
+              Antes de entrenar algo queríamos saber si el material y el reloj tienen alguna relación con quién gana. Si
+              no la tuvieran, ningún modelo podría usarlos. Esta es la prueba, y el umbral de 0,05 se fijó antes de
+              mirar.
+            </p>
           }
           evidencia={
             <>
@@ -235,20 +307,35 @@ export default function Proyecto() {
         <SeccionTallo
           id="el-modelo"
           etapa="El modelo"
-          titulo={`El modelo le gana al piso en cada momento de la partida: ${pct(portada.mejora_antes_de_mover, 0)} menos error antes de mover y ${pct(portada.mejora_ply_60, 0)} menos a las 30 jugadas.`}
+          pregunta="¿Le gana el modelo a no saber nada?"
+          cifras={[
+            { valor: pct(portada.mejora_antes_de_mover, 0), texto: "menos error que el piso antes de mover" },
+            { valor: pct(portada.mejora_ply_60, 0), texto: "menos error que el piso a las 30 jugadas" },
+            { valor: `${decimal(test.log_loss)} contra ${decimal(test["log_loss piso"])}`, texto: "error en test: modelo contra piso" },
+          ]}
+          titulo={`Sí, en cada momento de la partida: ${pct(portada.mejora_antes_de_mover, 0)} menos error antes de mover y ${pct(portada.mejora_ply_60, 0)} menos a las 30 jugadas. Antes de mover es poco porque casi no hay información.`}
           grafico="/app/graficos/modelo.json"
-          descripcionGrafico="Log-loss en test del modelo y del piso en cada corte de 0 a 120 plies; el modelo queda siempre por debajo."
+          descripcionGrafico="Arriba, log-loss en test del modelo y del piso en cada corte de 0 a 120 plies: el modelo queda siempre por debajo. Abajo, el porcentaje de error del piso que el modelo evita en cada corte."
           queMirar={
             <>
               <p>
-                La distancia entre las dos líneas es lo que aporta el modelo. Antes de mover sólo sabe el ritmo y el
-                nivel de cada uno; la distancia se abre cuando aparecen las diferencias de material y de reloj.
+                Arriba está el error tal cual, sin retocar: menos es mejor. La distancia entre las dos líneas es lo que
+                aporta el modelo. Antes de mover sólo sabe el ritmo y el nivel de cada uno; la distancia se abre cuando
+                aparecen las diferencias de material y de reloj.
               </p>
               <p>
-                El piso empeora al final porque predice siempre las proporciones de todas las partidas, y las que
-                llegan lejos terminan distinto (más tablas).
+                Al final sube el error del piso: predice siempre las proporciones de todas las partidas, y las que
+                llegan lejos terminan distinto (más tablas). Las barras de abajo leen lo mismo como lo que importa: qué
+                parte de ese error evita el modelo.
               </p>
             </>
+          }
+          porQue={
+            <p>
+              Un número de error solo no dice si es bueno o malo. El piso es el error de no saber nada, y es la vara.
+              Mostramos los dos juntos y en crudo: el modelo queda por debajo del piso en todos los cortes, con poca
+              distancia antes de mover y mucha a la mitad de la partida.
+            </p>
           }
           evidencia={
             <>
@@ -387,7 +474,7 @@ export default function Proyecto() {
                 ]}
               />
               <p>
-                Casi nunca predice tablas (recall {pct(test.recall_empate)}): rara vez son el resultado más probable,
+                Reconoce pocas tablas (recall {pct(test.recall_empate)}): rara vez son el resultado más probable,
                 aunque sus probabilidades suben en las partidas con cara de tablas. Desde el ply 60 erra el ganador en{" "}
                 {pct(errores.erradas / errores.filas_decisivas)} de las filas de partidas decisivas; en el{" "}
                 {pct(errores.predicho_arriba_en_material, 0)} de esos errores eligió al que iba arriba en material, y
@@ -403,7 +490,7 @@ export default function Proyecto() {
               />
               <h3>Qué cambió desde la Entrega 3</h3>
               <p>
-                El modelo casi nunca veía los ratings de los dos jugadores a la vez. Ahora el historial suma el rating
+                El modelo tenía los ratings de los dos jugadores en 185 de 80.314 partidas de entrenamiento. Ahora el historial suma el rating
                 de los rivales que ya traían los archivos descargados, y el modelo usa la diferencia y el promedio de
                 rating: {modelo.columnas_finales} columnas en total.
               </p>
@@ -419,6 +506,12 @@ export default function Proyecto() {
         <SeccionTallo
           id="acierta"
           etapa="¿Acertó?"
+          pregunta="Cuando elige un resultado, ¿cuántas veces acierta?"
+          cifras={[
+            { valor: pct(tramoInicial.accuracy, 0), texto: "aciertos antes de mover (el piso, siempre blancas: " + pct(tramoInicial["accuracy piso"], 0) + ")" },
+            { valor: pct(tramoFinal.accuracy, 0), texto: `aciertos entre los plies ${tramoFinal.tramo}` },
+            { valor: pct(tramoFinal["accuracy regla material"], 0), texto: "aciertos de elegir siempre al que va arriba en material, al final" },
+          ]}
           titulo={`Si se queda con lo más probable, acierta el ${pct(tramoInicial.accuracy, 0)} antes de mover y el ${pct(tramoFinal.accuracy, 0)} después del ply 95; mirar sólo el material nunca lo alcanza.`}
           grafico="/app/graficos/acierto.json"
           descripcionGrafico="Tres líneas por tramo de plies: aciertos del modelo, de la regla del material y del piso; el modelo queda siempre arriba."
@@ -430,12 +523,23 @@ export default function Proyecto() {
                 en material (y blancas si están iguales).
               </p>
               <p>
+                Cada número es un porcentaje de filas de test de ese tramo: {pct(tramoInicial.accuracy, 0)} quiere decir
+                que de cada 100 posiciones antes de mover, el modelo elige bien el resultado en {Math.round(tramoInicial.accuracy * 100)}.
+              </p>
+              <p>
                 Antes de mover el modelo le saca {decimal((tramoInicial.accuracy - tramoInicial["accuracy piso"]) * 100, 1)}{" "}
                 puntos al piso, sólo con el rating y el contexto. Al final, la regla del material llega al{" "}
                 {pct(tramoFinal["accuracy regla material"], 0)}: lo que le falta para alcanzar al modelo lo ponen el reloj y
                 el rating.
               </p>
             </>
+          }
+          porQue={
+            <p>
+              La log-loss mide probabilidades y cuesta leerla. Esta pregunta es más simple: si el modelo tuviera que
+              decir un solo resultado, ¿acertaría? Lo comparamos con dos reglas sin modelo (decir siempre blancas, o que
+              gana el que va arriba en material) para ver cuánto agrega.
+            </p>
           }
           evidencia={
             <>
@@ -467,7 +571,7 @@ export default function Proyecto() {
                 {decimal(recall(tramoInicial.tramo, "Gana Blancas"), 1)} % de sus victorias y el{" "}
                 {decimal(recall(tramoInicial.tramo, "Gana Negras"), 1)} % de las de negras. Al final se emparejan (
                 {decimal(recall(tramoFinal.tramo, "Gana Blancas"), 1)} % y {decimal(recall(tramoFinal.tramo, "Gana Negras"), 1)}{" "}
-                %). Las tablas casi nunca son la opción más probable: recién entre los plies {tramoFinal.tramo} reconoce el{" "}
+                %). El modelo reconoce las tablas recién entre los plies {tramoFinal.tramo}: el{" "}
                 {decimal(recall(tramoFinal.tramo, "Empate"), 1)} % de ellas.
               </p>
               <p>
@@ -528,16 +632,107 @@ export default function Proyecto() {
         />
 
         <SeccionTallo
-          id="en-que-se-fija"
-          etapa="En qué se fija"
-          titulo={`Antes de mover, el modelo se fija en el rating; desde los plies ${cruce}, en el material, y después en el reloj.`}
-          grafico="/app/graficos/importancia.json"
-          descripcionGrafico="Importancia por permutación de cinco columnas en cada tramo de plies: la diferencia de rating baja y el material y el reloj suben."
+          id="se-equivoca"
+          etapa="Los errores"
+          pregunta="¿Por qué sigue fallando 3 de cada 10 al final?"
+          titulo={`Entre los plies ${tramoFinal.tramo} el modelo se equivoca en ${pct(1 - tramoFinal.accuracy, 0)} de las posiciones. Más de la mitad de esos errores son partidas que terminaron en tablas, y con el material parejo acierta menos.`}
+          cifras={[
+            { valor: pct(erroresEnTablas, 0), texto: `de los errores entre los plies ${tramoFinal.tramo} terminaron en tablas (en los aciertos, ${pct(aciertosEnTablas, 0)})` },
+            { valor: `${pct(parejo.accuracy, 0)} contra ${pct(ventajaGrande.accuracy, 0)}`, texto: "aciertos con el material parejo, contra los de una ventaja grande" },
+            { valor: pct(parejo.parte, 0), texto: `de las posiciones del tramo final tienen el material parejo (hasta 2 puntos)` },
+          ]}
+          grafico="/app/graficos/situaciones.json"
+          descripcionGrafico="Mapa de calor con el porcentaje de aciertos del modelo por tramo de plies y por situación: la ventaja de material o la de reloj, a elección. Cuanto más verde, más acierta."
           queMirar={
             <>
               <p>
-                Cada línea dice cuánto empeora el modelo si esa columna se desordena en ese tramo: cuanto más alta, más
-                se apoya en ella. La diferencia de rating es lo único que pesa antes de mover (
+                Cada celda es un tipo de posición en un tramo de la partida; el color y el número son el porcentaje de
+                aciertos. Con el material, parejo es hasta 2 puntos de diferencia, ventaja chica de 3 a 5 y grande 6 o
+                más; con el reloj, parejo es menos del 10 % del tiempo base de diferencia y grande, más del 30 %. Las columnas de la izquierda tienen casi todo parejo; hacia la derecha se abren las ventajas.
+                Cambiá el eje con el menú para ver el material o el reloj.
+              </p>
+              <p>
+                En las ventajas grandes acierta más de 8 de cada 10. Con el material parejo baja al{" "}
+                {pct(parejo.accuracy, 0)}, y esas posiciones son la mayoría del tramo.
+              </p>
+            </>
+          }
+          porQue={
+            <>
+              <p>
+                El acierto cambia según la situación, de {pct(parejo.accuracy, 0)} con el material parejo a{" "}
+                {pct(ventajaGrande.accuracy, 0)} con una ventaja grande. El mapa ubica dónde se pierde, que es el paso
+                previo a decidir qué mejorar.
+              </p>
+              <p>
+                Al final queda una mayoría de posiciones parejas ({pct(parejo.parte, 0)} del tramo). Con piezas y
+                relojes parecidos, el tablero no muestra una ventaja clara. Falta comprobar si otras columnas ayudarían
+                ahí.
+              </p>
+            </>
+          }
+          extras={[
+            {
+              src: "/app/graficos/como_terminan.json",
+              descripcion:
+                "Barras agrupadas con cómo terminaron las partidas del tramo final cuando el modelo acertó y cuando se equivocó: por mate, abandono, tiempo o tablas.",
+              leyenda: (
+                <>
+                  <h3>Cómo terminaron las partidas donde acertó y donde falló</h3>
+                  <p>
+                    Las tablas son {pct(aciertosEnTablas, 0)} de los aciertos y {pct(erroresEnTablas, 0)} de los errores.
+                    El modelo reconoce el {pct(test.recall_empate, 0)} de las tablas, y es ahí donde más pierde. Al
+                    predecir no conoce el final.{" "}
+                    <Link href="/explora">Verlas partida por partida en Explorá →</Link>
+                  </p>
+                </>
+              ),
+            },
+          ]}
+          evidencia={
+            <>
+              <h3>Cómo se armó</h3>
+              <p>
+                Sobre las filas de test del tramo {tramoFinal.tramo}. La situación se describe sólo con lo que se sabe en
+                ese corte: la diferencia de material (en valor absoluto) y la diferencia de reloj como fracción del
+                tiempo base. Cómo terminó la partida (mate, abandono, tiempo, tablas) viene del campo Termination de
+                Chess.com, que se conoce sólo al final: sirve para explicar los errores, nunca como dato del modelo.
+              </p>
+              <Tabla
+                filas={modelo.situaciones.filter((f) => f.eje === "Material" && f.tramo === tramoFinal.tramo)}
+                columnas={[
+                  { titulo: "Situación (material)", valor: (f) => `${f.situacion}: ${f.rango}` },
+                  { titulo: "Filas de test", valor: (f) => entero(f.filas), numerica: true },
+                  { titulo: "Parte del tramo", valor: (f) => pct(f.parte, 0), numerica: true },
+                  { titulo: "Aciertos", valor: (f) => pct(f.accuracy), numerica: true },
+                ]}
+              />
+              <p>
+                Las tablas incluyen repetición, ahogado, acuerdo, material insuficiente y la regla de 50 jugadas. «Por
+                tiempo» es una bandera caída con material suficiente para ganar.
+              </p>
+            </>
+          }
+        />
+
+        <SeccionTallo
+          id="en-que-se-fija"
+          etapa="En qué se fija"
+          pregunta="¿En qué se fija el modelo?"
+          antesDelGrafico={<ValorPiezas />}
+          cifras={[
+            { valor: lider(tramoInicial.tramo).nombre.split(" (")[0], texto: "lo que más pesa antes de mover" },
+            { valor: lider(tramoFinal.tramo).nombre.split(" (")[0], texto: `lo que más pesa entre los plies ${tramoFinal.tramo}` },
+            { valor: importancia("diferencia_reloj_seg", tramoFinal.tramo).nombre.split(" (")[0], texto: "la que más sube después del material" },
+          ]}
+          titulo={`Antes de mover, en el rating; desde los plies ${cruce}, en el material, y después en el reloj. Cada columna tiene su propio gráfico, todos a la misma escala.`}
+          grafico="/app/graficos/importancia.json"
+          descripcionGrafico="Cinco gráficos de área apilados, uno por columna, con la misma escala: importancia por permutación en cada tramo de plies. La diferencia de rating baja y el material y el reloj suben."
+          queMirar={
+            <>
+              <p>
+                Cada gráfico es una columna; cuanto más alta la mancha en un tramo, más se apoya el modelo en ella. La
+                diferencia de rating es lo único que pesa antes de mover (
                 {decimal(importancia("diferencia_elo_previa", tramoInicial.tramo).log_loss, 4)}) y se apaga al final (
                 {decimal(importancia("diferencia_elo_previa", tramoFinal.tramo).log_loss, 4)}).
               </p>
@@ -549,12 +744,19 @@ export default function Proyecto() {
               </p>
             </>
           }
+          porQue={
+            <p>
+              Cada columna tiene su gráfico y todos comparten escala, así que la altura compara cuánto pesa cada una
+              y la forma muestra cuándo. El modelo usa lo que un jugador miraría: al principio, quién es más fuerte;
+              después, quién va arriba en piezas y quién tiene más tiempo.
+            </p>
+          }
           evidencia={
             <>
               <h3>Cómo se mide</h3>
               <p>
                 Importancia por permutación, dentro de cada tramo, sobre 5.000 filas de test por tramo: se desordena una
-                columna, se vuelve a predecir y se mide cuánto empeora. Es lo que usa el modelo, no una causa. Las
+                columna, se vuelve a predecir y se mide cuánto empeora el error (esa es la importancia). Es lo que usa el modelo, no una causa. Las
                 columnas parecidas (el material de cada lado y su diferencia) se reparten la importancia.
               </p>
               <h3>Lo mismo, en aciertos</h3>
@@ -576,6 +778,7 @@ export default function Proyecto() {
         <SeccionTallo
           id="hipotesis"
           etapa="Las hipótesis, de punta a punta"
+          pregunta="¿Qué pasó con las hipótesis del principio?"
           titulo="Las hipótesis del análisis exploratorio, vistas otra vez con el modelo: cuáles pesan y en qué momento de la partida."
           queMirar={
             <>

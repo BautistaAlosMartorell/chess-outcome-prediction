@@ -6,7 +6,6 @@
 .encabezado {
   display: grid;
   gap: 12px;
-  max-width: 80ch;
 }
 
 .encabezado h1 {
@@ -18,15 +17,10 @@
 
 .encabezado p {
   margin: 0;
+  max-width: 80ch;
   color: var(--texto-suave);
 }
 
-.pasos {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding-left: 1.2em;
-}
 
 .grafico {
   padding: clamp(14px, 2.5vw, 28px);
@@ -42,3 +36,4 @@
   color: var(--texto-suave);
   font-size: 0.92rem;
 }
+

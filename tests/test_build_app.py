@@ -13,7 +13,10 @@ import numpy as np
 import pandas as pd
 
 from src import app_charts
-from src.build_app import MAXIMO_MB, SALIDA, _log_loss, curva_de_test, muestra_explora, verificar_contra_notebook
+from src.build_app import (
+    FINALES, MAXIMO_MB, SALIDA, _log_loss, acierto_por_situacion, como_terminan, curva_de_test, filas_con_contexto,
+    muestra_explora, verificar_contra_notebook,
+)
 from src.predict import RESULT_ORDER
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +31,7 @@ def _predicciones(n_games=40, cuts=(0, 5, 10)):
         for cut in cuts:
             p = rng.dirichlet([2, 1, 2])
             rows.append({"GameUrl": f"https://chess.com/game/{g}", "corte_ply": cut, "balance_material": int(rng.integers(-3, 4)),
+                         "dif_reloj": float(rng.uniform(-0.5, 0.5)),
                          "resultado": result, "p_blancas": p[0], "p_empate": p[1], "p_negras": p[2],
                          "piso_p_blancas": 0.45, "piso_p_empate": 0.1, "piso_p_negras": 0.45})
     return pd.DataFrame(rows)
@@ -77,6 +81,7 @@ class ChartsTest(unittest.TestCase):
         self.assertEqual(params["corte"]["bind"]["input"], "range")
         self.assertEqual(params["ritmo"]["bind"]["input"], "select")
         self.assertEqual(params["nivel"]["bind"]["input"], "select")
+        self.assertEqual(params["eje_x"]["bind"]["options"], ["Material", "Reloj"])
         self.assertEqual(params["elegida"]["select"]["type"], "point")
         # The per-game table travels once, as a named dataset.
         self.assertEqual(len(spec["datasets"]["partidas"]), len(partidas))
@@ -88,9 +93,13 @@ class ChartsTest(unittest.TestCase):
         curva = curva_de_test(self.pred)
         larga = pd.concat([curva.assign(serie="Modelo", log_loss=curva["modelo"]),
                            curva.assign(serie="Piso", log_loss=curva["piso"])])
-        for chart in [app_charts.partidas_vivas(vivas), app_charts.senal_por_corte(eta2), app_charts.modelo_contra_piso(larga)]:
+        for chart in [app_charts.partidas_vivas(vivas), app_charts.senal_por_corte(eta2)]:
             spec = chart.to_dict()
             self.assertEqual(spec["config"]["background"], "transparent")
+        # Two views, one above the other: the raw error and the share of the floor's error that the model avoids.
+        spec = app_charts.modelo_contra_piso(larga)
+        self.assertEqual(spec["config"]["background"], "transparent")
+        self.assertEqual(len(spec["vconcat"]), 2)
 
 
 class BuildTest(unittest.TestCase):
@@ -120,6 +129,52 @@ class BuildTest(unittest.TestCase):
         reporte["test"]["log_loss"] += 0.001
         with self.assertRaises(AssertionError):
             verificar_contra_notebook(self.pred, curva, reporte)
+
+
+class ErroresTest(unittest.TestCase):
+    """El mapa de situaciones y los finales: de dónde salen los números de «Por qué falla»."""
+
+    def setUp(self):
+        pred = _predicciones(n_games=60, cuts=(0, 100, 110))
+        pred["balance_material"] = np.where(pred["corte_ply"] == 0, 0, pred["balance_material"] * 3)
+        games = _partidas(pred)
+        games["Termination"] = ["checkmate", "resignation", "time", "agreement"] * 15
+        test = pred[["GameUrl", "corte_ply"]].assign(reloj_frac_blancas=0.5, reloj_frac_negras=0.45)
+        self.contexto = filas_con_contexto(pred, test, games)
+
+    def test_context_rows_keep_one_row_per_prediction_with_a_band_and_an_ending(self):
+        self.assertEqual(len(self.contexto), 180)
+        self.assertEqual(set(self.contexto["tramo"]), {"0", "95–120"})
+        self.assertTrue(set(self.contexto["final"]) <= set(FINALES))
+
+    def test_unaligned_rows_are_rejected(self):
+        pred = _predicciones(n_games=4, cuts=(0, 10))
+        test = pred[["GameUrl", "corte_ply"]].iloc[::-1].assign(reloj_frac_blancas=0.5, reloj_frac_negras=0.5)
+        with self.assertRaises(AssertionError):
+            filas_con_contexto(pred, test, _partidas(pred))
+
+    def test_accuracy_by_situation_covers_every_row_once_per_axis(self):
+        tabla = acierto_por_situacion(self.contexto)
+        for eje, grupo in tabla.groupby("eje"):
+            self.assertEqual(grupo["filas"].sum(), len(self.contexto), eje)
+            np.testing.assert_allclose(grupo.groupby("tramo")["parte"].sum(), 1)
+        # Before the first move the material is always even.
+        inicio = tabla[(tabla["eje"] == "Material") & (tabla["tramo"] == "0")]
+        self.assertEqual(inicio["orden"].tolist(), [0])
+        self.assertEqual(inicio["situacion"].tolist(), ["Parejo"])
+        self.assertTrue(tabla["rango"].notna().all())
+
+    def test_endings_add_up_to_one_inside_each_decision(self):
+        tabla = como_terminan(self.contexto)
+        np.testing.assert_allclose(tabla.groupby("decision")["parte"].sum(), 1)
+        self.assertEqual(tabla["filas"].sum(), (self.contexto["tramo"] == "95–120").sum())
+
+    def test_error_charts_serialize(self):
+        tabla = acierto_por_situacion(self.contexto)
+        spec = app_charts.acierto_por_situacion(tabla, ["0", "5–20", "25–40", "45–60", "65–90", "95–120"]).to_dict()
+        self.assertEqual({p["name"] for p in spec["params"]}, {"eje"})
+        spec = app_charts.como_terminan(como_terminan(self.contexto), FINALES).to_dict()
+        self.assertEqual(spec["config"]["background"], "transparent")
 
 
 class WebPaletteTest(unittest.TestCase):
