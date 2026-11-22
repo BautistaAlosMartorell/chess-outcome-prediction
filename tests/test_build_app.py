@@ -81,11 +81,28 @@ class ChartsTest(unittest.TestCase):
         self.assertEqual(params["corte"]["bind"]["input"], "range")
         self.assertEqual(params["ritmo"]["bind"]["input"], "select")
         self.assertEqual(params["nivel"]["bind"]["input"], "select")
-        self.assertEqual(params["eje_x"]["bind"]["options"], ["Material", "Reloj"])
+        self.assertEqual(params["eje_x"]["bind"]["options"], ["Material", "Reloj", "Rating"])
         self.assertEqual(params["elegida"]["select"]["type"], "point")
         # The per-game table travels once, as a named dataset.
         self.assertEqual(len(spec["datasets"]["partidas"]), len(partidas))
         self.assertNotIn('"data": {"values"', json.dumps(spec["vconcat"]))
+
+    def test_rating_axis_leaves_out_games_without_prior_ratings(self):
+        urls = self.pred["GameUrl"].unique()
+        # Half of the games have no prior rating for one of the players: they travel as null, never as NaN.
+        dif = pd.Series([150.0 if i % 2 else np.nan for i in range(len(urls))], index=urls)
+        filas, partidas = muestra_explora(self.pred, self.games, random_state=0, dif_rating=dif)
+        self.assertEqual(int(partidas["dif_rating"].notna().sum()), int((partidas["dif_rating"] == 150).sum()))
+        self.assertGreater(partidas["dif_rating"].isna().sum(), 0)
+        spec = app_charts.explora(filas, partidas, ["intermedio"])
+        text = json.dumps(spec, allow_nan=False)  # raises on NaN
+        self.assertIn("isValid(datum.x_valor)", text)
+        self.assertIn("eje_x == 'Rating'", text)
+        self.assertTrue(any(p["dif_rating"] is None for p in spec["datasets"]["partidas"]))
+
+    def test_rating_axis_is_empty_when_no_ratings_are_given(self):
+        filas, partidas = muestra_explora(self.pred, self.games, random_state=0)
+        self.assertTrue(partidas["dif_rating"].isna().all())
 
     def test_tallo_charts_serialize(self):
         vivas = pd.DataFrame({"TimeClass": ["bullet", "blitz"], "corte_ply": [0, 0], "partidas": [10, 20], "siguen": [1.0, 1.0]})
@@ -100,6 +117,9 @@ class ChartsTest(unittest.TestCase):
         spec = app_charts.modelo_contra_piso(larga)
         self.assertEqual(spec["config"]["background"], "transparent")
         self.assertEqual(len(spec["vconcat"]), 2)
+        # The avoided error comes first: it starts at zero, so the chart cannot look like the model gets worse.
+        self.assertEqual(spec["vconcat"][0]["mark"]["type"], "bar")
+        self.assertIn("layer", spec["vconcat"][1])
 
 
 class BuildTest(unittest.TestCase):
@@ -253,6 +273,8 @@ class GeneratedFilesTest(unittest.TestCase):
         guide = self.resumen["explora"]
         self.assertGreater(guide["partidas"], guide["partidas_en_corte"])  # the sample size is not overwritten
         self.assertAlmostEqual(guide["errores"], round((1 - guide["acierto"]) * guide["partidas_en_corte"]))
+        self.assertGreater(guide["partidas_con_rating"], 0)
+        self.assertLessEqual(guide["partidas_con_rating"], guide["partidas"])
         spec = json.loads((self.dir / "graficos/explora.json").read_text(encoding="utf-8"))
         self.assertIn("acierto", {p["name"] for p in spec["params"]})
 

@@ -319,18 +319,19 @@ export default function Proyecto() {
           ]}
           titulo={`Sí, en cada momento de la partida: ${pct(portada.mejora_antes_de_mover, 0)} menos error antes de mover y ${pct(portada.mejora_ply_60, 0)} menos a las 30 jugadas. Antes de mover es poco porque casi no hay información.`}
           grafico="/app/graficos/modelo.json"
-          descripcionGrafico="Arriba, log-loss en test del modelo y del piso en cada corte de 0 a 120 plies: el modelo queda siempre por debajo. Abajo, el porcentaje de error del piso que el modelo evita en cada corte."
+          descripcionGrafico="Arriba, el porcentaje de error del piso que el modelo evita en cada corte de 0 a 120 plies. Abajo, log-loss en test del modelo y del piso en cada corte: el modelo queda siempre por debajo."
           queMirar={
             <>
               <p>
-                Arriba está el error tal cual, sin retocar: menos es mejor. La distancia entre las dos líneas es lo que
-                aporta el modelo. Antes de mover sólo sabe el ritmo y el nivel de cada uno; la distancia se abre cuando
-                aparecen las diferencias de material y de reloj.
+                Arriba, las barras arrancan de cero y dicen qué parte del error del piso evita el modelo en cada corte.
+                Antes de mover sólo sabe el ritmo y el nivel de cada uno, y evita poco; la barra crece cuando aparecen las
+                diferencias de material y de reloj.
               </p>
               <p>
-                Al final sube el error del piso: predice siempre las proporciones de todas las partidas, y las que
-                llegan lejos terminan distinto (más tablas). Las barras de abajo leen lo mismo como lo que importa: qué
-                parte de ese error evita el modelo.
+                Abajo está el error tal cual, sin retocar: menos es mejor, y la distancia entre las dos líneas es lo que
+                aporta el modelo. Al final sube el error del piso: predice siempre las proporciones de todas las
+                partidas, y las que llegan lejos terminan distinto (más tablas). Por eso las barras de arriba leen lo
+                mismo como lo que importa.
               </p>
             </>
           }

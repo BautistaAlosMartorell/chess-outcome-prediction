@@ -100,16 +100,16 @@ def senal_por_corte(eta2: pd.DataFrame) -> alt.Chart:
 
 
 def modelo_contra_piso(curva: pd.DataFrame) -> dict:
-    """El modelo: arriba el error crudo del modelo y del piso, abajo cuánto le saca (en %).
+    """El modelo: arriba cuánto error del piso evita (en %), abajo el error crudo de los dos.
 
     ``curva`` tiene una fila por (serie, corte_ply) con ``log_loss``, ``mejora`` (fracción
-    sobre el piso, repetida en las dos series) y ``partidas``. El error crudo se muestra
-    tal cual (menor es mejor): el piso empeora al final porque las partidas largas
-    terminan distinto, no porque el modelo falle. Las barras de abajo leen lo mismo como
-    lo que importa: qué parte del error del piso se evita.
+    sobre el piso, repetida en las dos series) y ``partidas``. Las barras de arriba van
+    primero porque arrancan de cero y leen lo que importa: qué parte del error del piso se
+    evita. Abajo, el error crudo se muestra tal cual (menor es mejor): el piso empeora al
+    final porque las partidas largas terminan distinto, no porque el modelo falle.
     """
     crudo = alt.Chart(curva).encode(
-        # Same x domain as the bars below, so a cut sits above its own bar.
+        # Same x domain as the bars above, so a cut sits below its own bar.
         x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[-3, 123])),
         y=alt.Y("log_loss:Q", title="Error (log-loss, menos es mejor)", scale=alt.Scale(zero=False)),
         color=alt.Color("serie:N", title=None, scale=ESCALA_SERIE),
@@ -128,7 +128,7 @@ def modelo_contra_piso(curva: pd.DataFrame) -> dict:
                  alt.Tooltip("mejora:Q", title="Menos error que el piso", format=".1%"),
                  alt.Tooltip("partidas:Q", title="Partidas de test", format=",")],
     )
-    return alt.vconcat((lineas + puntos).properties(height=240), barras.properties(height=120),
+    return alt.vconcat(barras.properties(height=140), (lineas + puntos).properties(height=240),
                        spacing=20, usermeta=ANCHO_MINIMO_ANGOSTO).configure(**TEMA).to_dict()
 
 
@@ -318,7 +318,7 @@ def como_terminan(filas: pd.DataFrame, finales: list[str]) -> alt.Chart:
 # Explorá's third control: every game, or only those where the model's most probable class was right or wrong.
 ACIERTO = ["Todas", "Acertó", "Se equivocó"]
 # Explorá's horizontal axis: material (points) or clock (fraction of the base time).
-EJES_X = ["Material", "Reloj"]
+EJES_X = ["Material", "Reloj", "Rating"]
 
 
 def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> dict:
@@ -358,7 +358,10 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(
         # Material is an integer: a fixed per-game jitter (computed in the build) separates the points.
         material_visible="datum.balance_material + datum.desplazamiento",
-        x_valor="eje_x == 'Reloj' ? datum.dif_reloj : datum.balance_material + datum.desplazamiento",
+        x_valor="eje_x == 'Reloj' ? datum.dif_reloj : (eje_x == 'Rating' ? datum.dif_rating : "
+                "datum.balance_material + datum.desplazamiento)",
+        # Not every game has both prior ratings: with the rating axis those points are left out.
+        dif_rating_texto="isValid(datum.dif_rating) ? format(datum.dif_rating, '+d') : 'sin dato'",
         ventaja="datum.p_blancas - datum.p_negras",
         # The model's fixed decision, the most probable class (ties as numpy's argmax: white, draw, black).
         prediccion="datum.p_blancas >= datum.p_empate && datum.p_blancas >= datum.p_negras ? 'Gana Blancas' : "
@@ -366,15 +369,19 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(
         acerto="datum.prediccion == datum.resultado",
     ).transform_filter(
+        "isValid(datum.x_valor)"
+    ).transform_filter(
         (acierto == ACIERTO[0]) | ((acierto == ACIERTO[1]) & alt.datum.acerto)
         | ((acierto == ACIERTO[2]) & ~alt.datum.acerto)
     ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
         x=alt.X("x_valor:Q",
                 # An axis title can't follow a param: one title that reads right for both axes.
-                title="Ventaja de blancas sobre negras: material (puntos) o reloj (% del tiempo base)",
+                title="Ventaja de blancas sobre negras: material (puntos), reloj (% del tiempo base) o rating previo (puntos)",
                 # nice=False: with a domain given as an expression Vega would round it up to ±20.
-                scale=alt.Scale(domain=alt.ExprRef(expr="eje_x == 'Reloj' ? [-1, 1] : [-15, 15]"), clamp=True, nice=False),
-                axis=alt.Axis(labelExpr="eje_x == 'Reloj' ? (datum.value == 0 ? '0 %' : format(datum.value * 100, '+d') + ' %') : datum.label")),
+                scale=alt.Scale(domain=alt.ExprRef(expr="eje_x == 'Reloj' ? [-1, 1] : (eje_x == 'Rating' ? [-400, 400] : [-15, 15])"),
+                                clamp=True, nice=False),
+                axis=alt.Axis(labelExpr="eje_x == 'Reloj' ? (datum.value == 0 ? '0 %' : format(datum.value * 100, '+d') + ' %') : "
+                                        "(eje_x == 'Rating' ? (datum.value == 0 ? '0' : format(datum.value, '+d')) : datum.label)")),
         y=alt.Y("ventaja:Q", title="Lo que dice el modelo: P(blancas) − P(negras)",
                 scale=alt.Scale(domain=[-1, 1]), axis=alt.Axis(format="+.0%")),
         color=alt.Color("resultado:N", title="Cómo terminó", scale=ESCALA_RESULTADO),
@@ -385,6 +392,7 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
             alt.Tooltip("corte_ply:Q", title="Plies jugados"),
             alt.Tooltip("balance_material:Q", title="Material (bl − ng)"),
             alt.Tooltip("dif_reloj:Q", title="Reloj (bl − ng)", format="+.0%"),
+            alt.Tooltip("dif_rating_texto:N", title="Rating previo (bl − ng)"),
             alt.Tooltip("p_blancas:Q", title="Modelo: gana blancas", format=".0%"),
             alt.Tooltip("p_empate:Q", title="Modelo: tablas", format=".0%"),
             alt.Tooltip("p_negras:Q", title="Modelo: gana negras", format=".0%"),
@@ -428,7 +436,8 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     with alt.data_transformers.enable("default", max_rows=None):
         # Two legends on purpose: above, how each game ended; below, what the model said.
         spec = alt.vconcat(panorama, detalle, spacing=36).resolve_legend(color="independent").configure(**TEMA).to_dict()
-    spec["datasets"]["partidas"] = partidas.to_dict(orient="records")
+    # A missing value (a game without both prior ratings) travels as null, never as NaN (invalid JSON for the web).
+    spec["datasets"]["partidas"] = partidas.astype(object).where(partidas.notna(), None).to_dict(orient="records")
     return spec
 
 

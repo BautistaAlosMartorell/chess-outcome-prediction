@@ -319,8 +319,26 @@ def hipotesis_en_el_modelo(eda: dict[str, Any], importancia: pd.DataFrame) -> li
     return filas
 
 
-def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Partidas de test para Explorá, estratificadas por ritmo y nivel, con todas sus filas."""
+def diferencia_rating(test: pd.DataFrame, artifact: dict[str, Any]) -> pd.Series:
+    """Diferencia de rating previo (blancas − negras) de cada partida de test, indexada por ``GameUrl``.
+
+    Es la que lee el modelo: el rating previo sale del historial de cada jugador (partidas
+    terminadas antes del inicio), no del rating posterior. Queda vacía si falta el de alguno
+    de los dos: es lo que le pasa a la mitad de las partidas en el corte 0.
+    """
+    primeras = test[test["corte_ply"] == 0]
+    derivadas = artifact["resultado"].named_steps["historial"].transform(model_input_frame(primeras, artifact["columnas"]))
+    diferencia = derivadas["elo_blancas_previo"].to_numpy() - derivadas["elo_negras_previo"].to_numpy()
+    return pd.Series(diferencia, index=primeras["GameUrl"].to_numpy(), name="dif_rating")
+
+
+def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int,
+                    dif_rating: pd.Series | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Partidas de test para Explorá, estratificadas por ritmo y nivel, con todas sus filas.
+
+    ``dif_rating`` (ver ``diferencia_rating``) es el tercer eje horizontal de Explorá: va en la
+    tabla de partidas, vacía donde no se conoce el rating previo de los dos jugadores.
+    """
     info = games.set_index("GameUrl").loc[pred["GameUrl"].unique()]
     fraction = min(1.0, PARTIDAS_EXPLORA / len(info))
     chosen = info.groupby(["TimeClass", "nivel_promedio"], observed=True).sample(frac=fraction, random_state=random_state)
@@ -342,6 +360,7 @@ def muestra_explora(pred: pd.DataFrame, games: pd.DataFrame, random_state: int) 
         "final": chosen["Termination"].astype(str).to_numpy(),
         "desplazamiento": rng.uniform(-0.35, 0.35, len(ids)).round(2),
     })
+    partidas["dif_rating"] = (np.nan if dif_rating is None else dif_rating.reindex(chosen.index).round(0).to_numpy())
     # Per-game fields live in `partidas`; each (game, cut) row keeps only what changes with the cut.
     filas = pred.loc[pred["GameUrl"].isin(ids.index), ["GameUrl", "corte_ply", "balance_material", "dif_reloj",
                                                         "p_blancas", "p_empate", "p_negras"]].copy()
@@ -364,6 +383,7 @@ def guia_explora(filas: pd.DataFrame, partidas: pd.DataFrame, corte: int = 60) -
         (decididas["elegida"] == "Gana Negras") & (decididas["balance_material"] < 0))
     return {
         "corte": corte, "partidas_en_corte": len(en_corte), "acierto": float(acerto.mean()), "errores": int((~acerto).sum()),
+        "partidas_con_rating": int(partidas["dif_rating"].notna().sum()),
         "errores_tablas": float((errores["resultado"] == "Empate").mean()),
         "errores_eligio_mas_material": float(arriba.mean()),
     }
@@ -492,7 +512,7 @@ def main() -> None:
         escribir(f"trivia/{case['id']}.json", case)
     escribir("trivia/index.json", trivia_index)
 
-    filas, partidas = muestra_explora(pred, games, random_state)
+    filas, partidas = muestra_explora(pred, games, random_state, diferencia_rating(test, artifact))
     eta2 = pd.concat([
         pd.DataFrame(eda["eta2_material"]).assign(variable="Material"),
         pd.DataFrame(eda["eta2_reloj"])[["corte_ply", "eta2_controlado"]]

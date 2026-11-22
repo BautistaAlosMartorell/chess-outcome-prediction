@@ -272,3 +272,13 @@
     align-items: start;
   }
 }
+
+.aviso {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--fondo-hondo);
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}

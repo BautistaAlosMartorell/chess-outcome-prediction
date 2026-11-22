@@ -54,8 +54,10 @@ export default function Explora() {
               contenido: (
                 <p>
                   Elegí un ritmo o un nivel para quedarte con esas partidas. Con «Eje horizontal» pasás del material al
-                  reloj y el modelo queda fijo arriba: si se apoya en el reloj, los puntos se ordenan igual. Con
-                  «Reproducir», el corte avanza solo y ves cómo se abren los puntos a medida que la partida sigue.
+                  reloj o al rating previo, y el modelo queda fijo arriba: si se apoya en esa columna, los puntos se
+                  ordenan igual. El rating pesa antes de mover y el material, al final; probá los tres en distintos
+                  cortes. Con «Reproducir», el corte avanza solo y ves cómo se abren los puntos a medida que la partida
+                  sigue.
                 </p>
               ),
             },
@@ -75,7 +77,7 @@ export default function Explora() {
       </header>
 
       <section className={styles.grafico} aria-label="Partidas de test y probabilidades del modelo">
-        <ExploraGrafico niveles={RESUMEN.explora.niveles} />
+        <ExploraGrafico niveles={RESUMEN.explora.niveles} conRating={guia.partidas_con_rating} total={guia.partidas} />
       </section>
 
       <p className={styles.nota}>
