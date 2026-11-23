@@ -335,6 +335,7 @@ para publicarse. Si cambian los datos:
 # 1. DAG de Airflow (o python -m src.pipeline)
 # 2. notebooks/02_eda_hipotesis.ipynb y notebooks/04_modelado.ipynb con Restart & Run All
 .venv/bin/python -m src.build_app      # ~1-2 min: limpia los JSON, arma el test y predice
+.venv/bin/python -m src.build_app --solo-graficos   # redibuja con los números publicados, sin modelo
 ```
 
 La regeneración del 23/10 ejecutó el DAG y los notebooks 02 y 04 con kernel limpio;

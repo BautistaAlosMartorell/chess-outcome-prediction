@@ -36,27 +36,43 @@ Código: `src/app_charts.py`. Los colores se definen una vez (`COLOR_RESULTADO`,
 `COLOR_RITMO`, `COLOR_MODELO`, `COLOR_PISO`) y son los tokens de `web/app/globals.css`.
 Un test (`tests/test_build_app.py`) verifica que coincidan.
 
-### Los datos: `partidas_vivas`
+### Los datos: `partidas_crudas`
 
 | Componente | Qué es | Por qué |
 |---|---|---|
-| Datos | Una fila por (ritmo, corte): cuántas partidas tienen fila en ese corte y qué fracción del ritmo es | Es la unidad de modelado (partida × corte) vista desde arriba |
-| Marca | Línea + punto | Es una evolución a lo largo de un eje ordenado (los plies) |
-| x | `corte_ply`, cuantitativa, 0 a 120 | El tiempo de la partida |
-| y | `siguen`, cuantitativa, formato % | Fracción, para comparar ritmos de distinto tamaño |
-| color | `TimeClass`, nominal, escala `ESCALA_RITMO` | Tres categorías sin orden |
-| Transformación | Ninguna en el gráfico; el conteo se hace en `build_app.partidas_vivas` | |
+| Datos | 100 partidas reales por ritmo, ordenadas por duración y tomadas a intervalos iguales (`muestra_cruda`) | Reproduce la forma completa: «67 de cada 100» se puede contar en el gráfico |
+| Marca | Rectángulo finito (una línea por partida) y una regla punteada en el ply 60 | Se ve el dato crudo, no un resumen |
+| x | Posición dentro del ritmo (sin eje) | Sólo ordena |
+| y | Plies que duró, 0 a 160 (las más largas se cortan ahí) | La duración |
+| color / opacidad | Ritmo (`ESCALA_RITMO`) / si pasa el ply 60 | La silueta oscura es lo que queda para los cortes tardíos |
 
-### Lo que encontramos: `senal_por_corte`
+### Lo que encontramos: `mosaico_resultado`
 
 | Componente | Qué es | Por qué |
 |---|---|---|
-| Datos | η² por corte (10 a 60) del material y del reloj a igual material, del notebook 02 | Las dos hipótesis de la Parte B sobre la población común |
-| Marca | Línea + punto, más una regla horizontal punteada en 0,05 | La regla es el umbral de señal débil del EDA, fijado antes de mirar |
-| x | `corte_ply`, cuantitativa (dominio 5–65) | Sólo hay cortes con jugadas: en el 0 material y reloj son iguales |
-| y | `eta2`, cuantitativa, formato % | Proporción de la variación del resultado que explica la variable |
-| color | `variable`, nominal, `ESCALA_VARIABLE` | Dos series |
-| Transformación | Ninguna en el gráfico. El reloj usa el η² **controlado** (dentro de bandas de material), calculado en el 02 | Así "el reloj suma aunque el material esté parejo" se ve en el gráfico |
+| Datos | Las 66.413 partidas que llegan al ply 60, en los plies 10, 30 y 60 (`segmentos_mosaico`) | Siempre las mismas: no mezcla «avanzó» con «quedaron las largas» |
+| Marca | Rectángulo (mosaico) | Dos cantidades a la vez: cuántas y cómo terminaron |
+| x / ancho | Tramo de ventaja, de negras muy arriba a blancas muy arriba; el ancho es la parte de las partidas | Se ve que al principio están todas en el medio |
+| y / altura | Parte de cada resultado, apilada a 100 % | Se ve cuándo el color se inclina |
+| color | Resultado, `ESCALA_RESULTADO` | El mismo en toda la app |
+| Transformación | El reloj sólo con el material parejo (hasta 2 puntos) | Es la versión visible del η² controlado |
+
+### Los aciertos: `acierto_de_cien`
+
+Cien cuadrados por tramo (rectángulos, x/y = columna y fila). El color separa lo que ya acierta decir
+siempre «blancas», lo que suma el modelo y lo que falla. Son conteos: no dice que sean las mismas
+posiciones. Antes eran tres líneas con el eje cortado (35 % a 80 %), que agrandaban la diferencia.
+
+### En qué se fija: `importancia_por_tramo`
+
+Tres facetas (rating, material, reloj), mismo eje y: aciertos de cada 100 que se pierden al desordenar la
+columna. Opacidad llena = la que más pesa en ese tramo, o las que empatan (a menos de 0,05). Antes
+eran cinco áreas en log-loss, que nadie sabe leer en voz alta.
+
+### Los errores: `acierto_por_situacion` y `como_terminan`
+
+Mapa de calor (tramo × situación, color y número = aciertos) y barras enfrentadas: a la izquierda cómo
+terminan 100 aciertos, a la derecha 100 errores.
 
 ### El modelo: `modelo_contra_piso`
 
@@ -65,7 +81,7 @@ Son dos vistas, una arriba de la otra (`vconcat`), con el mismo dominio de `x`:
 | Componente | Arriba: «Error que evita el modelo» | Abajo: el error en crudo |
 |---|---|---|
 | Datos | `mejora` por corte: qué fracción del error del piso evita el modelo (solo la serie Modelo) | Log-loss de test por corte del modelo y del piso, recalculada por el build y verificada contra el 04 |
-| Marca | Barra | Línea + punto |
+| Marca | Barra | Punto (piso y modelo) y segmento entre los dos |
 | x | `corte_ply`, cuantitativa (dominio −3 a 123, igual que abajo) | `corte_ply`, cuantitativa |
 | y | `mejora`, formato %, **arranca de cero** | `log_loss`, sin cero (`zero=False`): la diferencia entre las líneas es lo que importa |
 | color | Verde del modelo | `serie` (Modelo / Piso), `ESCALA_SERIE` |

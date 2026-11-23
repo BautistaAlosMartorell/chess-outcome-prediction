@@ -1,5 +1,30 @@
 # Changelog
 
+## Preparar la app para la exposición final (2026-11-23)
+
+Rama `feat/exposicion-final`, sobre `ejes-explora`. Responde a la última corrección: menos
+«título, gráfico», más simple a la vista, texto para cada gráfico, contar cómo cambió el proyecto,
+mostrar los crudos y usar menos gráficos de líneas.
+
+- `/proyecto` queda en tres capítulos (Los datos, Lo que encontramos, El modelo). Cada uno abre con
+  su afirmación en grande y cuatro «Teníamos → Por eso» que cuentan el recorrido. Dentro, cada
+  gráfico tiene al lado, siempre visible, «Por qué lo miramos» y «Qué nos dice». Los «Cómo lo
+  sabemos» no cambiaron de contenido. Al final se suma «Qué quedó sin responder».
+- Gráficos: «Los datos» pasa de líneas a una línea por partida real (100 por ritmo) y al PGN crudo
+  al lado de las filas que produce; «Lo que encontramos», de η² a un mosaico con cómo terminan las
+  mismas 66.413 partidas según la ventaja (el η² queda en «Cómo lo sabemos»); el error crudo, a
+  segmentos piso–modelo; los aciertos, a cien cuadrados por tramo; la importancia, a tres facetas
+  en aciertos que se pierden; cómo terminaron aciertos y errores, a barras enfrentadas.
+- Corregir `explora.json`: en `ejes-explora` quedó sin dos datasets y no se dibujaban el cartel
+  «Elegí una partida de arriba» ni la marca del corte. Mismas filas y probabilidades. Una prueba
+  nueva exige que cada gráfico lleve los datasets que nombra.
+- Corregir la demo de la portada: usaba probabilidades del modelo de 40 columnas. Ahora la genera
+  el build (`demo.json`) con el modelo de 48.
+- `python -m src.build_app --solo-graficos`: redibuja con los números ya publicados, sin modelo.
+  El resto de las probabilidades publicadas no cambió.
+- Analizar: el aviso de usuario inexistente aparece junto al buscador.
+- Quitar componentes sin uso (`Recorrido`, `Indice`, `ValorPiezas`, `Revelar`, `Cifra`, `lib/ejemplo`).
+
 ## Resolver la devolución de la Entrega 4 en la app (2026-11-22)
 
 Rama `ejes-explora`, a partir de la devolución del profesor sobre la app.

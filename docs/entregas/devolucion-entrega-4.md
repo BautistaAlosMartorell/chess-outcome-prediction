@@ -27,6 +27,10 @@ exposición tiene que hablar cada integrante, explicando sobre todo el porqué.
 
 La trivia, Jugar y Analizar no cambiaron: el profesor dijo que estaban bien.
 
+Lo que se rehízo después para la exposición final (capítulos con «Teníamos → Por eso», texto
+visible en cada gráfico, crudos y menos líneas) está en el [CHANGELOG](../CHANGELOG.md), entrada del
+23/11/2026. Reemplaza las filas 1, 2, 3, 6, 7 y 12 de la tabla.
+
 ## Cómo se verificó
 
 - `python -m unittest tests.test_build_app tests.test_metricas_tramo tests.test_api`: pasan.
