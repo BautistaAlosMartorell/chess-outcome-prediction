@@ -13,11 +13,10 @@ export default function Explora() {
   return (
     <div className={styles.pagina}>
       <header className={styles.encabezado}>
-        <h1>Explorá las partidas</h1>
+        <h1>Cada punto es una partida que el modelo no vio</h1>
         <p>
-          Cada punto es una partida de test, que el modelo nunca vio al entrenar, en el momento que elijas. A la
-          izquierda, las negras tienen más material; arriba, el modelo le da más chances a las blancas. El color es
-          cómo terminó de verdad.
+          Más arriba, el modelo le da más chances a las blancas; más a la derecha, las blancas tienen más ventaja. El
+          color es cómo terminó de verdad. Si el modelo anda bien, los claros quedan arriba y los oscuros, abajo.
         </p>
         <Despliegues
           items={[
