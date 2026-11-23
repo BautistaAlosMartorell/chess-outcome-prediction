@@ -80,11 +80,11 @@ button.boton:hover {
 
 .actual .boton {
   background: var(--reloj);
-  color: var(--negras);
+  color: #ffffff;
 }
 
 .actual .prob {
-  color: var(--negras);
+  color: #ffffff;
 }
 
 .san {
@@ -98,7 +98,7 @@ button.boton:hover {
 }
 
 .actual .salto {
-  color: var(--negras);
+  color: #ffffff;
 }
 
 .prob {
