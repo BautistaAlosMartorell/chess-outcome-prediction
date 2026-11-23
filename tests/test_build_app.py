@@ -15,7 +15,7 @@ import pandas as pd
 from src import app_charts
 from src.build_app import (
     FINALES, MAXIMO_MB, SALIDA, _log_loss, acierto_por_situacion, como_terminan, curva_de_test, filas_con_contexto,
-    muestra_explora, verificar_contra_notebook,
+    muestra_cruda, muestra_explora, segmentos_mosaico, verificar_contra_notebook,
 )
 from src.predict import RESULT_ORDER
 
@@ -105,12 +105,13 @@ class ChartsTest(unittest.TestCase):
         self.assertTrue(partidas["dif_rating"].isna().all())
 
     def test_tallo_charts_serialize(self):
-        vivas = pd.DataFrame({"TimeClass": ["bullet", "blitz"], "corte_ply": [0, 0], "partidas": [10, 20], "siguen": [1.0, 1.0]})
+        muestra = pd.DataFrame({"TimeClass": ["bullet", "blitz", "rapid"], "orden": 0, "plies": [40, 61, 200], "resultado": RESULT_ORDER})
         eta2 = pd.DataFrame({"variable": ["Material", "Reloj, a igual material"], "corte_ply": [10, 10], "eta2": [0.0, 0.01]})
         curva = curva_de_test(self.pred)
         larga = pd.concat([curva.assign(serie="Modelo", log_loss=curva["modelo"]),
                            curva.assign(serie="Piso", log_loss=curva["piso"])])
-        for chart in [app_charts.partidas_vivas(vivas), app_charts.senal_por_corte(eta2)]:
+        siguen = {"bullet": 0.0, "blitz": 1.0, "rapid": 1.0}
+        for chart in [app_charts.partidas_crudas(muestra, siguen), app_charts.senal_por_corte(eta2)]:
             spec = chart.to_dict()
             self.assertEqual(spec["config"]["background"], "transparent")
         # Two views, one above the other: the raw error and the share of the floor's error that the model avoids.
@@ -126,6 +127,40 @@ class BuildTest(unittest.TestCase):
     def setUp(self):
         self.pred = _predicciones()
         self.games = _partidas(self.pred)
+
+    def test_raw_sample_keeps_the_share_of_games_that_pass_each_ply(self):
+        plies = np.arange(1, 1001) % 160 + 5
+        games = pd.DataFrame({"GameUrl": [f"g{i}" for i in range(1000)], "TimeClass": "blitz", "cantidad_jugadas": plies,
+                              "resultado": "Empate"})
+        muestra = muestra_cruda(games, 100)
+        self.assertEqual(len(muestra), 100)
+        self.assertTrue(muestra["plies"].is_monotonic_increasing)
+        for ply in [30, 60, 120]:
+            self.assertAlmostEqual((muestra["plies"] > ply).mean(), (plies > ply).mean(), delta=0.011)
+
+    def test_mosaic_uses_the_same_games_in_every_cut_and_stacks_to_one(self):
+        rng = np.random.default_rng(0)
+        rows = [{"GameUrl": f"g{g}", "corte_ply": c, "resultado": RESULT_ORDER[g % 3], "balance_material": int(rng.integers(-9, 10)),
+                 "reloj_frac_blancas": rng.uniform(), "reloj_frac_negras": rng.uniform()}
+                # The last ten games end before ply 60: they must not count in any cut.
+                for g in range(60) for c in (10, 30, 60) if not (g >= 50 and c == 60)]
+        segmentos = segmentos_mosaico(pd.DataFrame(rows), [10, 30, 60])
+        material = segmentos[segmentos["variable"].str.contains("material") & ~segmentos["variable"].str.contains("reloj")]
+        for _, grupo in material.groupby("corte_ply"):
+            self.assertEqual(grupo.drop_duplicates("ventaja")["partidas"].sum(), 50)
+            self.assertAlmostEqual(grupo.drop_duplicates("ventaja")["ancho"].sum(), 1)
+        for _, columna in segmentos.groupby(["variable", "corte_ply", "ventaja"]):
+            self.assertAlmostEqual(columna["parte"].sum(), 1)
+            self.assertAlmostEqual(columna["y1"].max(), 1)
+        spec = app_charts.mosaico_resultado(segmentos, [10, 30, 60])
+        self.assertEqual(len(spec["vconcat"]), 2)
+
+    def test_every_named_dataset_of_explora_travels_with_the_spec(self):
+        # A spec that names a dataset it doesn't carry draws nothing, silently (it happened to the hint and the cut's rule).
+        filas, partidas = muestra_explora(self.pred, self.games, random_state=0)
+        spec = app_charts.explora(filas, partidas, ["intermedio"])
+        nombres = set(re.findall(r'"data": \{"name": "([^"]+)"', json.dumps(spec["vconcat"])))
+        self.assertTrue(nombres <= set(spec["datasets"]), nombres - set(spec["datasets"]))
 
     def test_explora_sample_keeps_every_cut_of_each_game(self):
         filas, partidas = muestra_explora(self.pred, self.games, random_state=0)
@@ -219,7 +254,7 @@ class GeneratedFilesTest(unittest.TestCase):
         for name in ["resumen.json", "graficos/datos.json", "graficos/hallazgos.json", "graficos/modelo.json",
                      "graficos/explora.json", "graficos/acierto.json", "graficos/confusion.json",
                      "graficos/importancia.json", "graficos/curva.json", "graficos/cortes.json",
-                     "graficos/familias.json"]:
+                     "graficos/familias.json", "graficos/eta2.json", "mosaico.json", "demo.json"]:
             path = self.dir / name
             self.assertTrue(path.exists(), name)
             self.assertLess(path.stat().st_size / 1e6, MAXIMO_MB, name)
@@ -268,6 +303,21 @@ class GeneratedFilesTest(unittest.TestCase):
         self.assertEqual(len(model["familias_por_tramo"]), 4 * len(model["tramos"]))
         self.assertEqual(model["familias"][2], f"{model['familia']} ajustado")
 
+
+    def test_every_chart_carries_the_datasets_it_names(self):
+        for path in sorted((self.dir / "graficos").glob("*.json")):
+            if path.name == "curva.json":  # the web fills its datasets
+                continue
+            spec = json.loads(path.read_text(encoding="utf-8"))
+            vistas = {k: v for k, v in spec.items() if k != "datasets"}
+            nombres = set(re.findall(r'"data": \{"name": "([^"]+)"', json.dumps(vistas)))
+            self.assertTrue(nombres <= set(spec["datasets"]), f"{path.name}: {nombres - set(spec['datasets'])}")
+
+    def test_cover_demo_matches_its_raw_game(self):
+        demo = json.loads((self.dir / "demo.json").read_text(encoding="utf-8"))
+        np.testing.assert_allclose(np.array(demo["curva"]).sum(axis=1), 1, atol=0.002)
+        self.assertEqual([f["corte_ply"] for f in demo["filas"]], [0, 20, 40, 60])
+        self.assertEqual(demo["filas"][0]["balance_material"], 0)
 
     def test_explora_guide_numbers(self):
         guide = self.resumen["explora"]

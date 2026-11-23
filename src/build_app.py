@@ -11,7 +11,8 @@ modelo guardado, y escribe en ``web/public/app/``:
 
 El test se recalcula con el modelo guardado y el build falla si no da lo mismo que el
 notebook 04. Si cambian los datos: correr el DAG, los notebooks 02 y 04, y de nuevo
-``python -m src.build_app``.
+``python -m src.build_app``. Para cambiar sólo cómo se dibuja algo, sin tocar las
+probabilidades publicadas: ``python -m src.build_app --solo-graficos``.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from src.comparacion_familias import FAMILIAS_POR_PEDAZO, diferencia_pareada, me
 from src.metricas_tramo import TRAMOS, confusion_por_tramo, metricas_por_tramo, predicha, tramo_de_corte
 from src.history_transformer import HISTORY_INPUTS, attach_player_histories, player_history_payloads
 from src.player_selection import load_selection
-from src.predict import MODEL_PATH, PRE_GAME, RESULT_ORDER, cargar_modelo, model_input_frame
+from src.predict import MODEL_PATH, PRE_GAME, RESULT_ORDER, cargar_modelo, model_input_frame, predecir
 from src.utils import load_config, setup_logger
 
 logger = setup_logger(__name__)
@@ -57,6 +58,13 @@ SERIE_TODAS = "Todas las que siguen en juego"
 SERIE_COMUN = f"Las mismas partidas (llegan al ply {PLY_COMUN})"
 # Families shown in the app (notebook 05): the floor, the simple model and the two tuned ensembles.
 PISO_CV, SIMPLE_CV = "Piso (prior)", "Regresión logística"
+# «Los datos»: how many real games per rhythm the raw chart draws, one line each.
+CRUDAS_POR_RITMO = 100
+# «Lo que encontramos»: the three cuts of the mosaic (all of them in the EDA's common population).
+CORTES_MOSAICO = [10, 30, 60]
+# The test game of the cover, shown raw in «Los datos» (blitz 5+0; black won by resignation).
+PARTIDA_DEMO = "https://www.chess.com/game/live/171122900092"
+CORTES_DEMO = [0, 20, 40, 60]
 
 
 def raw_paths(config: dict[str, Any]) -> dict[str, Path]:
@@ -85,6 +93,98 @@ def partidas_vivas(games: pd.DataFrame, cuts: pd.DataFrame) -> pd.DataFrame:
     total = games["TimeClass"].astype(str).value_counts()
     counts["siguen"] = counts["partidas"] / counts["TimeClass"].map(total)
     return counts
+
+
+def muestra_cruda(games: pd.DataFrame, por_ritmo: int = CRUDAS_POR_RITMO) -> pd.DataFrame:
+    """Partidas reales de cada ritmo, de la más corta a la más larga, tomadas a intervalos iguales.
+
+    Ordenar todas por duración y quedarse con una cada n/``por_ritmo`` reproduce la forma
+    completa: la parte que pasa cada ply es la misma que en todas las partidas del ritmo.
+    """
+    partes = []
+    for ritmo, grupo in games.assign(TimeClass=games["TimeClass"].astype(str)).groupby("TimeClass"):
+        ordenadas = grupo.sort_values(["cantidad_jugadas", "GameUrl"], kind="stable")
+        n = min(por_ritmo, len(ordenadas))
+        elegidas = ordenadas.iloc[((np.arange(n) + 0.5) * len(ordenadas) / n).astype(int)]
+        partes.append(pd.DataFrame({"TimeClass": ritmo, "orden": np.arange(n), "plies": elegidas["cantidad_jugadas"].to_numpy(),
+                                    "resultado": elegidas["resultado"].astype(str).to_numpy()}))
+    return pd.concat(partes, ignore_index=True)
+
+
+# From "black far ahead" to "white far ahead": the same limits as SITUACION_MATERIAL and SITUACION_RELOJ, signed.
+VENTAJA_MATERIAL = ([-np.inf, -6, -3, 2, 5, np.inf],
+                    ["Negras, 6 puntos o más", "Negras, 3 a 5", "Pareja (hasta 2)", "Blancas, 3 a 5", "Blancas, 6 puntos o más"])
+VENTAJA_RELOJ = ([-np.inf, -0.3, -0.1, 0.1, 0.3, np.inf],
+                 ["Negras, más del 30 %", "Negras, 10 a 30 %", "Parejo (menos del 10 %)", "Blancas, 10 a 30 %", "Blancas, más del 30 %"])
+NOMBRE_MOSAICO = {"material": "Según quién va arriba en material",
+                  "reloj": "Según quién tiene más reloj, sólo con el material parejo"}
+
+
+def segmentos_mosaico(cuts: pd.DataFrame, cortes: list[int] = CORTES_MOSAICO) -> pd.DataFrame:
+    """Cómo terminan las mismas partidas (las que llegan al ply 60) según la ventaja en cada corte.
+
+    El reloj se mira sólo con el material parejo (hasta 2 puntos): es la versión visible del
+    η² controlado del notebook 02, si separa ahí no es porque repite el material.
+    """
+    comun = set(cuts.loc[cuts["corte_ply"] == PLY_COMUN, "GameUrl"])
+    base = cuts[cuts["GameUrl"].isin(comun) & cuts["corte_ply"].isin(cortes)].copy()
+    base["resultado"] = base["resultado"].astype(str)
+    base["dif_reloj"] = (base["reloj_frac_blancas"] - base["reloj_frac_negras"]).fillna(0)
+    parejas = base[base["balance_material"].abs() <= 2]
+    filas = []
+    for nombre, tabla, columna, (limites, etiquetas) in [
+        (NOMBRE_MOSAICO["material"], base, "balance_material", VENTAJA_MATERIAL),
+        (NOMBRE_MOSAICO["reloj"], parejas, "dif_reloj", VENTAJA_RELOJ),
+    ]:
+        ventaja = pd.cut(tabla[columna], limites, labels=etiquetas)
+        for corte in cortes:
+            en_corte = tabla["corte_ply"] == corte
+            conteo = pd.crosstab(ventaja[en_corte], tabla.loc[en_corte, "resultado"]).reindex(
+                index=etiquetas, columns=RESULT_ORDER, fill_value=0)
+            anchos = conteo.sum(axis=1) / conteo.to_numpy().sum()
+            x0 = anchos.cumsum().shift(fill_value=0)
+            for etiqueta in etiquetas:
+                total = int(conteo.loc[etiqueta].sum())
+                if not total:
+                    continue
+                # White at the bottom, black on top, as on the bar of Jugar and Analizar.
+                partes = conteo.loc[etiqueta] / total
+                y1 = partes.cumsum()
+                for resultado in RESULT_ORDER:
+                    filas.append({"variable": nombre, "corte_ply": corte, "ventaja": etiqueta, "resultado": resultado,
+                                  "ancho": float(anchos[etiqueta]), "x0": float(x0[etiqueta]), "parte": float(partes[resultado]),
+                                  "y0": float(y1[resultado] - partes[resultado]), "y1": float(y1[resultado]), "partidas": total})
+    return pd.DataFrame(filas)
+
+
+def partida_cruda(games: pd.DataFrame, cuts: pd.DataFrame, paths: dict[str, Path]) -> dict[str, Any]:
+    """La partida de la portada como la manda Chess.com y las filas en que se convierte."""
+    crudo = next(g for path in paths.values() for g in json.loads(Path(path).read_text(encoding="utf-8")).get("games", [])
+                 if g.get("url") == PARTIDA_DEMO)
+    partida = games.set_index("GameUrl").loc[PARTIDA_DEMO]
+    cortes = cuts[(cuts["GameUrl"] == PARTIDA_DEMO) & cuts["corte_ply"].isin(CORTES_DEMO)].sort_values("corte_ply")
+    assert len(cortes) == len(CORTES_DEMO), "La partida de la portada no tiene todos sus cortes"
+    movetext = crudo["pgn"].split("\n\n", 1)[1]
+    columnas = ["corte_ply", "balance_material", "reloj_blancas_seg", "reloj_negras_seg"]
+    return {
+        "url": PARTIDA_DEMO, "ritmo": str(partida["TimeClass"]), "tiempo_base_seg": float(partida["tiempo_base_seg"]),
+        "plies": int(partida["cantidad_jugadas"]), "resultado": str(partida["resultado"]),
+        "crudo": {"white": {"rating": crudo["white"]["rating"], "result": crudo["white"]["result"]},
+                  "black": {"rating": crudo["black"]["rating"], "result": crudo["black"]["result"]},
+                  "time_control": crudo["time_control"], "end_time": crudo["end_time"], "pgn": movetext[:330].rsplit("}", 1)[0] + "}"},
+        "filas": json.loads(cortes[columnas].assign(resultado=str(partida["resultado"])).to_json(orient="records", force_ascii=False)),
+    }
+
+
+def curva_demo(test: pd.DataFrame, paths: dict[str, Path], artifact: dict[str, Any]) -> list[list[float]]:
+    """Las probabilidades del modelo guardado en cada ply de la partida de la portada."""
+    crudo = next(g for path in paths.values() for g in json.loads(Path(path).read_text(encoding="utf-8")).get("games", [])
+                 if g.get("url") == PARTIDA_DEMO)
+    fila = test[test["GameUrl"] == PARTIDA_DEMO].iloc[0]
+    contexto = {k: fila[k] for k in ["TimeClass", "tiempo_base_seg", "incremento_seg", "EsTorneo", "StartTime",
+                                     "historial_blancas", "historial_negras"]}
+    curva = predecir(crudo["pgn"], contexto, artifact)
+    return curva[RESULT_ORDER].round(4).to_numpy().tolist()
 
 
 def filas_de_test(games: pd.DataFrame, cuts: pd.DataFrame, paths: dict[str, Path],
@@ -475,19 +575,68 @@ def escribir(nombre: str, contenido: dict[str, Any]) -> Path:
     return path
 
 
+def leer_salida(nombre: str) -> dict[str, Any]:
+    return json.loads((PROJECT_ROOT / SALIDA / nombre).read_text(encoding="utf-8"))
+
+
+def escribir_graficos(numeros: dict[str, Any], games: pd.DataFrame, cuts: pd.DataFrame) -> None:
+    """Los gráficos que salen de los datos y de ``resumen.json``: no necesitan el modelo guardado."""
+    modelo, hallazgos = numeros["modelo"], numeros["hallazgos"]
+    escribir("graficos/datos.json",
+             app_charts.partidas_crudas(muestra_cruda(games), numeros["datos"]["siguen_al_ply_60"]).to_dict())
+    segmentos = segmentos_mosaico(cuts)
+    en_la_web = [NOMBRE_MOSAICO["material"], NOMBRE_MOSAICO["reloj"]]
+    assert list(segmentos["variable"].unique()) == en_la_web
+    escribir("graficos/hallazgos.json", app_charts.mosaico_resultado(segmentos, CORTES_MOSAICO))
+    # The page quotes a few cells of the mosaic.
+    escribir("mosaico.json", {"filas": _registros(segmentos[["variable", "corte_ply", "ventaja", "resultado", "parte", "ancho", "partidas"]])})
+    eta2 = pd.concat([
+        pd.DataFrame(hallazgos["eta2_material"]).assign(variable="Material"),
+        pd.DataFrame(hallazgos["eta2_reloj"])[["corte_ply", "eta2_controlado"]]
+        .rename(columns={"eta2_controlado": "eta2"}).assign(variable="Reloj, a igual material"),
+    ], ignore_index=True)
+    escribir("graficos/eta2.json", app_charts.senal_por_corte(eta2).to_dict())
+    curva = pd.DataFrame(modelo["test_por_corte"])
+    curva_larga = pd.concat([
+        curva.assign(serie="Modelo", log_loss=curva["modelo"]), curva.assign(serie="Piso", log_loss=curva["piso"]),
+    ])[["serie", "corte_ply", "log_loss", "mejora", "partidas"]]
+    escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga))
+    escribir("graficos/acierto.json", app_charts.acierto_de_cien(pd.DataFrame(modelo["test_por_tramo"])).to_dict())
+    escribir("graficos/importancia.json",
+             app_charts.importancia_por_tramo(pd.DataFrame(modelo["importancia_por_tramo"]), TRAMOS).to_dict())
+    escribir("graficos/situaciones.json",
+             app_charts.acierto_por_situacion(pd.DataFrame(modelo["situaciones"]), TRAMOS).to_dict())
+    escribir("graficos/como_terminan.json",
+             app_charts.como_terminan(pd.DataFrame(modelo["como_terminan"]), FINALES).to_dict())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.parse_args()
+    parser.add_argument("--solo-graficos", action="store_true",
+                        help="redibuja con los números ya publicados en web/public/app, sin modelo ni predicciones")
+    args = parser.parse_args()
     started = time.perf_counter()
     config = load_config(PROJECT_ROOT / "config" / "config.yaml")
     random_state = config["processing"]["random_state"]
-    eda = leer_reporte(PROJECT_ROOT / REPORTE_EDA)
-    modelado = leer_reporte(PROJECT_ROOT / REPORTE_MODELADO)
-    artifact = cargar_modelo(PROJECT_ROOT / MODEL_PATH)
-
     games = pd.read_parquet(PROJECT_ROOT / config["paths"]["clean_parquet"])
     cuts = pd.read_parquet(PROJECT_ROOT / config["paths"]["cortes_parquet"])
     paths = raw_paths(config)
+    if args.solo_graficos:
+        numeros = leer_salida("resumen.json")
+        assert numeros["portada"]["partidas"] == len(games), "El Parquet local no es el de la app publicada"
+        escribir_graficos(numeros, games, cuts)
+        # Explorá is redrawn over its own published rows: same games, same probabilities.
+        publicado = leer_salida("graficos/explora.json")["datasets"]
+        filas = pd.DataFrame(next(v for k, v in publicado.items() if k != "partidas" and len(v) > 1))
+        escribir("graficos/explora.json",
+                 app_charts.explora(filas, pd.DataFrame(publicado["partidas"]), list(config["elo"]["bandas"])))
+        escribir("demo.json", {**partida_cruda(games, cuts, paths), "curva": leer_salida("demo.json")["curva"]})
+        logger.info("Gráficos redibujados en %.0f s", time.perf_counter() - started)
+        return
+
+    eda = leer_reporte(PROJECT_ROOT / REPORTE_EDA)
+    modelado = leer_reporte(PROJECT_ROOT / REPORTE_MODELADO)
+    artifact = cargar_modelo(PROJECT_ROOT / MODEL_PATH)
     pasos = embudo(config, paths, len(games))
     vivas = partidas_vivas(games, cuts)
 
@@ -513,15 +662,6 @@ def main() -> None:
     escribir("trivia/index.json", trivia_index)
 
     filas, partidas = muestra_explora(pred, games, random_state, diferencia_rating(test, artifact))
-    eta2 = pd.concat([
-        pd.DataFrame(eda["eta2_material"]).assign(variable="Material"),
-        pd.DataFrame(eda["eta2_reloj"])[["corte_ply", "eta2_controlado"]]
-        .rename(columns={"eta2_controlado": "eta2"}).assign(variable="Reloj, a igual material"),
-    ], ignore_index=True)
-    curva_larga = pd.concat([
-        curva.assign(serie="Modelo", log_loss=curva["modelo"]), curva.assign(serie="Piso", log_loss=curva["piso"]),
-    ])[["serie", "corte_ply", "log_loss", "mejora", "partidas"]]
-
     contexto = filas_con_contexto(pred, test, games)
     situaciones, finales = acierto_por_situacion(contexto), como_terminan(contexto)
 
@@ -536,22 +676,13 @@ def main() -> None:
         "familias_diferencias": _registros(diferencias),
         "familias": modelos,
     }
-    escribir("resumen.json", resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
-                                     len(partidas), tramos, confusion, importancia, comparaciones,
-                                     guia_explora(filas, partidas), situaciones, finales))
-    escribir("graficos/datos.json", app_charts.partidas_vivas(vivas).to_dict())
-    escribir("graficos/hallazgos.json", app_charts.senal_por_corte(eta2).to_dict())
-    escribir("graficos/modelo.json", app_charts.modelo_contra_piso(curva_larga))
-    acierto = pd.concat([
-        tramos.assign(serie=serie, accuracy=tramos[columna])
-        for serie, columna in [("Modelo", "accuracy"), ("Regla del material", "accuracy regla material"),
-                               ("Piso", "accuracy piso")]
-    ])[["serie", "tramo", "accuracy", "filas"]]
-    escribir("graficos/acierto.json", app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict())
+    numeros = resumen(games, config, pasos, vivas, eda, modelado, curva, test_metrics, artifact,
+                      len(partidas), tramos, confusion, importancia, comparaciones,
+                      guia_explora(filas, partidas), situaciones, finales)
+    escribir("resumen.json", numeros)
+    escribir("demo.json", {**partida_cruda(games, cuts, paths), "curva": curva_demo(test, paths, artifact)})
+    escribir_graficos(numeros, games, cuts)
     escribir("graficos/confusion.json", app_charts.confusion_por_tramo(confusion, TRAMOS).to_dict())
-    escribir("graficos/importancia.json", app_charts.importancia_por_tramo(importancia, TRAMOS))
-    escribir("graficos/situaciones.json", app_charts.acierto_por_situacion(situaciones, TRAMOS).to_dict())
-    escribir("graficos/como_terminan.json", app_charts.como_terminan(finales, FINALES).to_dict())
     escribir("graficos/explora.json",
              app_charts.explora(filas, partidas, list(config["elo"]["bandas"])))
     escribir("graficos/cortes.json", app_charts.entre_cortes(entre_cortes, SERIE_TODAS, SERIE_COMUN).to_dict())
