@@ -3,21 +3,8 @@
   display: grid;
   gap: 16px;
   padding: clamp(18px, 3vw, 28px);
-  border-radius: 18px;
-  background: linear-gradient(180deg, var(--panel-alto), var(--panel));
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 30px 70px rgba(23, 59, 50, 0.09);
-  animation: entrar 700ms var(--suave) both 150ms;
-}
-
-@keyframes entrar {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  border-radius: var(--radio-chico);
+  background: var(--panel-alto);
 }
 
 .encabezado {
@@ -58,7 +45,7 @@
 }
 
 .pie {
-  min-height: 3em;
+  min-height: 1.5em;
   margin: 0;
   color: var(--texto-suave);
   font-size: 0.9rem;

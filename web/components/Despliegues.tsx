@@ -26,7 +26,7 @@ export function Despliegues({ items, compacto = false }: Props) {
 
   return (
     <div className={compacto ? styles.compacto : styles.despliegues}>
-      <div className={styles.fila}>
+      <div className={styles.fila} data-solo={items.length === 1 || undefined}>
         {items.map((item) => {
           const seleccionado = item.id === abierto;
           return (

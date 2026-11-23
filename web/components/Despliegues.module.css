@@ -11,6 +11,11 @@
   gap: 10px;
 }
 
+/* A single chip is as wide as its label. */
+.fila[data-solo] {
+  grid-template-columns: minmax(0, max-content);
+}
+
 .ficha {
   display: flex;
   align-items: center;
@@ -106,7 +111,12 @@
   grid-template-columns: 1fr;
 }
 
-.compacto .ficha {
+.compacto /* A single chip is as wide as its label. */
+.fila[data-solo] {
+  grid-template-columns: minmax(0, max-content);
+}
+
+.ficha {
   min-height: 44px;
   gap: 10px;
   padding: 6px 12px 6px 6px;

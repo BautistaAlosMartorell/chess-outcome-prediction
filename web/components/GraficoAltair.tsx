@@ -5,7 +5,7 @@ import { OPCIONES_TOOLTIP } from "@/lib/tooltip";
 import { useVisto } from "@/lib/useVisto";
 import styles from "./GraficoAltair.module.css";
 
-type Spec = Record<string, unknown> & { vconcat?: Record<string, unknown>[]; usermeta?: { anchoMinimo?: number } };
+type Spec = Record<string, unknown> & { vconcat?: Record<string, unknown>[]; usermeta?: { anchoMinimo?: number; anchoGrafico?: number } };
 
 // What the page needs from a drawn chart: read and set its params (Altair's `param`s are Vega signals).
 export type VistaVega = { signal: (nombre: string, valor?: unknown) => VistaVega; runAsync: () => Promise<unknown> };
@@ -71,6 +71,8 @@ export function GraficoAltair({ src, descripcion, onVista, ocultarControles = fa
         actions: false,
         renderer: "svg",
         tooltip: OPCIONES_TOOLTIP,
+        // Numbers as the text writes them: decimal comma, dot for thousands.
+        formatLocale: { decimal: ",", thousands: ".", grouping: [3], currency: ["$", ""] },
         // The page's font, which next/font names at build time: the spec can't know it.
         config: { font: fuente },
       })
@@ -92,7 +94,7 @@ export function GraficoAltair({ src, descripcion, onVista, ocultarControles = fa
 
   return (
     <figure ref={figura} className={`${styles.figura} ${ocultarControles ? styles.sinControles : ""}`} data-listo={listo || undefined} data-visto={visto || undefined}>
-      <div ref={contenedor} className={styles.grafico} role="img" aria-label={descripcion} />
+      <div ref={contenedor} className={styles.grafico} style={{ minWidth: spec?.usermeta?.anchoGrafico }} role="img" aria-label={descripcion} />
       {error ? <p className={styles.error}>No se pudo cargar el gráfico. Probá recargar la página.</p> : null}
       {!spec && !error ? <p className={styles.cargando}>Cargando el gráfico…</p> : null}
     </figure>

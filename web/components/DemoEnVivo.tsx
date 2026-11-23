@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PARTIDA_EJEMPLO } from "@/lib/ejemplo";
+import demo from "@/public/app/demo.json";
 import { prefiereMenosMovimiento } from "@/lib/movimiento";
 import { Barra } from "./Barra";
 import { Curva } from "./Curva";
 import styles from "./DemoEnVivo.module.css";
 
 const PASO_MS = 700;
+// The saved model's probabilities for one test game (white, draw, black), written by src/build_app.py.
+const PARTIDA_EJEMPLO = demo.curva as [number, number, number][];
 
 // The home page demo plays once; users can pause or replay it.
 export function DemoEnVivo() {

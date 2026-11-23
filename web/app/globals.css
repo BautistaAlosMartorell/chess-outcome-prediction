@@ -47,8 +47,9 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* A warm wash frames the content without reducing chart contrast. */
-  background: radial-gradient(ellipse at 95% 0%, #f9e4bc 0%, transparent 38%), var(--fondo);
+  background: var(--fondo);
+  /* Chapters bleed to the window's edge: clip, never scroll, the scrollbar's width. */
+  overflow-x: clip;
 }
 
 /* Numbers that change (clocks, percentages) never jitter. */
