@@ -12,15 +12,17 @@
   margin: 0;
   font-stretch: 118%;
   font-weight: 800;
-  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+  font-size: clamp(2.1rem, 5vw, 3.6rem);
+  line-height: 1.03;
+  letter-spacing: -0.025em;
 }
 
 .encabezado p {
   margin: 0;
-  max-width: 80ch;
+  max-width: 72ch;
+  font-size: 1.1rem;
   color: var(--texto-suave);
 }
-
 
 .grafico {
   padding: clamp(14px, 2.5vw, 28px);

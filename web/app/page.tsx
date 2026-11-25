@@ -19,13 +19,10 @@ export default function Inicio() {
     <div className={styles.inicio}>
       <section className={styles.bienvenida} aria-labelledby="bienvenida">
         <div className={styles.texto}>
-          <p className={styles.etiqueta}>
-            <span aria-hidden="true">♞</span> Ajedrez, intuición y datos
-          </p>
           <h1 id="bienvenida">
             ¿Vos cómo
             <br />
-            la <span>ves?</span>
+            la ves?
           </h1>
           <p className={styles.bajada}>
             Una posición real, dos relojes y tres resultados posibles.
@@ -36,20 +33,14 @@ export default function Inicio() {
           </p>
           <div className={styles.acciones}>
             <Link href="/trivia" className={styles.principal}>
-              Jugar la trivia <span aria-hidden="true">↗</span>
+              Jugar la trivia
             </Link>
             <Link href="/proyecto" className={styles.secundario}>
-              Conocer el proyecto <span aria-hidden="true">→</span>
+              Conocer el proyecto
             </Link>
           </div>
-          <p className={styles.detalle}>
-            Tres posiciones reales. Un pronóstico a la vez.
-          </p>
         </div>
         <div className={styles.escena}>
-          <div className={styles.destacado}>
-            El reloj pesa en el resultado.
-          </div>
           <div className={styles.tarjetaTablero}>
             <div className={styles.cabeceraTablero}>
               <span>Negras</span>
@@ -72,44 +63,21 @@ export default function Inicio() {
         </div>
       </section>
       <section className={styles.descubri} aria-labelledby="descubri">
-        <div className={styles.encabezado}>
-          <p className={styles.etiqueta}>Tres formas de entrar</p>
-          <h2>Analizá tus partidas, explorá los datos o leé el recorrido.</h2>
-        </div>
+        <h2 id="descubri" className={styles.encabezado}>
+          También podés
+        </h2>
         <div className={styles.opciones}>
           <Link href="/analizar" className={styles.tarjeta}>
-            <span className={styles.numero}>01 / Tus partidas</span>
-            <span className={styles.icono} aria-hidden="true">
-              ↺
-            </span>
-            <h3>Volvé a ese momento.</h3>
-            <p>
-              Traé una partida de Chess.com y revivila con su resumen animado.
-            </p>
-            <strong>Analizar una partida →</strong>
+            <h3>Analizar tus partidas</h3>
+            <p>Traé una partida de Chess.com y mirá qué decía el modelo en cada jugada.</p>
           </Link>
           <Link href="/explora" className={styles.tarjeta}>
-            <span className={styles.numero}>02 / Los datos</span>
-            <span className={styles.icono} aria-hidden="true">
-              ♙
-            </span>
-            <h3>Cada punto es una partida.</h3>
-            <p>
-              Explorá posiciones, resultados y cómo cambian las probabilidades.
-            </p>
-            <strong>Explorar las partidas →</strong>
+            <h3>Explorar los datos</h3>
+            <p>Dos mil partidas que el modelo no vio, con lo que dijo de cada una.</p>
           </Link>
           <Link href="/proyecto" className={styles.tarjeta}>
-            <span className={styles.numero}>03 / La historia</span>
-            <span className={styles.icono} aria-hidden="true">
-              ✳
-            </span>
-            <h3>¿Cómo llegamos hasta acá?</h3>
-            <p>
-              Conocé la pregunta, los datos y lo que encontramos al intentar
-              anticipar el final.
-            </p>
-            <strong>Conocer el proyecto →</strong>
+            <h3>Leer cómo llegamos hasta acá</h3>
+            <p>La pregunta, los datos, lo que encontramos y dónde se equivoca el modelo.</p>
           </Link>
         </div>
       </section>

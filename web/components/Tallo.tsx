@@ -1,121 +1,108 @@
 import type { ReactNode } from "react";
-import { Despliegues, type ItemDespliegue } from "./Despliegues";
-import { Cifra as NumeroAnimado } from "./Cifra";
+import { Despliegues } from "./Despliegues";
 import { GraficoAltair } from "./GraficoAltair";
-import { Revelar } from "./Revelar";
 import styles from "./Tallo.module.css";
 
-export type Cifra = {
-  // The number, already formatted.
-  valor: string;
-  // What it counts, in one line.
-  texto: string;
-};
+// One change of direction: what we had, and what we did because of that.
+export type Cambio = { cuando: string; teniamos: ReactNode; porEso: ReactNode };
 
-type Props = {
+type CapituloProps = {
   id: string;
-  // Which stage it closes: "Los datos", "Lo que encontramos", "El modelo".
+  // Which stage it closes, as the assignment names it: "Los datos", "Lo que encontramos", "El modelo".
   etapa: string;
-  // The question the section answers, short and large: it is what a reader scans for.
-  pregunta: string;
-  // The answer, stated as a finding with its numbers (not the topic).
+  // What the chapter claims: the largest type on the page.
   titulo: string;
-  // Up to three numbers that carry the answer.
-  cifras?: Cifra[];
-  // Optional: a section can make its case with text and tables alone.
-  grafico?: string;
-  descripcionGrafico?: string;
-  // Anything that helps read the chart (a legend of piece values, a how-to-read note), above it.
-  antesDelGrafico?: ReactNode;
-  // What the chart shows, in plain words.
-  queMirar: ReactNode;
-  // Why the chart is here: which question it answers and why that matters.
-  porQue?: ReactNode;
-  // Extra charts, each with its own short caption, after the main one.
-  extras?: { src: string; descripcion: string; leyenda: ReactNode }[];
-  // The technical evidence, collapsed by default.
-  evidencia: ReactNode;
+  bajada: ReactNode;
+  // How the project got here, in order.
+  cambios: Cambio[];
+  children: ReactNode;
 };
 
-// One section of the guided part: a question, its answer, the chart that proves it and how we know.
-export function SeccionTallo({
-  id,
-  etapa,
-  pregunta,
-  titulo,
-  cifras,
-  grafico,
-  descripcionGrafico,
-  antesDelGrafico,
-  queMirar,
-  porQue,
-  extras,
-  evidencia,
-}: Props) {
-  const items: ItemDespliegue[] = [
-    { id: "ver", titulo: "Qué se ve", icono: "ver", contenido: <div className={styles.bloque}>{queMirar}</div> },
-    ...(porQue ? [{ id: "porque", titulo: "Por qué está acá", icono: "porque" as const, contenido: <div className={styles.bloque}>{porQue}</div> }] : []),
-    { id: "prueba", titulo: "Cómo lo sabemos", icono: "prueba", contenido: <div className={styles.evidencia}>{evidencia}</div> },
-  ];
+// A chapter of the guided part. It opens with the claim and the path that led to it;
+// the steps inside prove it one chart at a time.
+export function Capitulo({ id, etapa, titulo, bajada, cambios, children }: CapituloProps) {
   return (
-    <section className={styles.seccion} aria-labelledby={id} id={`seccion-${id}`}>
-      <Revelar className={styles.encabezado}>
-        <p className={styles.etapa}>{etapa}</p>
-        <h2 id={id} className={styles.pregunta}>
-          {pregunta}
-        </h2>
-      </Revelar>
-      {cifras?.length ? (
-        <dl className={styles.cifras}>
-          {cifras.map((c) => (
-            <div key={c.texto}>
-              <dd className="cifra">
-                <NumeroAnimado valor={c.valor} />
-              </dd>
-              <dt>{c.texto}</dt>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      {antesDelGrafico}
-      {grafico ? <GraficoAltair src={grafico} descripcion={descripcionGrafico ?? ""} /> : null}
-      <p className={styles.respuesta}>{titulo}</p>
-      {extras?.map((e) => (
-        <div key={e.src} className={styles.extra}>
-          <GraficoAltair src={e.src} descripcion={e.descripcion} />
-          <Despliegues
-            items={[{ id: "ver", titulo: "Cómo leer este gráfico", icono: "ver", contenido: <div className={styles.bloque}>{e.leyenda}</div> }]}
-          />
+    <section className={styles.capitulo} aria-labelledby={id} id={`seccion-${id}`}>
+      <header className={styles.apertura}>
+        <div className={styles.ancho}>
+          <p className={styles.etapa}>{etapa}</p>
+          <h2 id={id} className={styles.afirmacion}>
+            {titulo}
+          </h2>
+          <p className={styles.bajada}>{bajada}</p>
+          <ol className={styles.cambios}>
+            {cambios.map((c) => (
+              <li key={c.cuando}>
+                <p className={styles.cuando}>{c.cuando}</p>
+                <p className={styles.teniamos}>
+                  <strong>Teníamos</strong> {c.teniamos}
+                </p>
+                <p className={styles.porEso}>
+                  <strong>Por eso</strong> {c.porEso}
+                </p>
+              </li>
+            ))}
+          </ol>
         </div>
-      ))}
-      <Despliegues items={items} />
+      </header>
+      <div className={styles.pasos}>{children}</div>
     </section>
   );
 }
 
-// A chapter with no chart of its own: same header as the others, the content is up to the caller.
-export function SeccionTexto({
-  id,
-  etapa,
-  pregunta,
-  titulo,
-  children,
-}: {
+type PasoProps = {
   id: string;
-  etapa: string;
-  pregunta: string;
+  // The sentence that takes the reader from the previous step to this one.
+  giro?: string;
+  // A short question or claim: what the chart below answers.
   titulo: string;
-  children: ReactNode;
-}) {
+  // Optional: a step can make its case with its own component instead of a chart.
+  grafico?: string;
+  descripcionGrafico?: string;
+  // How to read the chart, in one line above it (the encoding, not the finding).
+  comoSeLee?: ReactNode;
+  // Why the chart is here and what it says: always visible, next to it.
+  porQue: ReactNode;
+  queDice: ReactNode;
+  // Anything that replaces or goes with the chart.
+  children?: ReactNode;
+  // The technical evidence, collapsed by default.
+  evidencia?: ReactNode;
+};
+
+// One step of a chapter: the question, the chart that answers it, why it is here and what it says.
+export function Paso({ id, giro, titulo, grafico, descripcionGrafico, comoSeLee, porQue, queDice, children, evidencia }: PasoProps) {
   return (
-    <section className={styles.seccion} aria-labelledby={id} id={`seccion-${id}`}>
-      <p className={styles.etapa}>{etapa}</p>
-      <h2 id={id} className={styles.pregunta}>
-        {pregunta}
-      </h2>
-      <p className={styles.respuesta}>{titulo}</p>
-      {children}
-    </section>
+    <article className={styles.paso} aria-labelledby={id} id={`seccion-${id}`}>
+      <div>
+        {giro ? <p className={styles.giro}>{giro}</p> : null}
+        <h3 id={id} className={styles.pregunta}>
+          {titulo}
+        </h3>
+      </div>
+      <div className={styles.cuerpo}>
+        <div className={styles.prueba}>
+          {comoSeLee ? <p className={styles.comoSeLee}>{comoSeLee}</p> : null}
+          {grafico ? <GraficoAltair src={grafico} descripcion={descripcionGrafico ?? ""} /> : null}
+          {children}
+        </div>
+        <div className={styles.notas}>
+          <section>
+            <h4>Por qué lo miramos</h4>
+            {porQue}
+          </section>
+          <section>
+            <h4>Qué nos dice</h4>
+            {queDice}
+          </section>
+        </div>
+      </div>
+      {evidencia ? (
+        <Despliegues
+          items={[{ id: "prueba", titulo: "Cómo lo sabemos", icono: "prueba", contenido: <div className={styles.evidencia}>{evidencia}</div> }]}
+        />
+      ) : null}
+    </article>
   );
 }
 

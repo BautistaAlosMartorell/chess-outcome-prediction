@@ -39,6 +39,8 @@ ANCHO_EXPLORA = 640
 # The web gives each view of a vconcat the container's width, but never less than 260 px (Explorá needs it).
 # These stacked charts stay readable narrower, so on a phone they fit instead of scrolling sideways.
 ANCHO_MINIMO_ANGOSTO = {"anchoMinimo": 160}
+# Charts with several groups side by side: below this width the page scrolls them inside their own box.
+ANCHO_GRUPOS = {"anchoGrafico": 620}
 EJE_CORTE = alt.Axis(title="Plies jugados", values=list(range(0, 121, 20)))
 
 TEMA = {
@@ -57,23 +59,98 @@ def con_tema(chart: alt.TopLevelMixin) -> alt.TopLevelMixin:
     return chart.properties(width="container").configure(**TEMA)
 
 
-def partidas_vivas(vivas: pd.DataFrame) -> alt.Chart:
-    """Los datos: qué parte de las partidas sigue en juego en cada corte, por ritmo.
+# Groups drawn side by side inside one view (one per rhythm, cut or band): a single view fills the
+# container's width by itself, which Vega-Lite's facets don't.
+def _rotulo(filas: pd.DataFrame, y: float, **estilo) -> alt.Chart:
+    """Texto de cada grupo: una fila por grupo con ``x`` y ``texto``; ``y`` va en píxeles."""
+    return alt.Chart(filas).mark_text(lineBreak="\n", **{"fontSize": 13, "color": FONDO_TEXTO, **estilo}).encode(
+        x=alt.X("x:Q"), y=alt.value(y), text="texto:N")
 
-    ``vivas`` tiene una fila por (ritmo, corte_ply) con ``siguen`` (fracción, 0 a 1).
+
+SEPARACION_RITMO = 12
+# Longer games exist (up to 646 plies): the bars are cut here so the rest can be read.
+TOPE_PLIES = 160
+
+
+def partidas_crudas(muestra: pd.DataFrame, siguen: dict[str, float]) -> alt.Chart:
+    """Los datos en crudo: cada línea es una partida real y su altura, cuántos plies duró.
+
+    ``muestra`` tiene una fila por partida (``TimeClass``, ``orden`` de la más corta a la más
+    larga dentro de su ritmo, ``plies``, ``resultado``); ``siguen``, qué parte de cada ritmo
+    tiene fila en el corte 60.
     """
-    base = alt.Chart(vivas).encode(
-        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[0, 120])),
-        y=alt.Y("siguen:Q", title="Partidas que siguen en juego", axis=alt.Axis(format="%")),
-        color=alt.Color("TimeClass:N", title="Ritmo", scale=ESCALA_RITMO),
+    por_ritmo = int(muestra["orden"].max()) + 1
+    inicio = {r: i * (por_ritmo + SEPARACION_RITMO) for i, r in enumerate(RITMOS)}
+    ancho = inicio[RITMOS[-1]] + por_ritmo
+    datos = muestra.assign(
+        x=muestra["TimeClass"].map(inicio) + muestra["orden"],
+        x2=muestra["TimeClass"].map(inicio) + muestra["orden"] + 0.7,
+        visible=muestra["plies"].clip(upper=TOPE_PLIES), base=0,
+        llega=muestra["plies"].gt(60).map({True: "sí", False: "no"}),
     )
-    lineas = base.mark_line(strokeWidth=2.5)
-    puntos = base.mark_point(filled=True, size=40).encode(
-        tooltip=[alt.Tooltip("TimeClass:N", title="Ritmo"), alt.Tooltip("corte_ply:Q", title="Plies"),
-                 alt.Tooltip("siguen:Q", title="Siguen", format=".1%"),
-                 alt.Tooltip("partidas:Q", title="Partidas", format=",")],
+    lineas = alt.Chart(datos).mark_rect().encode(
+        x=alt.X("x:Q", axis=None, scale=alt.Scale(domain=[0, ancho], nice=False)), x2="x2:Q",
+        y=alt.Y("base:Q", title="Plies que duró la partida", scale=alt.Scale(domain=[0, TOPE_PLIES + 30], nice=False),
+                axis=alt.Axis(values=[0, 20, 40, 60, 80, 100, 120, 140, 160])),
+        y2="visible:Q",
+        color=alt.Color("TimeClass:N", legend=None, scale=ESCALA_RITMO),
+        opacity=alt.Opacity("llega:O", legend=None, sort=["no", "sí"], scale=alt.Scale(domain=["no", "sí"], range=[0.28, 1])),
+        tooltip=[alt.Tooltip("TimeClass:N", title="Ritmo"), alt.Tooltip("plies:Q", title="Duró (plies)"),
+                 alt.Tooltip("resultado:N", title="Terminó"), alt.Tooltip("llega:N", title="Pasó el ply 60")],
     )
-    return con_tema((lineas + puntos).properties(height=300))
+    regla = alt.Chart(pd.DataFrame({"y": [60]})).mark_rule(
+        color=FONDO_TEXTO, strokeDash=[5, 4], strokeWidth=1.5).encode(y="y:Q")
+    rotulos = pd.DataFrame({
+        "x": [inicio[r] for r in RITMOS],
+        "texto": [f"{r.capitalize()}: {siguen[r] * 100:.0f} de cada 100\npasan el ply 60" for r in RITMOS],
+    })
+    return con_tema((lineas + regla + _rotulo(rotulos, 2, align="left", baseline="top", fontWeight="bold"))
+                    .properties(height=340, usermeta=ANCHO_GRUPOS))
+
+
+SEPARACION_CORTES = 0.09
+
+
+def mosaico_resultado(segmentos: pd.DataFrame, cortes: list[int]) -> dict:
+    """Lo que encontramos: de las mismas partidas, cómo terminan según la ventaja, en tres cortes.
+
+    ``segmentos`` tiene una fila por (variable, corte_ply, ventaja, resultado) con ``ancho``
+    (parte de las partidas del corte con esa ventaja), ``x0`` (dónde empieza la columna, 0 a 1),
+    ``parte`` (fracción con ese resultado), ``y0``/``y1`` (apilados) y ``partidas``. El ancho
+    dice cuántas partidas hay; la altura, cómo terminaron.
+    """
+    inicio = {c: i * (1 + SEPARACION_CORTES) for i, c in enumerate(cortes)}
+    total = inicio[cortes[-1]] + 1
+    datos = segmentos.assign(x=segmentos["corte_ply"].map(inicio) + segmentos["x0"])
+    datos["x2"] = datos["x"] + datos["ancho"]
+    datos["centro"], datos["medio"] = (datos["x"] + datos["x2"]) / 2, (datos["y0"] + datos["y1"]) / 2
+    datos["texto"] = [f"{p * 100:.0f}" for p in datos["parte"]]
+    vistas = []
+    for variable in datos["variable"].unique():
+        base = alt.Chart(datos[datos["variable"] == variable])
+        celdas = base.mark_rect(stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
+            x=alt.X("x:Q", axis=None, scale=alt.Scale(domain=[0, total], nice=False)), x2="x2:Q",
+            y=alt.Y("y0:Q", title="Cómo terminaron", scale=alt.Scale(domain=[0, 1]),
+                    axis=alt.Axis(format="%", values=[0, 0.5, 1])), y2="y1:Q",
+            color=alt.Color("resultado:N", title=None, scale=ESCALA_RESULTADO),
+            tooltip=[alt.Tooltip("corte_ply:Q", title="Plies jugados"), alt.Tooltip("ventaja:N", title="Ventaja"),
+                     alt.Tooltip("resultado:N", title="Terminó"), alt.Tooltip("parte:Q", title="De esas partidas", format=".0%"),
+                     alt.Tooltip("partidas:Q", title="Partidas", format=",")],
+        )
+        # Only where the number fits: narrow columns keep theirs in the tooltip.
+        numeros = base.transform_filter((alt.datum.ancho > 0.06) & (alt.datum.resultado != "Empate")).mark_text(
+            fontSize=11, fontWeight="bold").encode(
+            x="centro:Q", y="medio:Q", text="texto:N",
+            color=alt.condition(alt.datum.resultado == "Gana Negras", alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
+        )
+        cabeceras = pd.DataFrame({"x": [inicio[c] + 0.5 for c in cortes],
+                                  "texto": [f"Ply {c} (jugada {c // 2})" for c in cortes]})
+        pies = pd.DataFrame({"x": [inicio[c] + 0.5 for c in cortes], "texto": ["negras arriba   |   blancas arriba"] * len(cortes)})
+        vistas.append((celdas + numeros + _rotulo(cabeceras, -10, fontWeight="bold")
+                       + _rotulo(pies, 204, fontSize=11, color=TEXTO_SUAVE)).properties(
+            height=190, title=alt.TitleParams(variable, anchor="start", color=FONDO_TEXTO, fontSize=15,
+                                              fontWeight="bold", offset=24)))
+    return alt.vconcat(*vistas, spacing=34, usermeta=ANCHO_GRUPOS).configure(**TEMA).to_dict()
 
 
 def senal_por_corte(eta2: pd.DataFrame) -> alt.Chart:
@@ -100,22 +177,24 @@ def senal_por_corte(eta2: pd.DataFrame) -> alt.Chart:
 
 
 def modelo_contra_piso(curva: pd.DataFrame) -> dict:
-    """El modelo: arriba el error crudo del modelo y del piso, abajo cuánto le saca (en %).
+    """El modelo: arriba cuánto error del piso evita (en %), abajo el error crudo de los dos.
 
     ``curva`` tiene una fila por (serie, corte_ply) con ``log_loss``, ``mejora`` (fracción
-    sobre el piso, repetida en las dos series) y ``partidas``. El error crudo se muestra
-    tal cual (menor es mejor): el piso empeora al final porque las partidas largas
-    terminan distinto, no porque el modelo falle. Las barras de abajo leen lo mismo como
-    lo que importa: qué parte del error del piso se evita.
+    sobre el piso, repetida en las dos series) y ``partidas``. Las barras de arriba van
+    primero porque arrancan de cero y leen lo que importa: qué parte del error del piso se
+    evita. Abajo, el error crudo se muestra tal cual (menor es mejor): el piso empeora al
+    final porque las partidas largas terminan distinto, no porque el modelo falle.
     """
-    crudo = alt.Chart(curva).encode(
-        # Same x domain as the bars below, so a cut sits above its own bar.
-        x=alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[-3, 123])),
-        y=alt.Y("log_loss:Q", title="Error (log-loss, menos es mejor)", scale=alt.Scale(zero=False)),
+    pares = curva.pivot_table(index="corte_ply", columns="serie", values="log_loss").reset_index()
+    # Same x domain as the bars above, so a cut sits below its own bar.
+    x_corte = alt.X("corte_ply:Q", axis=EJE_CORTE, scale=alt.Scale(domain=[-3, 123]))
+    titulo_error = "Error (log-loss, menos es mejor)"
+    # The gap is the message: one segment per cut, from the floor's error to the model's.
+    distancia = alt.Chart(pares).mark_rule(color=COLOR_MODELO, opacity=0.35, strokeWidth=6).encode(
+        x=x_corte, y=alt.Y("Modelo:Q", title=titulo_error, scale=alt.Scale(zero=False)), y2="Piso:Q")
+    puntos = alt.Chart(curva).mark_point(filled=True, size=70, opacity=1).encode(
+        x=x_corte, y=alt.Y("log_loss:Q", title=titulo_error, scale=alt.Scale(zero=False)),
         color=alt.Color("serie:N", title=None, scale=ESCALA_SERIE),
-    )
-    lineas = crudo.mark_line(strokeWidth=2.5)
-    puntos = crudo.mark_point(filled=True, size=40).encode(
         tooltip=[alt.Tooltip("serie:N", title="Serie"), alt.Tooltip("corte_ply:Q", title="Plies"),
                  alt.Tooltip("log_loss:Q", title="Log-loss", format=".3f"),
                  alt.Tooltip("mejora:Q", title="Mejora sobre el piso", format=".1%"),
@@ -128,13 +207,11 @@ def modelo_contra_piso(curva: pd.DataFrame) -> dict:
                  alt.Tooltip("mejora:Q", title="Menos error que el piso", format=".1%"),
                  alt.Tooltip("partidas:Q", title="Partidas de test", format=",")],
     )
-    return alt.vconcat((lineas + puntos).properties(height=240), barras.properties(height=120),
+    return alt.vconcat(barras.properties(height=150), (distancia + puntos).properties(height=200),
                        spacing=20, usermeta=ANCHO_MINIMO_ANGOSTO).configure(**TEMA).to_dict()
 
 
 # Professor's feedback on Entrega 3: fixed-decision metrics and importance, band by band.
-COLOR_ACIERTO = {"Modelo": COLOR_MODELO, "Regla del material": COLOR_VARIABLE["Material"], "Piso": COLOR_PISO}
-ESCALA_ACIERTO = alt.Scale(domain=list(COLOR_ACIERTO), range=list(COLOR_ACIERTO.values()))
 # Readable names for the columns that lead the importance in some band.
 NOMBRE_COLUMNA = {
     "balance_material": "Material (blancas − negras)",
@@ -151,24 +228,43 @@ def _eje_tramo(tramos: list[str]) -> alt.X:
     return alt.X("tramo:O", sort=tramos, title="Plies jugados (tramo)", axis=alt.Axis(labelAngle=0))
 
 
-def acierto_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
-    """Decisión fija: qué parte de las filas de test acierta cada serie, tramo por tramo.
+CATEGORIAS_ACIERTO = ["Aciertos que ya da decir siempre blancas", "Aciertos que suma el modelo", "Se equivoca"]
+COLOR_CATEGORIA = [COLOR_RESULTADO["Empate"], COLOR_MODELO, "#f0b3a6"]
+SEPARACION_CIEN = 1.6
 
-    ``filas`` tiene una fila por (serie, tramo) con ``accuracy`` (0 a 1) y ``filas``.
+
+def acierto_de_cien(tramos: pd.DataFrame) -> alt.Chart:
+    """Decisión fija, contada de a una: de cada 100 posiciones de test de un tramo, cuántas acierta.
+
+    ``tramos`` tiene una fila por tramo con ``accuracy`` y ``accuracy piso`` (0 a 1). Cada
+    cuadrado es una posición de cada 100: las que acierta el piso, las que suma el modelo
+    encima y las que falla. Son conteos: no dice que sean las mismas posiciones.
     """
-    base = alt.Chart(filas).encode(
-        x=_eje_tramo(tramos),
-        y=alt.Y("accuracy:Q", title="Aciertos (la clase más probable fue la real)",
-                axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0.35, 0.8])),
-        color=alt.Color("serie:N", title=None, scale=ESCALA_ACIERTO),
+    celdas, rotulos, aciertos = [], [], []
+    for i, fila in enumerate(tramos.to_dict("records")):
+        inicio = i * (10 + SEPARACION_CIEN)
+        modelo, piso = round(fila["accuracy"] * 100), round(fila["accuracy piso"] * 100)
+        for k in range(100):
+            categoria = CATEGORIAS_ACIERTO[0 if k < piso else 1 if k < modelo else 2]
+            x, y = inicio + k % 10, k // 10
+            celdas.append({"x": x + 0.08, "x2": x + 0.92, "y": y + 0.08, "y2": y + 0.92, "categoria": categoria,
+                           "tramo": fila["tramo"], "modelo": modelo, "piso": piso})
+        rotulos.append({"x": inicio + 5, "texto": "antes de mover" if fila["tramo"] == "0" else f"plies {fila['tramo']}"})
+        aciertos.append({"x": inicio + 5, "texto": str(modelo)})
+    total = len(tramos) * 10 + (len(tramos) - 1) * SEPARACION_CIEN
+    alto = 270
+    cuadros = alt.Chart(pd.DataFrame(celdas)).mark_rect(cornerRadius=1).encode(
+        x=alt.X("x:Q", axis=None, scale=alt.Scale(domain=[0, total], nice=False)), x2="x2:Q",
+        # Room above the squares for the count and below for the band's name.
+        y=alt.Y("y:Q", axis=None, scale=alt.Scale(domain=[-1.6, 12.4], nice=False)), y2="y2:Q",
+        color=alt.Color("categoria:N", title=None, sort=CATEGORIAS_ACIERTO,
+                        scale=alt.Scale(domain=CATEGORIAS_ACIERTO, range=COLOR_CATEGORIA),
+                        legend=alt.Legend(labelLimit=0, symbolType="square", symbolSize=120)),
+        tooltip=[alt.Tooltip("tramo:N", title="Plies"), alt.Tooltip("modelo:Q", title="Acierta el modelo, de cada 100"),
+                 alt.Tooltip("piso:Q", title="Acierta decir siempre blancas")],
     )
-    lineas = base.mark_line(strokeWidth=2.5)
-    puntos = base.mark_point(filled=True, size=55).encode(
-        tooltip=[alt.Tooltip("serie:N", title="Serie"), alt.Tooltip("tramo:O", title="Plies"),
-                 alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%"),
-                 alt.Tooltip("filas:Q", title="Filas de test", format=",")],
-    )
-    return con_tema((lineas + puntos).properties(height=320))
+    return con_tema((cuadros + _rotulo(pd.DataFrame(aciertos), 18, fontSize=28, fontWeight="bold", color=COLOR_MODELO)
+                     + _rotulo(pd.DataFrame(rotulos), alto - 12, fontSize=12)).properties(height=alto, usermeta=ANCHO_GRUPOS))
 
 
 VISTAS_CONFUSION = ["recall", "precision"]
@@ -220,37 +316,48 @@ def confusion_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     return con_tema((celdas + textos).add_params(tramo, vista).properties(height=240))
 
 
-def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> dict:
-    """En qué se apoya el modelo en cada tramo: una columna por mini gráfico, todos a la misma escala.
+COLUMNAS_IMPORTANCIA = ["Diferencia de rating previo", "Material (blancas − negras)", "Reloj (blancas − negras)"]
+# Two columns this close (in hits out of 100) count as tied for the lead.
+EMPATE_PUNTOS = 0.05
 
-    ``filas`` tiene una fila por (nombre, tramo) con ``log_loss`` (cuánto empeora al
-    desordenar la columna: la importancia) y ``accuracy`` (puntos de aciertos que se
-    pierden, 0 a 1). Con las cinco líneas juntas se pisaban y se leía "sube = empeora":
-    separadas y con el mismo eje y, la forma de cada una es lo que se compara, y el
-    tamaño de la mancha dice cuánto pesa frente a las otras.
+
+def importancia_por_tramo(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
+    """En qué se fija: cuántos aciertos de cada 100 pierde el modelo si se le tapa cada columna.
+
+    ``filas`` tiene una fila por (nombre, tramo) con ``accuracy`` (aciertos que se pierden al
+    desordenar la columna, 0 a 1) y ``log_loss``. Una faceta por columna, las tres con el mismo
+    eje y; la barra llena es la columna que más pesa en ese tramo, o las que empatan.
     """
-    tope = float(filas["log_loss"].max()) * 1.15
-    vistas = []
-    for nombre in ["Diferencia de rating previo", "Material (blancas − negras)", "Reloj (blancas − negras)",
-                   "Reloj de blancas", "Reloj de negras"]:
-        color = COLOR_COLUMNA[nombre]
-        base = alt.Chart(filas[filas["nombre"] == nombre]).encode(
-            x=alt.X("tramo:O", sort=tramos, title="Plies jugados (tramo)" if nombre == "Reloj de negras" else None,
-                    axis=alt.Axis(labelAngle=0, labels=nombre == "Reloj de negras", ticks=nombre == "Reloj de negras")),
-            y=alt.Y("log_loss:Q", title="Importancia", scale=alt.Scale(domain=[0, tope]),
-                    axis=alt.Axis(values=[0, round(tope / 2, 2)], format=".2f")),
-        )
-        area = base.mark_area(color=color, opacity=0.22, interpolate="monotone")
-        linea = base.mark_line(color=color, strokeWidth=2.5, interpolate="monotone")
-        puntos = base.mark_point(color=color, filled=True, size=55).encode(
-            tooltip=[alt.Tooltip("nombre:N", title="Columna"), alt.Tooltip("tramo:O", title="Plies"),
-                     alt.Tooltip("log_loss:Q", title="Importancia (log-loss que empeora)", format=".4f"),
-                     alt.Tooltip("accuracy:Q", title="Aciertos que se pierden", format=".1%")],
-        )
-        vistas.append((area + linea + puntos).properties(
-            height=84, title=alt.TitleParams(nombre, anchor="start", color=color, fontSize=14, fontWeight="bold")))
-    # Vega-Lite sizes concat views itself: the web gives each one the container's width.
-    return alt.vconcat(*vistas, spacing=14, usermeta=ANCHO_MINIMO_ANGOSTO).resolve_scale(y="shared").configure(**TEMA).to_dict()
+    datos = filas[filas["nombre"].isin(COLUMNAS_IMPORTANCIA)].copy()
+    datos["puntos"] = datos["accuracy"] * 100
+    lider = datos.groupby("tramo")["puntos"].transform("max")
+    datos["lidera"] = (datos["puntos"] >= lider - EMPATE_PUNTOS).map({True: "sí", False: "no"})
+    inicio = {n: i * (len(tramos) + 1) for i, n in enumerate(COLUMNAS_IMPORTANCIA)}
+    datos["x"] = datos["nombre"].map(inicio) + datos["tramo"].map({t: i for i, t in enumerate(tramos)}) + 0.1
+    datos["x2"], datos["centro"], datos["cero"] = datos["x"] + 0.8, datos["x"] + 0.4, 0
+    datos["desde"] = datos["tramo"].str.split("–").str[0]
+    datos["texto"] = [f"{p:.1f}".replace(".", ",") if abs(p) >= 0.05 else "0" for p in datos["puntos"]]
+    alto, base = 280, alt.Chart(datos)
+    escala_y = alt.Scale(domain=[0, float(datos["puntos"].max()) * 1.35], nice=False)
+    barras = base.mark_rect().encode(
+        x=alt.X("x:Q", axis=None, scale=alt.Scale(domain=[0, len(tramos) * 3 + 2], nice=False)), x2="x2:Q",
+        y=alt.Y("cero:Q", title="Aciertos que pierde, de cada 100", scale=escala_y, axis=alt.Axis(values=[0, 5, 10, 15])),
+        y2="puntos:Q",
+        color=alt.Color("nombre:N", legend=None, scale=ESCALA_COLUMNA),
+        opacity=alt.Opacity("lidera:O", legend=None, sort=["no", "sí"], scale=alt.Scale(domain=["no", "sí"], range=[0.35, 1])),
+        tooltip=[alt.Tooltip("nombre:N", title="Columna"), alt.Tooltip("tramo:O", title="Plies"),
+                 alt.Tooltip("puntos:Q", title="Aciertos que pierde, de cada 100", format=".1f"),
+                 alt.Tooltip("log_loss:Q", title="Error que suma (log-loss)", format=".4f")],
+    )
+    numeros = base.mark_text(dy=-8, fontSize=12, color=FONDO_TEXTO, fontWeight="bold").encode(
+        x="centro:Q", y=alt.Y("puntos:Q", scale=escala_y), text="texto:N")
+    desde = base.mark_text(dy=12, fontSize=11, color=TEXTO_SUAVE).encode(x="centro:Q", y="cero:Q", text="desde:N")
+    titulos = pd.DataFrame({"x": [inicio[n] + 0.1 for n in COLUMNAS_IMPORTANCIA],
+                            "texto": [n.split(" (")[0].replace(" previo", "") for n in COLUMNAS_IMPORTANCIA]})
+    pies = pd.DataFrame({"x": [inicio[n] + len(tramos) / 2 for n in COLUMNAS_IMPORTANCIA], "texto": ["tramo, desde el ply"] * 3})
+    return con_tema((barras + numeros + desde
+                     + _rotulo(titulos, 4, align="left", baseline="top", fontSize=15, fontWeight="bold")
+                     + _rotulo(pies, alto + 28, fontSize=11, color=TEXTO_SUAVE)).properties(height=alto, usermeta=ANCHO_GRUPOS))
 
 
 EJES_SITUACION = ["Material", "Reloj"]
@@ -276,7 +383,7 @@ def acierto_por_situacion(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     )
     celdas = base.mark_rect(stroke="#ffffff", strokeWidth=2).encode(
         color=alt.Color("accuracy:Q", title="Aciertos", legend=None,
-                        scale=alt.Scale(domain=[0.3, 0.95], range=["#f6f1e7", COLOR_MODELO], clamp=True)),
+                        scale=alt.Scale(domain=[0.48, 0.86], range=["#f6f1e7", COLOR_MODELO], clamp=True)),
         tooltip=[alt.Tooltip("situacion:N", title="Situación"), alt.Tooltip("rango:N", title="Diferencia"),
                  alt.Tooltip("tramo:O", title="Plies"), alt.Tooltip("accuracy:Q", title="Aciertos", format=".1%"),
                  alt.Tooltip("filas:Q", title="Filas de test", format=","),
@@ -284,7 +391,7 @@ def acierto_por_situacion(filas: pd.DataFrame, tramos: list[str]) -> alt.Chart:
     )
     textos = base.mark_text(fontSize=14).encode(
         text="texto:N",
-        color=alt.condition("datum.accuracy > 0.7", alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
+        color=alt.condition("datum.accuracy > 0.67", alt.value("#ffffff"), alt.value(FONDO_TEXTO)),
     )
     return con_tema((celdas + textos).add_params(eje).properties(height=170))
 
@@ -293,32 +400,44 @@ COLOR_FINAL = {"Acertó": COLOR_MODELO, "Se equivocó": "#d95640"}
 
 
 def como_terminan(filas: pd.DataFrame, finales: list[str]) -> alt.Chart:
-    """Cómo terminaron las partidas en que el modelo acertó y en las que se equivocó (tramo final).
+    """Cómo terminaron las partidas en que el modelo acertó (izquierda) y en las que falló (derecha).
 
     ``filas`` tiene una fila por (decision, final) con ``parte`` (fracción de las filas de
-    esa decisión, 0 a 1) y ``filas``. Si los errores se concentran en un final (por tiempo,
-    tablas), ese final es una de las razones del error.
+    esa decisión, 0 a 1) y ``filas``. Las dos mitades comparten el eje del medio: un final
+    cargado hacia la derecha es una de las razones del error.
     """
-    base = alt.Chart(filas).encode(
-        y=alt.Y("final:N", sort=finales, title=None),
-        yOffset=alt.YOffset("decision:N", sort=list(COLOR_FINAL)),
-        x=alt.X("parte:Q", title="Parte de las filas de cada grupo", axis=alt.Axis(format="%", values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
-                scale=alt.Scale(domain=[0, 0.6])),
-        color=alt.Color("decision:N", title=None, scale=alt.Scale(domain=list(COLOR_FINAL), range=list(COLOR_FINAL.values()))),
+    aciertos, errores = list(COLOR_FINAL)
+    datos = filas.assign(
+        lado=filas["parte"].where(filas["decision"] == errores, -filas["parte"]), cero=0,
+        texto=[f"{p * 100:.0f}" for p in filas["parte"]],
     )
-    barras = base.mark_bar().encode(
+    base = alt.Chart(datos).encode(
+        y=alt.Y("final:N", sort=finales, title=None, axis=alt.Axis(labelFontSize=14, domain=False, ticks=False)))
+    x = alt.X("lado:Q", title=None, axis=None, scale=alt.Scale(domain=[-0.62, 0.62], nice=False))
+    barras = base.mark_bar(size=34).encode(
+        x=x, x2="cero:Q",
+        color=alt.Color("decision:N", legend=None, scale=alt.Scale(domain=list(COLOR_FINAL), range=list(COLOR_FINAL.values()))),
         tooltip=[alt.Tooltip("decision:N", title="El modelo"), alt.Tooltip("final:N", title="La partida terminó"),
                  alt.Tooltip("parte:Q", title="Parte del grupo", format=".1%"),
                  alt.Tooltip("filas:Q", title="Filas de test", format=",")],
     )
-    textos = base.mark_text(align="left", dx=4, fontSize=12).encode(text=alt.Text("parte:Q", format=".0%"))
-    return con_tema((barras + textos).properties(height=200))
+    numeros = [
+        base.transform_filter(alt.datum.decision == decision).mark_text(
+            align=align, dx=dx, fontSize=15, fontWeight="bold", color=FONDO_TEXTO).encode(x=x, text="texto:N")
+        for decision, align, dx in [(aciertos, "right", -6), (errores, "left", 6)]
+    ]
+    titulos = [
+        _rotulo(pd.DataFrame({"x": [0], "texto": [texto]}), -14, fontWeight="bold", align=align, dx=dx)
+        for texto, align, dx in [("De cada 100 aciertos", "right", -12), ("De cada 100 errores", "left", 12)]
+    ]
+    eje = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=FONDO_TEXTO).encode(x="x:Q")
+    return con_tema(alt.layer(barras, *numeros, *titulos, eje).properties(height=220))
 
 
 # Explorá's third control: every game, or only those where the model's most probable class was right or wrong.
 ACIERTO = ["Todas", "Acertó", "Se equivocó"]
 # Explorá's horizontal axis: material (points) or clock (fraction of the base time).
-EJES_X = ["Material", "Reloj"]
+EJES_X = ["Material", "Reloj", "Rating"]
 
 
 def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> dict:
@@ -358,7 +477,10 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(
         # Material is an integer: a fixed per-game jitter (computed in the build) separates the points.
         material_visible="datum.balance_material + datum.desplazamiento",
-        x_valor="eje_x == 'Reloj' ? datum.dif_reloj : datum.balance_material + datum.desplazamiento",
+        x_valor="eje_x == 'Reloj' ? datum.dif_reloj : (eje_x == 'Rating' ? datum.dif_rating : "
+                "datum.balance_material + datum.desplazamiento)",
+        # Not every game has both prior ratings: with the rating axis those points are left out.
+        dif_rating_texto="isValid(datum.dif_rating) ? format(datum.dif_rating, '+d') : 'sin dato'",
         ventaja="datum.p_blancas - datum.p_negras",
         # The model's fixed decision, the most probable class (ties as numpy's argmax: white, draw, black).
         prediccion="datum.p_blancas >= datum.p_empate && datum.p_blancas >= datum.p_negras ? 'Gana Blancas' : "
@@ -366,15 +488,19 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     ).transform_calculate(
         acerto="datum.prediccion == datum.resultado",
     ).transform_filter(
+        "isValid(datum.x_valor)"
+    ).transform_filter(
         (acierto == ACIERTO[0]) | ((acierto == ACIERTO[1]) & alt.datum.acerto)
         | ((acierto == ACIERTO[2]) & ~alt.datum.acerto)
     ).mark_circle(size=38, opacity=0.85, stroke=BORDE_PUNTO, strokeWidth=0.8).encode(
         x=alt.X("x_valor:Q",
                 # An axis title can't follow a param: one title that reads right for both axes.
-                title="Ventaja de blancas sobre negras: material (puntos) o reloj (% del tiempo base)",
+                title="Ventaja de blancas sobre negras: material (puntos), reloj (% del tiempo base) o rating previo (puntos)",
                 # nice=False: with a domain given as an expression Vega would round it up to ±20.
-                scale=alt.Scale(domain=alt.ExprRef(expr="eje_x == 'Reloj' ? [-1, 1] : [-15, 15]"), clamp=True, nice=False),
-                axis=alt.Axis(labelExpr="eje_x == 'Reloj' ? (datum.value == 0 ? '0 %' : format(datum.value * 100, '+d') + ' %') : datum.label")),
+                scale=alt.Scale(domain=alt.ExprRef(expr="eje_x == 'Reloj' ? [-1, 1] : (eje_x == 'Rating' ? [-400, 400] : [-15, 15])"),
+                                clamp=True, nice=False),
+                axis=alt.Axis(labelExpr="eje_x == 'Reloj' ? (datum.value == 0 ? '0 %' : format(datum.value * 100, '+d') + ' %') : "
+                                        "(eje_x == 'Rating' ? (datum.value == 0 ? '0' : format(datum.value, '+d')) : datum.label)")),
         y=alt.Y("ventaja:Q", title="Lo que dice el modelo: P(blancas) − P(negras)",
                 scale=alt.Scale(domain=[-1, 1]), axis=alt.Axis(format="+.0%")),
         color=alt.Color("resultado:N", title="Cómo terminó", scale=ESCALA_RESULTADO),
@@ -385,6 +511,7 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
             alt.Tooltip("corte_ply:Q", title="Plies jugados"),
             alt.Tooltip("balance_material:Q", title="Material (bl − ng)"),
             alt.Tooltip("dif_reloj:Q", title="Reloj (bl − ng)", format="+.0%"),
+            alt.Tooltip("dif_rating_texto:N", title="Rating previo (bl − ng)"),
             alt.Tooltip("p_blancas:Q", title="Modelo: gana blancas", format=".0%"),
             alt.Tooltip("p_empate:Q", title="Modelo: tablas", format=".0%"),
             alt.Tooltip("p_negras:Q", title="Modelo: gana negras", format=".0%"),
@@ -428,7 +555,8 @@ def explora(filas: pd.DataFrame, partidas: pd.DataFrame, niveles: list[str]) -> 
     with alt.data_transformers.enable("default", max_rows=None):
         # Two legends on purpose: above, how each game ended; below, what the model said.
         spec = alt.vconcat(panorama, detalle, spacing=36).resolve_legend(color="independent").configure(**TEMA).to_dict()
-    spec["datasets"]["partidas"] = partidas.to_dict(orient="records")
+    # A missing value (a game without both prior ratings) travels as null, never as NaN (invalid JSON for the web).
+    spec["datasets"]["partidas"] = partidas.astype(object).where(partidas.notna(), None).to_dict(orient="records")
     return spec
 
 

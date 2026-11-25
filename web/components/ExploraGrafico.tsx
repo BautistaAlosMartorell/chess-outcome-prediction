@@ -23,6 +23,7 @@ const ACIERTOS: Opcion[] = [
 const EJES: Opcion[] = [
   { valor: "Material", etiqueta: "Material" },
   { valor: "Reloj", etiqueta: "Reloj" },
+  { valor: "Rating", etiqueta: "Rating" },
 ];
 
 const MARCAS = [0, 20, 40, 60, 80, 100, 120];
@@ -68,7 +69,7 @@ function Segmentos({
 // Explorá's chart with the page's own controls instead of the ones Altair binds under it.
 // React holds the four values and writes them into the chart's params; the chart is redrawn
 // (a new width, for example) with the same values.
-export function ExploraGrafico({ niveles }: { niveles: string[] }) {
+export function ExploraGrafico({ niveles, conRating, total }: { niveles: string[]; conRating: number; total: number }) {
   const [vista, setVista] = useState<VistaVega | null>(null);
   const [corte, setCorte] = useState(40);
   const [ritmo, setRitmo] = useState("todos");
@@ -156,12 +157,19 @@ export function ExploraGrafico({ niveles }: { niveles: string[] }) {
             alCambiar={setNivel}
           />
         </div>
+        {eje === "Rating" ? (
+          <p className={styles.aviso} role="status">
+            Con el rating se ven {conRating.toLocaleString("es-AR")} de las {total.toLocaleString("es-AR")} partidas: las que
+            tienen el rating previo de los dos jugadores. Para las demás el modelo predice igual, con lo que sabe,
+            pero no hay una diferencia de rating que mostrar.
+          </p>
+        ) : null}
       </div>
       <GraficoAltair
         src="/app/graficos/explora.json"
         ocultarControles
         onVista={setVista}
-        descripcion="Dispersión de partidas de test: material contra la ventaja que da el modelo, coloreada por el resultado real, con la curva de probabilidades de la partida elegida. Los controles de arriba eligen el corte, el ritmo, el nivel y si se ven las partidas acertadas o falladas."
+        descripcion="Dispersión de partidas de test: material, reloj o rating previo (a elección) contra la ventaja que da el modelo, coloreada por el resultado real, con la curva de probabilidades de la partida elegida. Los controles de arriba eligen el eje, el corte, el ritmo, el nivel y si se ven las partidas acertadas o falladas."
       />
     </>
   );

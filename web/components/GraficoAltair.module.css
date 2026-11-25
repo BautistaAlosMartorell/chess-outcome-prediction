@@ -1,6 +1,8 @@
 .figura {
   margin: 0;
   min-width: 0;
+  /* Charts with a minimum width (usermeta.anchoGrafico) scroll here on a phone, never the page. */
+  overflow-x: auto;
 }
 
 .grafico {
@@ -18,10 +20,6 @@
   flex-wrap: wrap;
   gap: 10px 22px;
   margin-top: 14px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: var(--panel);
-  box-shadow: inset 0 0 0 1px var(--linea);
 }
 
 /* vega-embed adds the container even for charts without controls. */
@@ -40,7 +38,7 @@
 }
 
 .grafico :global(.vega-bind select),
-.grafico :global(.vega-bind input[type="range"]) {
+.grafico :global(.vega-bind input) {
   accent-color: var(--reloj);
 }
 

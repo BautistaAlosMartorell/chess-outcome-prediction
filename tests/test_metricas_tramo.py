@@ -71,20 +71,25 @@ class MetricasTest(unittest.TestCase):
 
 class ChartsTest(unittest.TestCase):
     def test_band_charts_serialize_with_the_band_order(self):
-        acierto = pd.DataFrame({"serie": ["Modelo", "Piso"] * 6, "tramo": np.repeat(TRAMOS, 2),
-                                "accuracy": 0.5, "filas": 10})
+        acierto = pd.DataFrame({"tramo": TRAMOS, "accuracy": 0.6, "accuracy piso": 0.45})
         confusion = pd.DataFrame({"tramo": "0", "real": ["Empate", "Gana Blancas"], "predicho": ["Empate", "Empate"],
                                   "porcentaje_fila": [50.0, 10.0], "porcentaje_columna": [np.nan, 25.0], "filas": [1, 1]})
         importancia = pd.DataFrame({"nombre": list(app_charts.NOMBRE_COLUMNA.values()), "tramo": "0",
                                     "log_loss": 0.01, "accuracy": 0.01})
-        specs = [app_charts.acierto_por_tramo(acierto, TRAMOS).to_dict(),
+        specs = [app_charts.acierto_de_cien(acierto).to_dict(),
                  app_charts.confusion_por_tramo(confusion, TRAMOS).to_dict(),
-                 app_charts.importancia_por_tramo(importancia, TRAMOS)]
+                 app_charts.importancia_por_tramo(importancia, TRAMOS).to_dict()]
         for spec in specs:
             self.assertEqual(spec["config"]["background"], "transparent")
-        self.assertEqual(specs[0]["layer"][0]["encoding"]["x"]["sort"], TRAMOS)
-        # One small chart per column, all on the same y scale.
-        self.assertEqual(len(specs[2]["vconcat"]), len(app_charts.NOMBRE_COLUMNA))
+        # One hundred squares per band: 45 the floor gets, 15 more the model adds and 40 misses.
+        squares = pd.DataFrame(max(specs[0]["datasets"].values(), key=len))
+        self.assertEqual(len(squares), 100 * len(TRAMOS))
+        counts = squares[squares["tramo"] == TRAMOS[0]]["categoria"].value_counts()
+        self.assertEqual([counts[c] for c in app_charts.CATEGORIAS_ACIERTO], [45, 15, 40])
+        # One facet per column, all on the same y scale; tied columns are all marked as leaders.
+        bars = pd.DataFrame(max(specs[2]["datasets"].values(), key=len))
+        self.assertEqual(set(bars["nombre"]), set(app_charts.COLUMNAS_IMPORTANCIA))
+        self.assertEqual(set(bars["lidera"]), {"sí"})
         self.assertEqual(specs[1]["params"][0]["bind"]["options"], TRAMOS)
         self.assertEqual(specs[1]["params"][1]["bind"]["options"], app_charts.VISTAS_CONFUSION)
         # An undefined precision travels as null, never as NaN (invalid JSON for the web).

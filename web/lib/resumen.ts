@@ -135,6 +135,8 @@ export type Resumen = {
     errores: number;
     errores_tablas: number;
     errores_eligio_mas_material: number;
+    // Games with both prior ratings: the ones the rating axis can place.
+    partidas_con_rating: number;
   };
 };
 

@@ -1,0 +1,88 @@
+.cruda {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+
+.cruda figure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.cruda figcaption {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+/* Code is the one place where a monospace face is the subject's own. */
+.json {
+  margin: 0;
+  padding: 16px 18px;
+  background: var(--fondo-hondo);
+  border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.json mark,
+.leyenda mark {
+  background: #cfe3d6;
+  color: inherit;
+  border-radius: 3px;
+}
+
+.json del,
+.leyenda del {
+  color: var(--apuro);
+  text-decoration-thickness: 2px;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.cruda table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.cruda th,
+.cruda td {
+  padding: 10px 8px 10px 0;
+  border-bottom: 1px solid var(--linea);
+  text-align: left;
+}
+
+.cruda th {
+  color: var(--texto-suave);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.cruda td {
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.cruda td:first-child {
+  font-weight: 800;
+}
+
+.leyenda {
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+@media (min-width: 760px) {
+  .cruda {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

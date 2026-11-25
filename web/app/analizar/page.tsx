@@ -220,6 +220,7 @@ function Analizar() {
             {cargando === "buscar" ? "Buscando…" : "Buscar partidas"}
           </button>
         </div>
+        {error ? <p className={styles.error} role="alert">{error}</p> : null}
         <p className={styles.nota}>Trae sus últimas partidas rated de bullet, blitz y rapid. Funciona con cualquier cuenta pública.</p>
       </form>
       {!ficha && !analisis ? (
@@ -228,8 +229,6 @@ function Analizar() {
         </div>
       ) : null}
       </div>
-      {error ? <p className={styles.error}>{error}</p> : null}
-
       {analisis ? (
         <section
           ref={espacio}
